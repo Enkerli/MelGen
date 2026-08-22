@@ -55,22 +55,51 @@ enum MelodyGenerator {
     ///     Clamped to the range the framework accepts.
     ///   - brief: The rhythmic/contour brief for this take. Rotating it is what
     ///     makes successive takes differ from one another.
+    ///   - progress: Called on each request with the chunk index and total, so a
+    ///     long progression can report where it's up to instead of hanging.
     static func generate(for progression: ChordProgression,
                          temperature: Double = 0.6,
                          brief: StyleBrief,
                          density: Double = 0.5,
-                         durationPalette: DurationPalette = .mixed) async throws -> [SequencedNote] {
-        let session = LanguageModelSession(instructions: instructions(examples: PatternLibrary.allExamples))
+                         durationPalette: DurationPalette = .mixed,
+                         progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
+        let chunks = MelodyChunker.chunks(for: progression)
         let options = GenerationOptions(
             samplingMode: nil,
             temperature: min(max(temperature, 0), 1)
         )
-        let response = try await session.respond(
-            to: prompt(for: progression, brief: brief, density: density, durationPalette: durationPalette),
-            generating: MelodyIdea.self,
-            options: options
-        )
-        return sequence(from: response.content, progression: progression)
+
+        var collected: [MelodyIdeaNote] = []
+        for (index, chunk) in chunks.enumerated() {
+            progress?(index, chunks.count)
+
+            // A fresh session per chunk, so each one gets a clean context window
+            // rather than accumulating the previous chunks' transcripts.
+            let session = LanguageModelSession(
+                instructions: instructions(examples: PatternLibrary.allExamples)
+            )
+            let response = try await session.respond(
+                to: prompt(for: chunk.progression,
+                           brief: brief,
+                           density: density,
+                           durationPalette: durationPalette,
+                           continuingFrom: collected.last?.midiNote),
+                generating: MelodyIdea.self,
+                options: options
+            )
+
+            // Rebase onto the whole progression's grid.
+            for note in response.content.notes {
+                var shifted = note
+                shifted.startEighth += chunk.startEighth
+                collected.append(shifted)
+            }
+        }
+
+        // Post-process across the seams, not per chunk: `fold` and `snap` work
+        // from the previous note, so running them over the assembled line is what
+        // keeps voice leading continuous where two requests meet.
+        return sequence(from: collected, progression: progression)
     }
 
     /// Notes per bar asked of the model for a density setting: sparse enough to
@@ -121,10 +150,13 @@ enum MelodyGenerator {
         return text
     }
 
+    /// - Parameter continuingFrom: the MIDI note the previous chunk ended on, so
+    ///   the line doesn't restart in an unrelated register at every seam.
     static func prompt(for progression: ChordProgression,
                        brief: StyleBrief,
                        density: Double = 0.5,
-                       durationPalette: DurationPalette = .mixed) -> String {
+                       durationPalette: DurationPalette = .mixed,
+                       continuingFrom previousNote: Int? = nil) -> String {
         var lines = ["Compose a melody for this progression: \(progression.text)", "", "Harmonic plan:"]
         for placed in progression.chords {
             let startEighth = Int((placed.startBeat * 2).rounded())
@@ -152,6 +184,12 @@ enum MelodyGenerator {
                      + "counting rests as part of the phrasing rather than padding with notes.")
         lines.append("")
         lines.append(durationPalette.promptText)
+        if let previousNote {
+            lines.append("")
+            lines.append("This continues a line already in progress: the previous phrase ended on "
+                         + "\(ChordProgression.noteName(forMIDINote: previousNote)) (MIDI \(previousNote)). "
+                         + "Start within a few steps of it, in the same register.")
+        }
         lines.append("")
         lines.append("Total length: \(totalEighths) eighths. All notes must start before eighth \(totalEighths).")
         return lines.joined(separator: "\n")
@@ -161,9 +199,13 @@ enum MelodyGenerator {
 
     /// Converts the model's output into a clean, monophonic, scale-correct sequence
     /// with the leaps smoothed out.
-    static func sequence(from idea: MelodyIdea, progression: ChordProgression) -> [SequencedNote] {
+    ///
+    /// Takes a plain note array rather than a `MelodyIdea` because a long
+    /// progression is assembled from several requests, and the smoothing has to
+    /// run over the whole line for the seams to disappear.
+    static func sequence(from ideaNotes: [MelodyIdeaNote], progression: ChordProgression) -> [SequencedNote] {
         let totalEighths = Int((progression.totalBeats * 2).rounded())
-        let notes = idea.notes
+        let notes = ideaNotes
             .filter { $0.startEighth >= 0 && $0.startEighth < totalEighths }
             .sorted { $0.startEighth < $1.startEighth }
 

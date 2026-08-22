@@ -72,16 +72,17 @@ So Wave 1 is "make what exists trustworthy", and it comes before everything else
 
 | # | Item | Impact | Effort | Depends on | Why now |
 |---|------|--------|--------|-----------|---------|
-| G1 | Chunked generation (long progressions) | **Critical** | M–L | — | 16 bars fails today. Also the gate on using ProgGenie output, and it improves quality as a side effect |
+| G1 | Chunked generation (long progressions) | **Critical** | M–L | — | ✅ **done 2026-08-22** — 16 bars now generates as four phrases, and ProgGenie output works |
 | G2 | Rests | **High** | S–M | — | The line never breathes. Cheapest large gain in musicality |
 | G3 | Per-note gate | **High** | M | — | One global gate can't give staccato notes *and* legato transitions, which was the point of the control |
 | G5 | Variety scoring (pre-curation) | **High** | M | — | Ostinato-ish takes at high temperature mean temperature isn't the variety lever we assumed. Turns 24 takes-to-audition into 24 takes-worth-keeping |
 | G4 | Measure generation time | Medium | S | — | "New take every loop" is a promise we currently can't keep. Measure before designing the fix |
 | G6 | Buffer takes ahead | **High** | M | G1, G4 | What makes auto-regeneration honest. Much easier once G1 makes generation incremental |
 
-Do **G1 first**: it unblocks the ProgGenie want, makes G6 tractable, and improves
-output quality on its own. G2 and G3 are independent of it and of each other —
-both are small enough to land while thinking about G1.
+G1 is done, which unblocked the ProgGenie playflow. **G2 (rests) and G3 (per-note
+gate) are next** — both independent of everything else and small enough to land
+together. G4 (measure generation time) matters more than it did, since a 16-bar
+take now costs four requests rather than one.
 
 ### Wave 2 — make it interactive
 
@@ -122,12 +123,13 @@ prototyping only once Wave 1 means a single take is reliably good.
 
 | # | Issue | Effort | Status |
 |---|-------|--------|--------|
-| F10 | **Long progressions fail** — a 16-bar form errors out instead of generating | M–L | Open, diagnosed. See G1. Measured 2026-08-22: the on-device model's window is **4,096 tokens total** (instructions + prompt + output all count). A 3-bar progression is ~1,120 tokens round trip and works; the 16-bar `Cmaj7 \| Em7♭5 \| A7 \| …` is ~3,275 and fails. The **response** is the dominant term (~2,230 of it, one structured object per note), so trimming the prompt won't fix it — chunking will. Note the progression *parses* fine; only generation fails |
+| F10 | **Long progressions fail** — a 16-bar form errored out instead of generating | M–L | ✅ fixed 2026-08-22 via G1. Diagnosed by measurement: the window is **4,096 tokens total** (instructions + prompt + output), and the response dominates because guided generation emits one object per note — so the budget is bounded by note count, not bars. The 16-bar ProgGenie form at the densest setting needed ~4,516 tokens in one request; chunked into four 4-bar requests the worst chunk is ~1,615, or 39% of the window. The progression always *parsed* fine; only generation failed |
 | F12 | **Sliders didn't share a track column** — each row sized its track between its own captions, so equal values sat at different x (Gate 0.50 and Expression 0.50 thumbs 15pt apart) | Trivial | ✅ fixed 2026-08-22 — fixed-width captions (`MelGenMetrics.sliderCaptionWidth`) |
 | F13 | **Header clipped against the top edge when dragged** — a page that fits still bounce-scrolled, cutting the appearance buttons in half | Trivial | ✅ fixed 2026-08-22 — `.scrollBounceBehavior(.basedOnSize)` |
 | F14 | **Status message sat ~700pt from the button that produced it** — the only feedback Generate gives, and easy to miss entirely | Trivial | ✅ fixed 2026-08-22 — moved directly under the progression row |
 | F15 | **"Still downloading" is a lie in the Simulator** — Foundation Models reports `.modelNotReady` there and never becomes ready | Trivial | ✅ fixed 2026-08-22 — `targetEnvironment(simulator)` branch says so plainly |
 | F16 | **Host app title read "aumi MlGn Enke"** — three four-character codes run together | Trivial | ✅ fixed 2026-08-22 — separated with `·` |
+| F17 | **Host app uses a deprecated AU accessor** | Trivial | Open — `AudioUnitHostModel.swift:108` uses `auAudioUnit`, deprecated in iOS 27 in favour of `withAUAudioUnit`. Template code, host app only, doesn't affect the plug-in |
 | F11 | **Generation errors are all reported the same way** | S | Open — `exceededContextWindowSize`, `rateLimited` and `guardrailViolation` all surface as "Generation failed: …". The context one especially deserves "that progression is too long, try 8 bars" |
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
@@ -150,13 +152,13 @@ reading the code.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| G1 | **Chunked generation** | M–L | The on-device window is 4,096 tokens for instructions + prompt + output combined, and the output is one structured object per note, so length is bounded by *notes*, not bars. Generate a phrase at a time (4 bars, or a chord-group boundary) in a fresh session per chunk — which is Apple's own guidance for data that won't fit — carrying the last note or two forward as voice-leading context so the seams don't show. Three payoffs beyond the fix: the model writes better over short spans than long ones; partial results can play before the whole take finishes; and it's the natural substrate for G6. Use `SystemLanguageModel.tokenCount(for:)` and `contextSize` to size chunks from measurement rather than guesswork. |
+| G1 | **Chunked generation** | M–L | ✅ done 2026-08-22. `MelodyChunker` splits a progression into 4-bar requests at bar lines, rebased to beat 0 so eighth indices stay small; a chord straddling a boundary appears in each chunk it sounds in, clipped. Each chunk gets a **fresh session** (Apple's guidance for data that won't fit) and is told the note the previous phrase ended on, so registers don't jump at the seams. Post-processing runs over the *assembled* line, not per chunk, because `fold` and `snap` work from the previous note — that's what makes the seams disappear. Kept free of any FoundationModels dependency so `Scripts/verify.sh chunking` can test it. Still to do: progressive playback of finished chunks, and sizing chunks from `tokenCount(for:)` at runtime rather than a fixed 4 bars |
 | G2 | **Rests** | S–M | The model doesn't leave rests even when asked. Three levers, probably all of them: state rest placement as a *requirement* with a target (a rest of at least two eighths per two bars); represent rests explicitly in the schema rather than hoping for gaps, since what isn't in the schema doesn't get generated; and a post-processing pass that opens breathing room at phrase ends, which is where density thinning already knows how to drop notes. Density-below-generated already inserts rests — that path works and is worth generalizing. |
 | G3 | **Per-note gate** | M | A single gate number can't produce staccato notes *with* legato transitions, which is the musically interesting combination. Derive gate per note from metric weight and context the way velocity accents already are: a note approached by step and resolving by step wants to connect; a note after a leap or before a rest wants air. The global control then becomes an *amount* applied to a derived shape, which is exactly how Expression already works. |
 | G4 | **Measure generation time** | S | Time each generation, record it on the take, and show it. Right now `runAutoRegeneration` skips when `isGenerating`, so "new take every loop" silently degrades to "every loop generation can keep up with" — which at 120bpm over 4 bars is 8 seconds of music and probably less generation time than that, but nobody has measured. Prerequisite for G6 and for choosing sensible chunk sizes in G1. |
 | G5 | **Variety scoring** | M | Takes come out ostinato-like even at temperature 0.89, so temperature is not the variety lever we assumed. Score a take before it reaches the history: pitch-class and interval-class entropy, rhythmic distinctness, and self-similarity across bars (an autocorrelation over the note sequence catches literal repetition). Two uses — reject-and-retry below a floor, and show the score in the history so curation has something to sort by. Cheap to compute, deterministic, testable, and it belongs in `verify.sh` with hand-picked repetitive and varied fixtures. Note this is *pre*-curation and distinct from L1's keep/discard: the machine filters, then the human chooses. |
 | G6 | **Buffer takes ahead** | M | Generate the next take while the current one plays and swap at a loop boundary, so "every loop" means every loop. Needs G1 (so generation is incremental enough to finish inside a loop) and G4 (so we know how far ahead to run). Also fixes F6's mid-loop swap: with a take already in hand, the commit can wait for the loop point instead of landing whenever the model returns. |
-| G7 | **Accept ProgGenie output directly** | S | Already closer than expected: ProgGenie's `Cmaj7 \| Em7♭5 \| A7 \| …` **parses correctly today** — the format, spacing and `♭` spelling all work, verified on the 16-bar example. The only thing stopping it is G1. So the text-level integration is free once G1 lands, and the interesting question becomes whether it should be a paste or a route (N4/X4). Worth adding a long ProgGenie progression to the parser fixtures so it stays true. |
+| G7 | **Accept ProgGenie output directly** | S | ✅ works 2026-08-22, given G1. ProgGenie's `Cmaj7 \| Em7♭5 \| A7 \| …` parses as-is — format, spacing and `♭` spelling all fine — and the 16-bar form now generates as four phrases. That progression is a fixture in `Scripts/verify.sh chunking` so it stays true. Open question is whether it should stay a paste or become a route (N4/X4) |
 
 ### Templates & Motifs
 

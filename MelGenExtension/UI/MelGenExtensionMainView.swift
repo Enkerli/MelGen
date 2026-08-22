@@ -595,7 +595,12 @@ struct MelGenExtensionMainView: View {
         let durationPalette = current.durationPalette
         let progressionText = current.progressionText
 
-        statusMessage = "Generating \(brief.name.lowercased()) take over \(progressionText)…"
+        // A long progression is generated a phrase at a time, so say how many —
+        // otherwise it just looks like it's hung.
+        let phrases = MelodyChunker.chunks(for: progression).count
+        statusMessage = phrases > 1
+            ? "Generating \(brief.name.lowercased()) take over \(progressionText) — \(phrases) phrases…"
+            : "Generating \(brief.name.lowercased()) take over \(progressionText)…"
         isGenerating = true
 
         Task {
