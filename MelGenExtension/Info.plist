@@ -10,17 +10,24 @@
 			<array>
 				<dict>
 					<key>description</key>
-					<string>MelGenExtension</string>
+					<string>Generates melodic lines over a chord progression</string>
 					<key>factoryFunction</key>
 					<string>$(PRODUCT_MODULE_NAME).AudioUnitViewController</string>
 					<key>manufacturer</key>
 					<string>Enke</string>
 					<key>name</key>
-					<string>Alex Enkerli: MelGenExtension</string>
+					<string>Enkerli: MelGen</string>
 					<key>sandboxSafe</key>
 					<true/>
+					<!-- Component identity is the (type, subtype, manufacturer) triple, so
+					     the subtype must stay unique across the suite. The Xcode template's
+					     default was "Prst", which is Progression Studio's code: two
+					     components sharing a triple means the host resolves either name to
+					     whichever one it indexed, and loading Progression Studio in AUM
+					     launched MelGen. Codes in use elsewhere: Dqau, Mcur, Pqf1, Prst,
+					     RPEd, Rndc, Rsxp, VAne, Wksp. -->
 					<key>subtype</key>
-					<string>Prst</string>
+					<string>MlGn</string>
 					<key>tags</key>
 					<array>
 						<string>MIDI Processor</string>

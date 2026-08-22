@@ -20,6 +20,7 @@ that would share this codebase but have a distinct plug-in identity.
    - [Learned Styles](#learned-styles)
    - [Pattern Library & Information Architecture](#pattern-library--information-architecture)
    - [Interchange: MIDI Files & Drag-and-Drop](#interchange-midi-files--drag-and-drop)
+   - [Input Routing](#input-routing)
    - [Re-harmonization](#re-harmonization)
    - [Interface](#interface)
    - [Platform & Quality](#platform--quality)
@@ -59,7 +60,9 @@ separation seriously.
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
 | F3 | **Note duration and gate length were conflated** under one "Note length" control | S | ✅ fixed 2026-08-22 — "Note duration" (written rhythm, generation-time) vs "Gate length" (staccato–legato, live) |
-| F4 | **Layout unverified on device** — Xcode can't host previews in a `com.apple.AudioUnit-UI` extension, so nothing has been eyeballed at real plug-in window sizes | S | Open — needs a pass in AUM at a few window sizes; watch the transport row and chip pickers on iPhone widths |
+| F4 | **Layout unverified on device** — Xcode can't host previews in a `com.apple.AudioUnit-UI` extension | S | ✅ checked in AUM 2026-08-22 at three window widths. Light theme, inline slider labels and collapsible groups all hold up; the two problems found became F8 and F9 |
+| F8 | **Component identity collision** — loading **Progression Studio** in AUM launched MelGen | S | ✅ fixed 2026-08-22 — the Xcode template's default subtype was `Prst`, which is Progression Studio's `PLUGIN_CODE`. An AUv3 is identified by the (type, subtype, manufacturer) triple, so two components sharing one means the host resolves either name to whichever it indexed. MelGen is now `MlGn`; `Scripts/verify.sh identity` fails the build if the triple ever collides again or drifts from the host app's lookup |
+| F9 | **Direction buttons stretched to fill** — a small arrow centred in a 400pt-wide button in a wide plug-in window | Trivial | ✅ fixed 2026-08-22 — direction group capped at 240pt, loop-count chips at 320pt |
 | F5 | **Ping-pong repeats the pivot note** at each turnaround | S | Open — deliberate for now: shortening the reversed pass would break bar alignment. Revisit if it grates |
 | F6 | **Auto-regeneration swaps mid-loop** — a take commits the moment the model returns | M | Open — needs a deferred commit that flips at the next loop point; the kernel's double buffer would need a third slot to stay allocation-free |
 | F7 | **UI mirror can go stale** if the host restores session state while the editor is open | S | Open — refreshes on next `onAppear`; a state-generation counter on the audio unit would close it properly |
@@ -140,6 +143,41 @@ would make it one.
 | X4 | **Import MIDI, with chords if present** | L | The inverse. A file carrying chord information gives both pattern and harmonic context in one drop — which is exactly what re-harmonization (R1) needs. Pairs with S2. |
 | X5 | **Drag-and-drop in** | M | Drop a MIDI file onto the plug-in window to load it as a pattern or a style source. |
 
+### Input Routing
+
+Right now MelGen has one MIDI input, and it does nothing with it but pass events
+through. Several planned features need *different kinds* of input — a progression
+here, a melody to learn from there — which raises the question of how they arrive.
+
+**What the format actually allows.** More promising than expected: an AUv3
+identifies MIDI input by **virtual cable**. `AUAudioUnit.virtualMIDICableCount`
+declares up to 256 cables of input, and every event MelGen already receives
+carries the cable number — `AUMIDIEventList.cable`, "the virtual cable number",
+which `handleMIDIEventList` currently ignores. On the output side multiple
+streams are unambiguously supported (`midiOutputNames` is an array, and each
+output is a complete MIDI stream).
+
+So the instinct about frameworks is right: JUCE flattens MIDI input into a single
+buffer with no cable distinction, so the JUCE-based siblings can't express this
+even though the format can. MelGen is raw AUv3 and can at least try.
+
+**The unknowns**, in order of risk: the `virtualMIDICableCount` documentation
+describes it for "a music device or effect", and MelGen is a MIDI processor
+(`aumi`) — so whether it's honoured for our type needs testing, not assuming.
+Then whether AUM (or any host) offers per-cable routing in its MIDI matrix. Both
+are cheap to answer experimentally and worth answering before designing around
+cables.
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| N1 | **Probe multi-cable input** | S | Declare `virtualMIDICableCount = 2`, log the `cable` field of incoming events, and see what AUM offers in its routing matrix. An afternoon that decides the whole design. Do this first. |
+| N2 | **Channel-based routing** | S | The fallback that works in every host today: chords on one MIDI channel, melody input on another, configurable. Less elegant than cables, but nothing needs to support anything. Worth building regardless as the fallback path when a host offers one cable. |
+| N3 | **Note-range split** | S | Second fallback: below a split point is harmonic input, above it is melodic. Familiar from arpeggiators and hardware; no configuration for the person to get wrong. Weaker than N2 because it spends register. |
+| N4 | **Chords in as harmonic context** | L | Play or route chords in and have them become the progression, instead of typing leadsheet text. Needs chord *detection* from simultaneous notes — which is exactly what `chordDetect.ts` does in music-suite, and it's already fingerprint-based, so a Swift port is generated-table work rather than new theory. Pairs with X4 (a MIDI file carrying chords) as the two ways context arrives. |
+| N5 | **Melody in as training material** | XL | The input side of S1/S2: captured phrases become style examples. Distinct from N4 in what it does with the notes, which is why they want separate routes. |
+| N6 | **Trade fours** | XL | The interactive payoff, and a genuinely different mode: MelGen listens for N bars, then answers for N bars, alternating with the player. Needs the capture path (N5), bar-accurate switching against the host transport (the kernel's host-sync window already gives the timeline), and a response conditioned on what was just played rather than on a static prompt. Also needs a latency answer: the model takes seconds, so the answer has to be generated *during* the player's phrase, which constrains how late the conditioning can be sampled. |
+| N7 | **Multiple MIDI outputs** | M | Cheap and well-supported — `midiOutputNames` already takes an array. Would let the line and the comping (P5) leave on separate ports rather than separate channels. |
+
 ### Re-harmonization
 
 | # | Item | Effort | Notes |
@@ -152,7 +190,7 @@ would make it one.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| U1 | **Notation or piano-roll view of the take** | L | The take summary is a text list of note names. A minimal piano roll would make density, gate and contour legible at a glance — the controls currently have to be understood rather than seen. |
+| U1 | **Piano-roll display of the take** | L | The take summary is a text list of note names, so density, gate and contour have to be *understood* rather than seen — and gate length in particular is invisible as text. MIDIcurator and other parts of the suite already have a piano-roll idiom; reuse its visual language (and ideally its geometry code) rather than inventing a third one. Should show the chord regions behind the notes, since that's what makes a wrong note legible. Overlaps U2: the same view is where a playhead belongs. |
 | U2 | **Playhead position in the UI** | M | The kernel already publishes a loop-pass counter; a within-loop phase readout would let the UI show where playback is, and make the auto-regeneration boundary visible. |
 | U3 | **Chord progression editor beyond a text field** | L | Typing leadsheet text is fast for people who know the notation and opaque for everyone else. Chord chips with a picker, backed by the shared chord dictionary. |
 | U4 | **Dynamic Type support** | M | Fonts are fixed point sizes. Should scale with the accessibility text size; the 44pt control heights already give room to grow. Audit with the Dynamic Type nutrition label. |
@@ -180,6 +218,8 @@ Things MelGen needs that shouldn't live only in MelGen.
 | I1 | **Chord voicing layer in `packages/theory`** | L | See P2. The dictionary gives pitch classes; voicing (register, spacing, omissions, inversions) is missing and every comping-capable app in the suite will want it. |
 | I2 | **Chord-in-MIDI encode/decode, extracted** | M | See X3. Currently inside MIDIcurator. Wants to be a small shared library — ideally with the format documented, since it's reverse-engineered. |
 | I3 | **Degree-relative pattern format** | M | See R2. If MelGen, MIDIcurator and GloriArp all describe patterns the same way, patterns move between them. This is the interchange format the suite doesn't have yet. |
+| I6 | **Chord detection in Swift** | M | See N4. `chordDetect.ts` is fingerprint-based against the same dictionary, so this is generated-table work plus the rotation search — and `packages/theory/vectors/chord-detection.json` already exists as a test fixture. Any suite app that wants to read chords off a keyboard needs it. |
+| I7 | **Piano-roll rendering, shared** | L | See U1. MIDIcurator has the idiom; a shared geometry/visual-language description (even just documented conventions plus a Swift and a web implementation) stops the suite growing three different piano rolls. |
 | I4 | **Swift port of the theory package, generated** | M | `ChordDictionary+Generated.swift` proves the pattern works. `chordScale.ts` was hand-ported and can drift — `verify.sh chords` catches it, but generating both would be better. Any other Swift app in the suite needs the same. |
 | I5 | **Shared pattern store** | L | See L4. An App Group container so plug-in and host app (and eventually siblings) see one library. Decide before building the library UI, because it changes where everything is read from. |
 

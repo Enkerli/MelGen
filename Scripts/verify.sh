@@ -13,6 +13,8 @@
 #   state   — session state round-trip and the expression/swing pass
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
+#   identity — the audio component triple is unique across the suite and matches
+#              the host app's lookup
 #
 set -uo pipefail
 
@@ -80,6 +82,11 @@ run_state() {
     "$BUILD/state" || status=1
 }
 
+run_identity() {
+    echo "── identity ───────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/component-identity.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -95,12 +102,13 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_chords; run_state; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     contrast) run_contrast ;;
+    identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|chords|state|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|contrast|kernel]"; exit 2 ;;
 esac
 
 echo

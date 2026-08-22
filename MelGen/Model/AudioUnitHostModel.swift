@@ -39,7 +39,9 @@ class AudioUnitHostModel {
     var validationResult: AudioComponentValidationResult?
     var currentValidationData: String?
     
-    init(type: String = "aumi", subType: String = "Prst", manufacturer: String = "Enke") {
+    // Must match the AudioComponents entry in MelGenExtension/Info.plist, or the
+    // host app won't find the extension.
+    init(type: String = "aumi", subType: String = "MlGn", manufacturer: String = "Enke") {
         self.type = type
         self.subType = subType
         self.manufacturer = manufacturer

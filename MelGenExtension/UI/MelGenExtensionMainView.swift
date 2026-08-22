@@ -224,6 +224,11 @@ struct MelGenExtensionMainView: View {
                         setDirection(.forward)
                     }
                 }
+                // Capped: a small arrow centred in a 400pt button looks broken in
+                // a wide plug-in window.
+                .frame(maxWidth: 240)
+
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: MelGenMetrics.space2) {
@@ -245,6 +250,8 @@ struct MelGenExtensionMainView: View {
                         selection: binding(\.regenerateEveryPasses, reloadKernel: false),
                         theme: theme
                     )
+                    .frame(maxWidth: 320)
+                    Spacer(minLength: 0)
                 }
             }
         }
