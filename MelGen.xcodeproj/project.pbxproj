@@ -1,0 +1,809 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		FAE0C2C53039415C00F59C92 /* MelGenExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FAE0C2B13039415C00F59C92 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FAE0C2823039415A00F59C92 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAE0C2893039415A00F59C92;
+			remoteInfo = MelGen;
+		};
+		FAE0C2BB3039415C00F59C92 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FAE0C2823039415A00F59C92 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAE0C2893039415A00F59C92;
+			remoteInfo = MelGen;
+		};
+		FAE0C2C63039415C00F59C92 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FAE0C2823039415A00F59C92 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAE0C2C33039415C00F59C92;
+			remoteInfo = MelGenExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FAE0C2F63039415C00F59C92 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				FAE0C2C53039415C00F59C92 /* MelGenExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		FAE0C28A3039415A00F59C92 /* MelGen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MelGen.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAE0C2B03039415C00F59C92 /* MelGenTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MelGenTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAE0C2BA3039415C00F59C92 /* MelGenUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MelGenUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MelGenExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FAE0C2EF3039415C00F59C92 /* Exceptions for "MelGenExtension" folder in "MelGenExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FAE0C2C33039415C00F59C92 /* MelGenExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		FAE0C2F33039415C00F59C92 /* Exceptions for "MelGenExtension" folder in "Copy Bundle Resources" phase from "MelGenExtension" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = FAE0C2C23039415C00F59C92 /* Resources */;
+			membershipExceptions = (
+				Common/DSP/MelGenExtensionAUProcessHelper.hpp,
+				DSP/MelGenExtensionDSPKernel.hpp,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		FAE0C28C3039415A00F59C92 /* MelGen */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MelGen;
+			sourceTree = "<group>";
+		};
+		FAE0C2B33039415C00F59C92 /* MelGenTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MelGenTests;
+			sourceTree = "<group>";
+		};
+		FAE0C2BD3039415C00F59C92 /* MelGenUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MelGenUITests;
+			sourceTree = "<group>";
+		};
+		FAE0C2C83039415C00F59C92 /* MelGenExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FAE0C2EF3039415C00F59C92 /* Exceptions for "MelGenExtension" folder in "MelGenExtension" target */,
+				FAE0C2F33039415C00F59C92 /* Exceptions for "MelGenExtension" folder in "Copy Bundle Resources" phase from "MelGenExtension" target */,
+			);
+			path = MelGenExtension;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FAE0C2873039415A00F59C92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2AD3039415C00F59C92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2B73039415C00F59C92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2C13039415C00F59C92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FAE0C2813039415A00F59C92 = {
+			isa = PBXGroup;
+			children = (
+				FAE0C28C3039415A00F59C92 /* MelGen */,
+				FAE0C2B33039415C00F59C92 /* MelGenTests */,
+				FAE0C2BD3039415C00F59C92 /* MelGenUITests */,
+				FAE0C2C83039415C00F59C92 /* MelGenExtension */,
+				FAE0C28B3039415A00F59C92 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FAE0C28B3039415A00F59C92 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FAE0C28A3039415A00F59C92 /* MelGen.app */,
+				FAE0C2B03039415C00F59C92 /* MelGenTests.xctest */,
+				FAE0C2BA3039415C00F59C92 /* MelGenUITests.xctest */,
+				FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FAE0C2893039415A00F59C92 /* MelGen */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAE0C2F73039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGen" */;
+			buildPhases = (
+				FAE0C2863039415A00F59C92 /* Sources */,
+				FAE0C2873039415A00F59C92 /* Frameworks */,
+				FAE0C2883039415A00F59C92 /* Resources */,
+				FAE0C2F63039415C00F59C92 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FAE0C2C73039415C00F59C92 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FAE0C28C3039415A00F59C92 /* MelGen */,
+			);
+			name = MelGen;
+			productName = MelGen;
+			productReference = FAE0C28A3039415A00F59C92 /* MelGen.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FAE0C2AF3039415C00F59C92 /* MelGenTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAE0C2FA3039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenTests" */;
+			buildPhases = (
+				FAE0C2AC3039415C00F59C92 /* Sources */,
+				FAE0C2AD3039415C00F59C92 /* Frameworks */,
+				FAE0C2AE3039415C00F59C92 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FAE0C2B23039415C00F59C92 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FAE0C2B33039415C00F59C92 /* MelGenTests */,
+			);
+			name = MelGenTests;
+			productName = MelGenTests;
+			productReference = FAE0C2B03039415C00F59C92 /* MelGenTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		FAE0C2B93039415C00F59C92 /* MelGenUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAE0C2FD3039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenUITests" */;
+			buildPhases = (
+				FAE0C2B63039415C00F59C92 /* Sources */,
+				FAE0C2B73039415C00F59C92 /* Frameworks */,
+				FAE0C2B83039415C00F59C92 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FAE0C2BC3039415C00F59C92 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FAE0C2BD3039415C00F59C92 /* MelGenUITests */,
+			);
+			name = MelGenUITests;
+			productName = MelGenUITests;
+			productReference = FAE0C2BA3039415C00F59C92 /* MelGenUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FAE0C2C33039415C00F59C92 /* MelGenExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAE0C2F03039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenExtension" */;
+			buildPhases = (
+				FAE0C2C03039415C00F59C92 /* Sources */,
+				FAE0C2C13039415C00F59C92 /* Frameworks */,
+				FAE0C2C23039415C00F59C92 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				FAE0C2C83039415C00F59C92 /* MelGenExtension */,
+			);
+			name = MelGenExtension;
+			productName = MelGenExtension;
+			productReference = FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FAE0C2823039415A00F59C92 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					FAE0C2893039415A00F59C92 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					FAE0C2AF3039415C00F59C92 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = FAE0C2893039415A00F59C92;
+					};
+					FAE0C2B93039415C00F59C92 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = FAE0C2893039415A00F59C92;
+					};
+					FAE0C2C33039415C00F59C92 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = FAE0C2853039415A00F59C92 /* Build configuration list for PBXProject "MelGen" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = FAE0C2813039415A00F59C92;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FAE0C28B3039415A00F59C92 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FAE0C2893039415A00F59C92 /* MelGen */,
+				FAE0C2AF3039415C00F59C92 /* MelGenTests */,
+				FAE0C2B93039415C00F59C92 /* MelGenUITests */,
+				FAE0C2C33039415C00F59C92 /* MelGenExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FAE0C2883039415A00F59C92 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2AE3039415C00F59C92 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2B83039415C00F59C92 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2C23039415C00F59C92 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FAE0C2863039415A00F59C92 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2AC3039415C00F59C92 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2B63039415C00F59C92 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		FAE0C2C03039415C00F59C92 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FAE0C2B23039415C00F59C92 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAE0C2893039415A00F59C92 /* MelGen */;
+			targetProxy = FAE0C2B13039415C00F59C92 /* PBXContainerItemProxy */;
+		};
+		FAE0C2BC3039415C00F59C92 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAE0C2893039415A00F59C92 /* MelGen */;
+			targetProxy = FAE0C2BB3039415C00F59C92 /* PBXContainerItemProxy */;
+		};
+		FAE0C2C73039415C00F59C92 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAE0C2C33039415C00F59C92 /* MelGenExtension */;
+			targetProxy = FAE0C2C63039415C00F59C92 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		FAE0C2F13039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MelGenExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MelGenExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGen.MelGenExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MelGenExtension/Common/MelGenExtension-Bridging-Header.h";
+				SWIFT_OBJC_INTEROP_MODE = objcxx;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		FAE0C2F23039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MelGenExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MelGenExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGen.MelGenExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MelGenExtension/Common/MelGenExtension-Bridging-Header.h";
+				SWIFT_OBJC_INTEROP_MODE = objcxx;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		FAE0C2F43039415C00F59C92 /* Debug configuration for PBXProject "MelGen" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		FAE0C2F53039415C00F59C92 /* Release configuration for PBXProject "MelGen" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		FAE0C2F83039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGen" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MelGen/MelGen.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MelGen;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGen;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		FAE0C2F93039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGen" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MelGen/MelGen.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MelGen;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGen;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		FAE0C2FB3039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGenTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MelGen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MelGen";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		FAE0C2FC3039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGenTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MelGen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MelGen";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		FAE0C2FE3039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGenUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = MelGen;
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		FAE0C2FF3039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B2623T4238;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enkerli.MelGenUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = MelGen;
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FAE0C2853039415A00F59C92 /* Build configuration list for PBXProject "MelGen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAE0C2F43039415C00F59C92 /* Debug configuration for PBXProject "MelGen" */,
+				FAE0C2F53039415C00F59C92 /* Release configuration for PBXProject "MelGen" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		FAE0C2F03039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAE0C2F13039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenExtension" */,
+				FAE0C2F23039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		FAE0C2F73039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAE0C2F83039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGen" */,
+				FAE0C2F93039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGen" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		FAE0C2FA3039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAE0C2FB3039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenTests" */,
+				FAE0C2FC3039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		FAE0C2FD3039415C00F59C92 /* Build configuration list for PBXNativeTarget "MelGenUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAE0C2FE3039415C00F59C92 /* Debug configuration for PBXNativeTarget "MelGenUITests" */,
+				FAE0C2FF3039415C00F59C92 /* Release configuration for PBXNativeTarget "MelGenUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = FAE0C2823039415A00F59C92 /* Project object */;
+	validationLevel = 1;
+}
