@@ -58,7 +58,9 @@ class AudioUnitHostModel {
         type.fourCharCode == kAudioUnitType_Generator
         self.isFreeRunning = isFreeRunning
 
-        auValString = "\(type) \(subType) \(manufacturer)"
+        // Separated, or the three four-character codes run together into
+        // something that reads as garbled text ("aumi MlGn Enke").
+        auValString = "\(type) · \(subType) · \(manufacturer)"
 
         setupNotifications()
         loadAudioUnit()

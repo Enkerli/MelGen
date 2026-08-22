@@ -83,6 +83,10 @@ enum MelGenMetrics {
     static let radiusSmall: CGFloat = 10
     static let radiusMedium: CGFloat = 14
 
+    /// Width reserved for a slider's low/high captions, so tracks line up in a
+    /// column. Fits the longest caption in use ("surprising") at 11pt.
+    static let sliderCaptionWidth: CGFloat = 66
+
     static let gap: CGFloat = 12
     static let space1: CGFloat = 4
     static let space2: CGFloat = 8
@@ -147,19 +151,23 @@ struct LabelledSlider: View {
             }
 
             HStack(spacing: MelGenMetrics.space2) {
+                // Fixed caption widths, so every slider's track starts and ends at
+                // the same x. Sized to the label rather than the text, the tracks
+                // end up different lengths and equal values sit at visibly
+                // different positions down the column.
                 Text(lowLabel)
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize()
+                    .frame(width: MelGenMetrics.sliderCaptionWidth, alignment: .trailing)
 
                 Slider(value: $value, in: 0...1)
                     .tint(theme.accent)
 
                 Text(highLabel)
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize()
+                    .frame(width: MelGenMetrics.sliderCaptionWidth, alignment: .leading)
             }
+            .font(.system(size: 11))
+            .foregroundStyle(theme.textMuted)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .frame(height: MelGenMetrics.controlHeight)
         }
         .accessibilityElement(children: .combine)

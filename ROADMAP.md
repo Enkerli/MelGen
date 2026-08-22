@@ -12,8 +12,10 @@ that would share this codebase but have a distinct plug-in identity.
 ## Contents
 
 1. [Where This Is Going](#where-this-is-going)
-2. [Pending Fixes](#pending-fixes)
-3. [Roadmap: This Plug-in](#roadmap-this-plug-in)
+2. [Priorities](#priorities)
+3. [Pending Fixes](#pending-fixes)
+4. [Roadmap: This Plug-in](#roadmap-this-plug-in)
+   - [Generation: Limits & Quality](#generation-limits--quality)
    - [Templates & Motifs](#templates--motifs)
    - [Rhythm & Duration](#rhythm--duration)
    - [Polyphony & Comping](#polyphony--comping)
@@ -24,10 +26,10 @@ that would share this codebase but have a distinct plug-in identity.
    - [Re-harmonization](#re-harmonization)
    - [Interface](#interface)
    - [Platform & Quality](#platform--quality)
-4. [Shared Suite Infrastructure](#shared-suite-infrastructure)
-5. [Sibling Projects](#sibling-projects)
-6. [Open Questions](#open-questions)
-7. [Effort Reference](#effort-reference)
+5. [Shared Suite Infrastructure](#shared-suite-infrastructure)
+6. [Sibling Projects](#sibling-projects)
+7. [Open Questions](#open-questions)
+8. [Effort Reference](#effort-reference)
 
 ---
 
@@ -53,10 +55,80 @@ separation seriously.
 
 ---
 
+## Priorities
+
+*Reviewed 2026-08-22, after the first real session of playing the plug-in in AUM.*
+
+The review changed the ordering. Most of what was written down was about *adding*
+capability; playing it revealed that the existing capability isn't trustworthy
+yet. A 16-bar progression — an ordinary jazz form — fails outright. Lines come out
+wall-to-wall with notes and never breathe. Takes repeat themselves even at
+temperature 0.89. Auto-regeneration silently can't keep up with its own setting.
+None of those are missing features; they're the current feature not working.
+
+So Wave 1 is "make what exists trustworthy", and it comes before everything else.
+
+### Wave 1 — make the current thing trustworthy
+
+| # | Item | Impact | Effort | Depends on | Why now |
+|---|------|--------|--------|-----------|---------|
+| G1 | Chunked generation (long progressions) | **Critical** | M–L | — | 16 bars fails today. Also the gate on using ProgGenie output, and it improves quality as a side effect |
+| G2 | Rests | **High** | S–M | — | The line never breathes. Cheapest large gain in musicality |
+| G3 | Per-note gate | **High** | M | — | One global gate can't give staccato notes *and* legato transitions, which was the point of the control |
+| G5 | Variety scoring (pre-curation) | **High** | M | — | Ostinato-ish takes at high temperature mean temperature isn't the variety lever we assumed. Turns 24 takes-to-audition into 24 takes-worth-keeping |
+| G4 | Measure generation time | Medium | S | — | "New take every loop" is a promise we currently can't keep. Measure before designing the fix |
+| G6 | Buffer takes ahead | **High** | M | G1, G4 | What makes auto-regeneration honest. Much easier once G1 makes generation incremental |
+
+Do **G1 first**: it unblocks the ProgGenie want, makes G6 tractable, and improves
+output quality on its own. G2 and G3 are independent of it and of each other —
+both are small enough to land while thinking about G1.
+
+### Wave 2 — make it interactive
+
+| # | Item | Impact | Effort | Depends on | Why |
+|---|------|--------|--------|-----------|-----|
+| U1 | Piano-roll display | **High** | L | — | Gate, rests and variety are all invisible as text — and Wave 1 changes exactly those things |
+| N1 | Probe multi-cable input | Medium | S | — | An afternoon that decides the shape of all input routing |
+| T1/T2 | Template selection, cycle vs randomize | Medium | S | — | Cheap, and pairs with G5: choosing templates is manual variety control where scoring is automatic |
+| X1/X2 | MIDI export and drag-out | **High** | M | — | Nothing leaves the plug-in today except live MIDI. Independent of everything else |
+| N4 | Chords in as harmonic context | **High** | L | N1 or N2, I6 | The richer ProgGenie link, and how MelGen stops being a text box |
+
+### Wave 3 — make it a library and an instrument
+
+Pattern library curation (L1–L3), polyphonic comping (P1–P3), re-harmonization
+(R1–R2, needing the degree-relative format), chord information in exported MIDI
+(X3). Comping is the largest single addition and wants the voicing layer (I1)
+under it.
+
+### Wave 4 — research
+
+Learned styles (S1–S5) and trade fours (N6). Both are XL because of design
+uncertainty rather than volume of code, and both need the capture path. Worth
+prototyping only once Wave 1 means a single take is reliably good.
+
+### Deliberately deferred
+
+- **D1 finer grid (16ths/triplets)** — large, touches the schema and every seed
+  example, and makes the context problem *worse*: more notes per bar is more
+  response tokens. Revisit after G1, which is what buys the headroom.
+- **Q1 AU parameters for generation settings** — good for automation, but these
+  settings aren't yet ones worth automating.
+- **T3 per-template weighting** — selection plus lock (T1/T2) probably covers it.
+- **P5 dual output** — decide after P1; two instances may be the cleaner answer.
+
+---
+
 ## Pending Fixes
 
 | # | Issue | Effort | Status |
 |---|-------|--------|--------|
+| F10 | **Long progressions fail** — a 16-bar form errors out instead of generating | M–L | Open, diagnosed. See G1. Measured 2026-08-22: the on-device model's window is **4,096 tokens total** (instructions + prompt + output all count). A 3-bar progression is ~1,120 tokens round trip and works; the 16-bar `Cmaj7 \| Em7♭5 \| A7 \| …` is ~3,275 and fails. The **response** is the dominant term (~2,230 of it, one structured object per note), so trimming the prompt won't fix it — chunking will. Note the progression *parses* fine; only generation fails |
+| F12 | **Sliders didn't share a track column** — each row sized its track between its own captions, so equal values sat at different x (Gate 0.50 and Expression 0.50 thumbs 15pt apart) | Trivial | ✅ fixed 2026-08-22 — fixed-width captions (`MelGenMetrics.sliderCaptionWidth`) |
+| F13 | **Header clipped against the top edge when dragged** — a page that fits still bounce-scrolled, cutting the appearance buttons in half | Trivial | ✅ fixed 2026-08-22 — `.scrollBounceBehavior(.basedOnSize)` |
+| F14 | **Status message sat ~700pt from the button that produced it** — the only feedback Generate gives, and easy to miss entirely | Trivial | ✅ fixed 2026-08-22 — moved directly under the progression row |
+| F15 | **"Still downloading" is a lie in the Simulator** — Foundation Models reports `.modelNotReady` there and never becomes ready | Trivial | ✅ fixed 2026-08-22 — `targetEnvironment(simulator)` branch says so plainly |
+| F16 | **Host app title read "aumi MlGn Enke"** — three four-character codes run together | Trivial | ✅ fixed 2026-08-22 — separated with `·` |
+| F11 | **Generation errors are all reported the same way** | S | Open — `exceededContextWindowSize`, `rateLimited` and `guardrailViolation` all surface as "Generation failed: …". The context one especially deserves "that progression is too long, try 8 bars" |
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
 | F3 | **Note duration and gate length were conflated** under one "Note length" control | S | ✅ fixed 2026-08-22 — "Note duration" (written rhythm, generation-time) vs "Gate length" (staccato–legato, live) |
@@ -70,6 +142,21 @@ separation seriously.
 ---
 
 ## Roadmap: This Plug-in
+
+### Generation: Limits & Quality
+
+The Wave 1 items. All of these came out of playing the plug-in rather than
+reading the code.
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| G1 | **Chunked generation** | M–L | The on-device window is 4,096 tokens for instructions + prompt + output combined, and the output is one structured object per note, so length is bounded by *notes*, not bars. Generate a phrase at a time (4 bars, or a chord-group boundary) in a fresh session per chunk — which is Apple's own guidance for data that won't fit — carrying the last note or two forward as voice-leading context so the seams don't show. Three payoffs beyond the fix: the model writes better over short spans than long ones; partial results can play before the whole take finishes; and it's the natural substrate for G6. Use `SystemLanguageModel.tokenCount(for:)` and `contextSize` to size chunks from measurement rather than guesswork. |
+| G2 | **Rests** | S–M | The model doesn't leave rests even when asked. Three levers, probably all of them: state rest placement as a *requirement* with a target (a rest of at least two eighths per two bars); represent rests explicitly in the schema rather than hoping for gaps, since what isn't in the schema doesn't get generated; and a post-processing pass that opens breathing room at phrase ends, which is where density thinning already knows how to drop notes. Density-below-generated already inserts rests — that path works and is worth generalizing. |
+| G3 | **Per-note gate** | M | A single gate number can't produce staccato notes *with* legato transitions, which is the musically interesting combination. Derive gate per note from metric weight and context the way velocity accents already are: a note approached by step and resolving by step wants to connect; a note after a leap or before a rest wants air. The global control then becomes an *amount* applied to a derived shape, which is exactly how Expression already works. |
+| G4 | **Measure generation time** | S | Time each generation, record it on the take, and show it. Right now `runAutoRegeneration` skips when `isGenerating`, so "new take every loop" silently degrades to "every loop generation can keep up with" — which at 120bpm over 4 bars is 8 seconds of music and probably less generation time than that, but nobody has measured. Prerequisite for G6 and for choosing sensible chunk sizes in G1. |
+| G5 | **Variety scoring** | M | Takes come out ostinato-like even at temperature 0.89, so temperature is not the variety lever we assumed. Score a take before it reaches the history: pitch-class and interval-class entropy, rhythmic distinctness, and self-similarity across bars (an autocorrelation over the note sequence catches literal repetition). Two uses — reject-and-retry below a floor, and show the score in the history so curation has something to sort by. Cheap to compute, deterministic, testable, and it belongs in `verify.sh` with hand-picked repetitive and varied fixtures. Note this is *pre*-curation and distinct from L1's keep/discard: the machine filters, then the human chooses. |
+| G6 | **Buffer takes ahead** | M | Generate the next take while the current one plays and swap at a loop boundary, so "every loop" means every loop. Needs G1 (so generation is incremental enough to finish inside a loop) and G4 (so we know how far ahead to run). Also fixes F6's mid-loop swap: with a take already in hand, the commit can wait for the loop point instead of landing whenever the model returns. |
+| G7 | **Accept ProgGenie output directly** | S | Already closer than expected: ProgGenie's `Cmaj7 \| Em7♭5 \| A7 \| …` **parses correctly today** — the format, spacing and `♭` spelling all work, verified on the 16-bar example. The only thing stopping it is G1. So the text-level integration is free once G1 lands, and the interesting question becomes whether it should be a paste or a route (N4/X4). Worth adding a long ProgGenie progression to the parser fixtures so it stays true. |
 
 ### Templates & Motifs
 
@@ -90,7 +177,7 @@ to become first-class, selectable things.
 |---|------|--------|-------|
 | D1 | **Finer grid — 16ths and triplets** | L | The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
 | D2 | **Duration patterns beyond pairs** | M | Long–short and short–long are pair figures. Real rhythmic identity often lives in longer cells (3+3+2). Express as a selectable cell that the model is asked to repeat and vary. Related: T5. |
-| D3 | **Per-note gate, not one global gate** | M | Gate is currently one number for the whole take. Accented notes wanting more length than passing notes is a realization decision that could be derived from metric weight, the way velocity accents already are. |
+| D3 | **Per-note gate** | M | Promoted to Wave 1 as **G3** — playing it confirmed a single number can't give staccato notes with legato transitions. |
 | D4 | **Groove templates** | M | Swing is a single number applied to offbeat eighths. A groove template (per-position timing and velocity offsets) generalizes it and would be shareable with the rest of the suite. |
 
 ### Polyphony & Comping
@@ -205,6 +292,7 @@ cables.
 | Q2 | **macOS AU and standalone** | M | The code is cross-platform already; needs a real pass on window sizing, pointer vs touch control heights (`MelGenMetrics`) and the host matrix. |
 | Q3 | **Signing configuration out of the project file** | S | `DEVELOPMENT_TEAM` is committed in `project.pbxproj`. The suite's CMake plug-ins keep signing in a gitignored local file; the Xcode equivalent is a `signing.local.xcconfig` (already gitignored). |
 | Q4 | **MIDI 1.0 input pass-through** | S | `handleMIDIEventList` forwards incoming MIDI only when the host provides the UMP event-list block; `AURenderEventMIDI` (byte-based) input isn't handled at all. Generation is unaffected. |
+| Q6 | **Simulator is a usable verification host** | — | Found 2026-08-22. The bundled `MelGen` app target *is* an AUv3 host (`ContentView` embeds the extension through `AUViewControllerUI`), and it works in the Simulator: AU discovery succeeds, validation passes, and the plug-in UI renders. Good for layout, theming, transport and state; **useless for generation**, since Foundation Models reports `.modelNotReady` in the Simulator and never becomes ready. Also note XCUITest **can't** reach the plug-in UI this way: the extension renders out-of-process and appears in the accessibility hierarchy as a `RemotePlaceholder` with `isRemoteLeafPlaceholder: true`, so automation has to use screenshot-estimated coordinates. VoiceOver on device is unaffected. |
 | Q5 | **Test the generator's post-processing** | M | `verify.sh` covers the chord dictionary, state, expression and kernel. `MelodyGenerator.sequence` / `fold` / `snap` are untested — they need a fixture of synthetic model output, since the model itself isn't reproducible. |
 
 ---
@@ -258,6 +346,17 @@ Things MelGen needs that shouldn't live only in MelGen.
 5. **Where do styles live?** A style learned from your playing is more valuable
    and more personal than a generated take. Session state is the wrong home for
    it. Depends on I5.
+6. **Should variety scoring reject, or just annotate?** (G5) Auto-rejecting below
+   a floor means never seeing a dull take, but it also means the machine quietly
+   deciding what's dull — and an ostinato is sometimes exactly what's wanted.
+   Annotating and sorting keeps the judgement human but doesn't save any
+   auditioning. Probably: annotate always, reject only when auto-regeneration is
+   running unattended.
+7. **What defines a chunk boundary?** (G1) Fixed four-bar blocks are simple and
+   predictable. Phrase or chord-group boundaries respect the music but are
+   variable-length, which complicates the token budgeting that motivated
+   chunking in the first place. Fixed bars first, with the seam-carrying context
+   doing the musical work.
 
 ---
 

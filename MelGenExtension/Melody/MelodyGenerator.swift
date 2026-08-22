@@ -36,7 +36,15 @@ enum MelodyGenerator {
         case .unavailable(.appleIntelligenceNotEnabled):
             return .unavailable("Turn on Apple Intelligence in System Settings to generate melodies.")
         case .unavailable(.modelNotReady):
+            // The Simulator reports .modelNotReady too, but nothing is
+            // downloading and it never will be — saying "try again shortly"
+            // there sends people back to a button that can't work.
+            #if targetEnvironment(simulator)
+            return .unavailable("Foundation Models isn't available in the Simulator. "
+                                + "Run on a device to generate — the rest of the plug-in works here.")
+            #else
             return .unavailable("The on-device model is still downloading. Try again shortly.")
+            #endif
         case .unavailable:
             return .unavailable("The on-device model is unavailable.")
         }

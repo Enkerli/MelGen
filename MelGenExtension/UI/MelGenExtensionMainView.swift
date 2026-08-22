@@ -42,16 +42,20 @@ struct MelGenExtensionMainView: View {
             VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
                 header
                 progressionSection
-                transportSection
-                shapeSection
-                feelSection
 
+                // Directly under the control that produces it: at the bottom of
+                // the view it sat hundreds of points from the Generate button and
+                // went unread.
                 if let statusMessage {
                     Text(statusMessage)
                         .font(.system(size: 12))
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                transportSection
+                shapeSection
+                feelSection
 
                 if state.currentTake != nil {
                     currentTakeSection
@@ -62,6 +66,9 @@ struct MelGenExtensionMainView: View {
             .padding(MelGenMetrics.space4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Only scroll when there's something to scroll to. Left bouncing, a short
+        // page still drags, and the header clips against the top edge mid-bounce.
+        .scrollBounceBehavior(.basedOnSize)
         // The plug-in paints its own surface: left transparent, text contrast
         // would depend on the host's backdrop.
         .background(theme.background)

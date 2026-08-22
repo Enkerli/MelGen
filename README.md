@@ -83,6 +83,19 @@ Scripts/verify.sh chords     # one suite
 The `chords` suite needs [music-suite](https://github.com/Enkerli/music-suite)
 checked out alongside this repo (or `MUSIC_SUITE=/path/to/music-suite`).
 
+### Checking the interface
+
+The **MelGen** app target is itself an AUv3 host — it loads the extension and
+embeds the plug-in's own view — so running that scheme on a Simulator is enough
+to check layout, theming, transport and session state without a third-party host.
+
+Two caveats. Foundation Models is **not available in the Simulator** (it reports
+`.modelNotReady` and never becomes ready), so generation only works on a device.
+And Xcode can't host SwiftUI previews inside a `com.apple.AudioUnit-UI`
+extension, nor can XCUITest reach the plug-in's controls — the extension renders
+out-of-process and shows up as a `RemotePlaceholder` in the accessibility
+hierarchy. VoiceOver on a device is unaffected.
+
 ---
 
 ## How it works
