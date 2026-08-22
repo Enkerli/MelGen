@@ -1,0 +1,29 @@
+# Xcode build output
+build/
+DerivedData/
+*.xcarchive
+
+# Per-user Xcode state — schemes, window layout, breakpoints
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# macOS noise
+.DS_Store
+*.swp
+*.swo
+
+# Code-signing / provisioning
+*.mobileprovision
+*.p12
+*.cer
+signing.local.xcconfig
+
+# Claude Code session state
+.claude/

@@ -11,22 +11,31 @@ import AudioToolbox
 let MelGenExtensionParameterSpecs = ParameterTreeSpec {
     ParameterGroupSpec(identifier: "global", name: "Global") {
         ParameterSpec(
-            address: .sendNote,
-            identifier: "sendNote",
-            name: "Send Note",
+            address: .playMelody,
+            identifier: "playMelody",
+            name: "Play",
             units: .boolean,
             valueRange: 0...1,
             defaultValue: 0
         )
-        
+
         ParameterSpec(
-            address: .midiNoteNumber,
-            identifier: "midiNoteNumber",
-            name: "MIDI Note Number",
-            units: .midiNoteNumber,
-            valueRange: 0...127,
-            defaultValue: 60,
-            flags: [.flag_IsWritable] // so that hosts like AUM expose this as automatable
+            address: .playbackDirection,
+            identifier: "playbackDirection",
+            name: "Playback Direction",
+            units: .indexed,
+            valueRange: 0...2,
+            defaultValue: AUValue(MelGenPlaybackDirection.forward.rawValue),
+            valueStrings: ["Forward", "Backward", "Ping-Pong"]
+        )
+
+        ParameterSpec(
+            address: .hostSync,
+            identifier: "hostSync",
+            name: "Sync to Host",
+            units: .boolean,
+            valueRange: 0...1,
+            defaultValue: 0
         )
     }
 }

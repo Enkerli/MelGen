@@ -57,6 +57,93 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
         return kernel.AudioUnitMIDIProtocol()
     }
 
+    /// Advertises a MIDI output port. Hosts only expose a MIDI output for the
+    /// plug-in — and only connect `midiOutputEventListBlock` /
+    /// `midiOutputEventBlock` — when this array is non-empty, so without it the
+    /// kernel has nowhere to send the melody it generates.
+    public override var midiOutputNames: [String] {
+        return ["MelGen Out"]
+    }
+
+    // MARK: - Melody
+    /// Hands a generated melody to the DSP kernel. The kernel loops it for
+    /// `lengthBeats` quarter-note beats while the playMelody parameter is on.
+    /// Safe to call from the main thread while rendering.
+    func setMelody(_ notes: [SequencedNote], lengthBeats: Double) {
+        kernel.beginSequenceUpdate()
+        for note in notes {
+            kernel.appendSequenceNote(note.startBeat, note.durationBeats, note.note, note.velocity)
+        }
+        kernel.commitSequence(lengthBeats)
+    }
+
+    /// How many complete loop passes have played. The UI polls this to decide
+    /// when to generate the next take.
+    var currentPass: Int64 {
+        kernel.currentPass()
+    }
+
+    // MARK: - Session state
+    //
+    // The progression, generation settings and take history live here rather
+    // than in the SwiftUI view, so they survive the view being torn down and can
+    // be written into the audio unit's full state. Access is locked because the
+    // host may ask for full state from a different thread than the UI.
+
+    private let stateLock = NSLock()
+    private var _state = MelGenState()
+
+    var state: MelGenState {
+        get { stateLock.withLock { _state } }
+        set { update(state: newValue) }
+    }
+
+    /// - Parameter reloadKernel: pass `false` for edits that can't change the
+    ///   notes (typing in the progression field), so the render thread isn't
+    ///   handed a new sequence on every keystroke.
+    func update(state newState: MelGenState, reloadKernel: Bool = true) {
+        stateLock.withLock { _state = newState }
+        if reloadKernel {
+            loadCurrentTakeIntoKernel(newState)
+        }
+    }
+
+    /// Renders the current take with its expression settings and hands it to the
+    /// kernel. A take with no notes leaves the kernel's sequence alone.
+    private func loadCurrentTakeIntoKernel(_ state: MelGenState) {
+        guard let take = state.currentTake else { return }
+        setMelody(state.renderedMelody, lengthBeats: take.lengthBeats)
+    }
+
+    private static let stateKey = "MelGen.sessionState"
+
+    public override var fullState: [String: Any]? {
+        get {
+            var dictionary = super.fullState ?? [:]
+            if let data = try? JSONEncoder().encode(state) {
+                dictionary[Self.stateKey] = data
+            }
+            return dictionary
+        }
+        set {
+            super.fullState = newValue
+            guard let data = newValue?[Self.stateKey] as? Data,
+                  let restored = try? JSONDecoder().decode(MelGenState.self, from: data) else {
+                return
+            }
+            // Assigning through `state` also reloads the kernel's sequence, so a
+            // reopened session plays without the UI having to be shown.
+            state = restored
+        }
+    }
+
+    /// Hosts save session documents through this rather than `fullState`; for
+    /// MelGen the two are the same thing.
+    public override var fullStateForDocument: [String: Any]? {
+        get { fullState }
+        set { fullState = newValue }
+    }
+
     // MARK: - Rendering
     public override var internalRenderBlock: AUInternalRenderBlock {
         return processHelper!.internalRenderBlock()
@@ -66,7 +153,8 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     // Subclassers should call the superclass implementation.
     public override func allocateRenderResources() throws {		
         kernel.setMusicalContextBlock(self.musicalContextBlock)
-        kernel.setMIDIOutputEventBlock(self.midiOutputEventListBlock);
+        kernel.setMIDIOutputEventBlock(self.midiOutputEventListBlock)
+        kernel.setLegacyMIDIOutputEventBlock(self.midiOutputEventBlock)
         kernel.initialize(outputBus!.format.sampleRate)
 		try super.allocateRenderResources()
 	}
