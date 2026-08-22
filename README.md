@@ -19,7 +19,8 @@ or locked to the host's playhead.
 | **Transport** | Play/Stop, Forward / Backward / Ping-Pong, and host sync that follows the DAW's playhead, tempo map and locates |
 | **Temperature** | 0–1 sampling control, from the safest line to the most adventurous |
 | **Density** | Sparse to dense, targeted at generation time and thinned live (which is how rests appear) |
-| **Note length** | Staccato through as-written to legato, applied live |
+| **Note duration** | The written rhythm — even, long–short, short–long or mixed |
+| **Gate length** | How much of each note's slot sounds: staccato through as-written to legato, applied live |
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
 | **Style briefs** | Nine rotating rhythmic/contour briefs so successive takes actually differ |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
@@ -123,6 +124,17 @@ python3 Scripts/generate-chord-dictionary.py
 
 Never hand-edit `MelGenExtension/Melody/ChordDictionary+Generated.swift`. Change
 the vocabulary in music-suite and regenerate.
+
+---
+
+---
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned work — selectable templates, polyphonic
+comping, styles learned from MIDI input, MIDI export with embedded chord
+information, applying a pattern to a different progression, and the pattern
+library that ties those together.
 
 ---
 

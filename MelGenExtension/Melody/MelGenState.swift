@@ -23,6 +23,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     /// The density this take was asked for, so the density control knows how far
     /// it can thin the line without a new generation.
     var density: Double = 0.5
+    /// The rhythmic palette this take was written with, for the log.
+    var durationPalette: DurationPalette = .mixed
     var lengthBeats: Double
     var notes: [SequencedNote]
 
@@ -39,6 +41,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.6
         briefName = try container.decodeIfPresent(String.self, forKey: .briefName) ?? ""
         density = try container.decodeIfPresent(Double.self, forKey: .density) ?? 0.5
+        durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -49,6 +52,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          temperature: Double,
          briefName: String,
          density: Double = 0.5,
+         durationPalette: DurationPalette = .mixed,
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -57,8 +61,49 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.temperature = temperature
         self.briefName = briefName
         self.density = density
+        self.durationPalette = durationPalette
         self.lengthBeats = lengthBeats
         self.notes = notes
+    }
+}
+
+/// Which rhythmic values the model should write.
+///
+/// This is *note duration* — the written rhythm — as distinct from gate length,
+/// which is how much of a note's slot is actually sounded. The two interact (a
+/// long–short figure played staccato reads differently from the same figure
+/// played legato) but they are separate decisions, and only this one requires a
+/// new take.
+///
+/// Every option here is representable on the eighth-note grid the model writes
+/// to. Triplets are not, and need a finer grid first — see ROADMAP.md.
+enum DurationPalette: String, Codable, CaseIterable, Sendable {
+    case even, longShort, shortLong, mixed
+
+    var label: String {
+        switch self {
+        case .even: return "Even"
+        case .longShort: return "Long–short"
+        case .shortLong: return "Short–long"
+        case .mixed: return "Mixed"
+        }
+    }
+
+    var promptText: String {
+        switch self {
+        case .even:
+            return "Rhythm values: keep to even values — steady eighths, or steady quarters. "
+                 + "No dotted figures."
+        case .longShort:
+            return "Rhythm values: favour long–short pairs — three eighths then one, or a dotted "
+                 + "quarter then an eighth. Let the figure recur so it reads as a groove."
+        case .shortLong:
+            return "Rhythm values: favour short–long pairs — a single eighth pickup into a note "
+                 + "of three or more eighths, so phrases lean forward into their long notes."
+        case .mixed:
+            return "Rhythm values: mix freely — 1, 2, 3, 4 and 6 eighths — and don't repeat the "
+                 + "same figure twice in a row."
+        }
     }
 }
 
@@ -69,8 +114,9 @@ struct ExpressionSettings: Codable, Hashable, Sendable {
     var amount: Double = 0.5
     /// 0 = straight eighths; 1 = fully swung (offbeat lands two thirds through).
     var swing: Double = 0
-    /// 0 = clipped staccato, 0.5 = as written, 1 = legato (each note runs into
-    /// the next).
+    /// Gate length: 0 = clipped staccato, 0.5 = as written, 1 = legato (each note
+    /// runs into the next). How much of a note's slot sounds, not what the
+    /// written rhythm is — see `DurationPalette` for that.
     var noteLength: Double = 0.5
     /// How busy the line is. Above the take's own density this asks the *next*
     /// take for more notes; below it, notes are dropped from this take now,
@@ -119,7 +165,13 @@ struct MelGenState: Codable, Sendable {
 
     var progressionText: String = "E♭7 Gm9|D∆|A♭6"
     var temperature: Double = 0.6
+    var durationPalette: DurationPalette = .mixed
     var expression = ExpressionSettings()
+
+    /// Which groups of the interface are unfolded.
+    var showShape: Bool = true
+    var showFeel: Bool = true
+    var showHistory: Bool = false
 
     /// Light by default: the suite designs for paper first, and a plug-in window
     /// shouldn't be at the mercy of whatever the host is set to.
@@ -142,7 +194,11 @@ struct MelGenState: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         progressionText = try container.decodeIfPresent(String.self, forKey: .progressionText) ?? "E♭7 Gm9|D∆|A♭6"
         temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.6
+        durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         expression = try container.decodeIfPresent(ExpressionSettings.self, forKey: .expression) ?? ExpressionSettings()
+        showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true
+        showFeel = try container.decodeIfPresent(Bool.self, forKey: .showFeel) ?? true
+        showHistory = try container.decodeIfPresent(Bool.self, forKey: .showHistory) ?? false
         appearance = try container.decodeIfPresent(MelGenAppearance.self, forKey: .appearance) ?? .light
         autoRegenerate = try container.decodeIfPresent(Bool.self, forKey: .autoRegenerate) ?? false
         regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses) ?? 1

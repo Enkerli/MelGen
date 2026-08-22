@@ -50,14 +50,15 @@ enum MelodyGenerator {
     static func generate(for progression: ChordProgression,
                          temperature: Double = 0.6,
                          brief: StyleBrief,
-                         density: Double = 0.5) async throws -> [SequencedNote] {
+                         density: Double = 0.5,
+                         durationPalette: DurationPalette = .mixed) async throws -> [SequencedNote] {
         let session = LanguageModelSession(instructions: instructions(examples: PatternLibrary.allExamples))
         let options = GenerationOptions(
             samplingMode: nil,
             temperature: min(max(temperature, 0), 1)
         )
         let response = try await session.respond(
-            to: prompt(for: progression, brief: brief, density: density),
+            to: prompt(for: progression, brief: brief, density: density, durationPalette: durationPalette),
             generating: MelodyIdea.self,
             options: options
         )
@@ -114,7 +115,8 @@ enum MelodyGenerator {
 
     static func prompt(for progression: ChordProgression,
                        brief: StyleBrief,
-                       density: Double = 0.5) -> String {
+                       density: Double = 0.5,
+                       durationPalette: DurationPalette = .mixed) -> String {
         var lines = ["Compose a melody for this progression: \(progression.text)", "", "Harmonic plan:"]
         for placed in progression.chords {
             let startEighth = Int((placed.startBeat * 2).rounded())
@@ -140,6 +142,8 @@ enum MelodyGenerator {
         lines.append("")
         lines.append("Density: aim for about \(notesPerBar(forDensity: density)) notes per bar, "
                      + "counting rests as part of the phrasing rather than padding with notes.")
+        lines.append("")
+        lines.append(durationPalette.promptText)
         lines.append("")
         lines.append("Total length: \(totalEighths) eighths. All notes must start before eighth \(totalEighths).")
         return lines.joined(separator: "\n")

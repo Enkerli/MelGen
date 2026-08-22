@@ -149,7 +149,30 @@ if let legacy = try? JSONDecoder().decode(MelGenState.self, from: Data(legacyJSO
     check("older saved state still decodes", false, "threw")
 }
 
-// 12. Style briefs rotate and wrap.
+// 12. Note duration is a separate axis from gate length, and round-trips.
+check("duration palette defaults to mixed", MelGenState().durationPalette == .mixed)
+var withPalette = MelGenState()
+withPalette.durationPalette = .longShort
+let paletteDecoded = try JSONDecoder().decode(
+    MelGenState.self, from: try JSONEncoder().encode(withPalette))
+check("duration palette round-trips", paletteDecoded.durationPalette == .longShort)
+check("every duration palette has a prompt and a label",
+      DurationPalette.allCases.allSatisfy { !$0.promptText.isEmpty && !$0.label.isEmpty },
+      "\(DurationPalette.allCases.count) options")
+check("gate length is independent of the duration palette",
+      MelGenState().expression.noteLength == 0.5)
+
+// 13. Section fold state persists.
+var folded = MelGenState()
+folded.showFeel = false
+folded.showHistory = true
+let foldedDecoded = try JSONDecoder().decode(
+    MelGenState.self, from: try JSONEncoder().encode(folded))
+check("section fold state round-trips",
+      foldedDecoded.showFeel == false && foldedDecoded.showHistory == true
+      && foldedDecoded.showShape == true)
+
+// 14. Style briefs rotate and wrap.
 let names = (0..<(StyleBriefs.all.count + 2)).map { StyleBriefs.brief(at: $0).name }
 check("briefs rotate without repeating early",
       Set(names.prefix(StyleBriefs.all.count)).count == StyleBriefs.all.count)

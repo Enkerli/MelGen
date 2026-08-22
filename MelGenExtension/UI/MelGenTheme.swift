@@ -119,11 +119,13 @@ struct Eyebrow: View {
     }
 }
 
-/// A labelled slider with a mono, tabular read-out. Wide enough to hit and
-/// always paired with its name and value, so it never relies on position alone.
+/// A labelled slider with a mono, tabular read-out.
+///
+/// The end labels flank the track rather than sitting under it: below the
+/// slider they read as belonging to whatever control comes next, since they end
+/// up directly above the next row's name and value.
 struct LabelledSlider: View {
     let title: String
-    /// Shown under the value, e.g. "sparse ↔ dense".
     let lowLabel: String
     let highLabel: String
     @Binding var value: Double
@@ -132,7 +134,7 @@ struct LabelledSlider: View {
     var format: (Double) -> String = { $0.formatted(.number.precision(.fractionLength(2))) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: MelGenMetrics.space2) {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
@@ -144,21 +146,108 @@ struct LabelledSlider: View {
                     .foregroundStyle(theme.text)
             }
 
-            Slider(value: $value, in: 0...1)
-                .tint(theme.accent)
-                .frame(height: MelGenMetrics.controlHeight)
-
-            HStack {
+            HStack(spacing: MelGenMetrics.space2) {
                 Text(lowLabel)
-                Spacer(minLength: 0)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize()
+
+                Slider(value: $value, in: 0...1)
+                    .tint(theme.accent)
+
                 Text(highLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize()
             }
-            .font(.system(size: 11))
-            .foregroundStyle(theme.textMuted)
+            .frame(height: MelGenMetrics.controlHeight)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(format(value))
+    }
+}
+
+/// A group that can be folded away, with the suite's eyebrow as its header.
+/// The header is a full-height target and carries the expanded state for
+/// assistive technology.
+struct CollapsibleSection<Content: View>: View {
+    let title: String
+    /// Shown next to the title when collapsed, e.g. "7/bar · legato".
+    var summary: String?
+    @Binding var isExpanded: Bool
+    let theme: MelGenTheme
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.textMuted)
+                    Eyebrow(text: title, theme: theme)
+                    if let summary, !isExpanded {
+                        Text(summary)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(theme.textMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(height: MelGenMetrics.smallControlHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(isExpanded ? "Collapses this group" : "Expands this group")
+
+            if isExpanded {
+                content()
+            }
+        }
+    }
+}
+
+/// A row of mutually exclusive chips — for settings whose values really are
+/// discrete, where a slider would imply a continuum that isn't there.
+struct ChipPicker<Value: Hashable>: View {
+    let options: [(value: Value, label: String)]
+    @Binding var selection: Value
+    let theme: MelGenTheme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(options, id: \.value) { option in
+                let isSelected = selection == option.value
+                Button {
+                    selection = option.value
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, MelGenMetrics.space2)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: MelGenMetrics.smallControlHeight)
+                        .foregroundStyle(isSelected ? theme.accentText : theme.text)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isSelected ? theme.accent : theme.raised)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(isSelected ? theme.accent : theme.borderStrong, lineWidth: 1.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
     }
 }
 

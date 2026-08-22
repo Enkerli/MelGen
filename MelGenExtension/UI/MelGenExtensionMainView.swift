@@ -20,7 +20,6 @@ struct MelGenExtensionMainView: View {
     @State private var statusMessage: String?
     @State private var isGenerating = false
     @State private var savedExampleIDs: Set<UUID> = []
-    @State private var showHistory = false
 
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
@@ -44,7 +43,8 @@ struct MelGenExtensionMainView: View {
                 header
                 progressionSection
                 transportSection
-                lineSection
+                shapeSection
+                feelSection
 
                 if let statusMessage {
                     Text(statusMessage)
@@ -233,6 +233,20 @@ struct MelGenExtensionMainView: View {
                            isOn: binding(\.autoRegenerate, reloadKernel: false), theme: theme)
                 Spacer(minLength: 0)
             }
+
+            // Sits with Auto, which is the only thing it affects.
+            if state.autoRegenerate {
+                HStack(spacing: MelGenMetrics.space2) {
+                    Text("New take every")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.text)
+                    ChipPicker(
+                        options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
+                        selection: binding(\.regenerateEveryPasses, reloadKernel: false),
+                        theme: theme
+                    )
+                }
+            }
         }
     }
 
@@ -267,51 +281,72 @@ struct MelGenExtensionMainView: View {
         }
     }
 
-    // MARK: - Line controls
+    // MARK: - Shape (applies to the next take)
 
-    private var lineSection: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-            Eyebrow(text: "Line", theme: theme)
+    /// Controls the model acts on. Grouped separately from Feel because these
+    /// only take effect when something is generated, and that distinction is the
+    /// one thing worth knowing before touching a control here.
+    private var shapeSection: some View {
+        CollapsibleSection(title: "Shape · next take",
+                           summary: shapeSummary,
+                           isExpanded: binding(\.showShape, reloadKernel: false),
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
+                               value: binding(\.expression.density), theme: theme,
+                               format: { "\(MelodyGenerator.notesPerBar(forDensity: $0))/bar" })
 
-            LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
-                           value: binding(\.expression.density), theme: theme,
-                           format: { "\(MelodyGenerator.notesPerBar(forDensity: $0))/bar" })
+                LabelledSlider(title: "Temperature", lowLabel: "expected", highLabel: "surprising",
+                               value: binding(\.temperature, reloadKernel: false), theme: theme)
 
-            LabelledSlider(title: "Note length", lowLabel: "staccato", highLabel: "legato",
-                           value: binding(\.expression.noteLength), theme: theme,
-                           format: { noteLengthLabel($0) })
-
-            LabelledSlider(title: "Temperature", lowLabel: "expected", highLabel: "surprising",
-                           value: binding(\.temperature, reloadKernel: false), theme: theme)
-
-            LabelledSlider(title: "Expression", lowLabel: "flat", highLabel: "shaped",
-                           value: binding(\.expression.amount), theme: theme)
-
-            LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
-                           value: binding(\.expression.swing), theme: theme)
-
-            HStack(spacing: MelGenMetrics.space2) {
-                Text("New take every")
-                    .font(.system(size: 13))
-                    .foregroundStyle(theme.text)
-                Picker("New take every", selection: binding(\.regenerateEveryPasses, reloadKernel: false)) {
-                    ForEach([1, 2, 4, 8], id: \.self) { passes in
-                        Text(passes == 1 ? "loop" : "\(passes) loops").tag(passes)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Note duration")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(theme.text)
+                    ChipPicker(
+                        options: DurationPalette.allCases.map { ($0, $0.label) },
+                        selection: binding(\.durationPalette, reloadKernel: false),
+                        theme: theme
+                    )
+                    Text("The written rhythm. Gate length, under Feel, is separate.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
                 }
-                .labelsHidden()
-                .tint(theme.accent)
-                Spacer(minLength: 0)
             }
         }
     }
 
-    private func noteLengthLabel(_ value: Double) -> String {
-        if value < 0.2 { return "very short" }
-        if value < 0.45 { return "short" }
-        if value < 0.55 { return "as written" }
-        if value < 0.85 { return "long" }
-        return "legato"
+    private var shapeSummary: String {
+        "\(MelodyGenerator.notesPerBar(forDensity: state.expression.density))/bar · "
+        + state.durationPalette.label.lowercased()
+    }
+
+    // MARK: - Feel (applies to the take already loaded)
+
+    /// Controls that re-render the current take immediately, since they are
+    /// post-processing over its stored notes rather than part of generation.
+    private var feelSection: some View {
+        CollapsibleSection(title: "Feel · live",
+                           summary: feelSummary,
+                           isExpanded: binding(\.showFeel, reloadKernel: false),
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                LabelledSlider(title: "Gate length", lowLabel: "staccato", highLabel: "legato",
+                               value: binding(\.expression.noteLength), theme: theme)
+
+                LabelledSlider(title: "Expression", lowLabel: "flat", highLabel: "shaped",
+                               value: binding(\.expression.amount), theme: theme)
+
+                LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
+                               value: binding(\.expression.swing), theme: theme)
+            }
+        }
+    }
+
+    private var feelSummary: String {
+        let gate = state.expression.noteLength
+        let name = gate < 0.45 ? "staccato" : (gate > 0.55 ? "legato" : "as written")
+        return "gate \(name) · swing \(state.expression.swing.formatted(.number.precision(.fractionLength(2))))"
     }
 
     // MARK: - Current take
@@ -364,33 +399,17 @@ struct MelGenExtensionMainView: View {
     // MARK: - History
 
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            Button {
-                showHistory.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: showHistory ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                    Eyebrow(text: "History (\(state.history.count))", theme: theme)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(theme.textMuted)
-                .frame(height: MelGenMetrics.smallControlHeight)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("History, \(state.history.count) takes")
-            .accessibilityAddTraits(.isButton)
-
-            if showHistory {
-                if state.history.isEmpty {
-                    Text("Takes you generate are logged here.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.textMuted)
-                } else {
-                    VStack(spacing: 4) {
-                        ForEach(state.history) { take in
-                            historyRow(take)
-                        }
+        CollapsibleSection(title: "History (\(state.history.count))",
+                           isExpanded: binding(\.showHistory, reloadKernel: false),
+                           theme: theme) {
+            if state.history.isEmpty {
+                Text("Takes you generate are logged here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textMuted)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(state.history) { take in
+                        historyRow(take)
                     }
                 }
             }
@@ -559,6 +578,7 @@ struct MelGenExtensionMainView: View {
         let brief = StyleBriefs.brief(at: current.briefCursor)
         let temperature = current.temperature
         let density = current.expression.density
+        let durationPalette = current.durationPalette
         let progressionText = current.progressionText
 
         statusMessage = "Generating \(brief.name.lowercased()) take over \(progressionText)…"
@@ -570,7 +590,8 @@ struct MelGenExtensionMainView: View {
                     for: progression,
                     temperature: temperature,
                     brief: brief,
-                    density: density
+                    density: density,
+                    durationPalette: durationPalette
                 )
                 if notes.isEmpty {
                     statusMessage = "The model returned no notes — try again."
@@ -580,6 +601,7 @@ struct MelGenExtensionMainView: View {
                         temperature: temperature,
                         briefName: brief.name,
                         density: density,
+                        durationPalette: durationPalette,
                         lengthBeats: progression.totalBeats,
                         notes: notes
                     )
