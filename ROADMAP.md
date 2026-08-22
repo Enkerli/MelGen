@@ -7,6 +7,15 @@ Items are split between **this plug-in**, **shared suite infrastructure** (thing
 MelGen needs that belong in `music-suite` or a sibling), and **sibling projects**
 that would share this codebase but have a distinct plug-in identity.
 
+**On overlap with the suite** (settled 2026-08-22): the fact that ProgGenie
+generates progressions and MIDIcurator curates patterns is *not* a reason to
+leave those out of MelGen. This project is built through a different system from
+the suite, and the exploration — Foundation Models complemented by deterministic
+processes, with generation, adaptation and curation in one environment — is the
+point. Duplicated capability is an acceptable cost of that; "a sibling already
+does this" is not an argument against planning a feature here. None of this is
+meant to be a product.
+
 ---
 
 ## Contents
@@ -347,7 +356,7 @@ Things MelGen needs that shouldn't live only in MelGen.
 
 | # | Project | Effort | Notes |
 |---|---------|--------|-------|
-| B1 | **Progression generator** | XL | Generate the changes, not the line. An alternative to **ProgGenie**: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
+| B1 | **Progression generator** | XL | Now expected to land *inside* MelGen rather than as a sibling — see Open Question 3. Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
 | B2 | **Comping instrument** | XL | If P1's mode switch makes MelGen incoherent, comping becomes its own plug-in sharing the theory, library and realization code. Decide after P1's design, not before. |
 | B3 | **Pattern librarian** | L | If L5 wins (curating incoming material as well as generated), the library outgrows a plug-in panel and wants to be an app — at which point it is either a MIDIcurator feature or its replacement. |
 
@@ -360,16 +369,19 @@ Things MelGen needs that shouldn't live only in MelGen.
    now (bundle ID `com.enkerli.MelGenExtension` is the ABI-stable part; the repo
    and folder are cosmetic) and gets more expensive once hosts have saved
    sessions referencing the component. Worth deciding before P1 ships, not after.
-2. **MelGen vs MIDIcurator boundary.** L5 and B3 drift toward being MIDIcurator.
-   Cleanest split is probably: MelGen *generates and realizes*, MIDIcurator
-   *curates and analyses*, and they share the pattern format (I3) and the
-   chord-in-MIDI format (I2). Worth deciding explicitly before building library
-   UI in both.
-3. **Progression generation: integrated or separate?** Integrated means one
-   window from changes to line, and a plug-in that does two jobs. Separate means
-   two plug-ins and a routing problem — MelGen would need to *receive* a
-   progression, which is a MIDI-with-chords problem (X4), which it wants solved
-   anyway.
+2. **MelGen vs MIDIcurator boundary.** ~~Worth deciding before building library
+   UI in both.~~ **Settled 2026-08-22: build it here anyway.** Curation is part
+   of the loop this project is exploring — the model proposes, measurement scores
+   (G5), a person keeps — and that loop doesn't work if curation lives in another
+   app. Sharing the pattern format (I3) and the chord-in-MIDI format (I2) is
+   still worth doing where it's cheap, but as convergence, not as a constraint on
+   what gets built.
+3. **Progression generation: integrated or separate?** **Leaning integrated,
+   as of 2026-08-22.** "Generate progressions, adapt patterns to them, curate the
+   results, all in one environment" is the thing worth exploring, and splitting it
+   across plug-ins is what would prevent that. Separate would still need MelGen to
+   *receive* a progression (X4), which is worth having regardless. So: build it
+   here, and treat the routing path as a bonus rather than a prerequisite.
 4. **How much realization should be live vs baked?** Gate, expression and swing
    re-render instantly today, which is a nice property. Per-note gate (D3) and
    groove templates (D4) keep that. Learned realization (S5) probably can't.

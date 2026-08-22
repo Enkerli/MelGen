@@ -47,6 +47,9 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     /// How many model requests this take needed (one per 4-bar phrase).
     var requestCount: Int = 1
     var source: TakeSource = .model
+    /// Measured after the notes were settled, so curation has something to sort
+    /// by and non-chord tones are flagged for a human rather than judged here.
+    var analysis: MelodyAnalysis?
     var lengthBeats: Double
     var notes: [SequencedNote]
 
@@ -67,6 +70,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         generationSeconds = try container.decodeIfPresent(Double.self, forKey: .generationSeconds) ?? 0
         requestCount = try container.decodeIfPresent(Int.self, forKey: .requestCount) ?? 1
         source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
+        analysis = try container.decodeIfPresent(MelodyAnalysis.self, forKey: .analysis)
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -81,6 +85,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          generationSeconds: Double = 0,
          requestCount: Int = 1,
          source: TakeSource = .model,
+         analysis: MelodyAnalysis? = nil,
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -93,6 +98,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.generationSeconds = generationSeconds
         self.requestCount = requestCount
         self.source = source
+        self.analysis = analysis
         self.lengthBeats = lengthBeats
         self.notes = notes
     }

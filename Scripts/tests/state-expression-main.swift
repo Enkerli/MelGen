@@ -267,8 +267,11 @@ check("a six-beat gap is trimmed", capped[0].durationBeats > sparse[0].durationB
       "\(sparse[0].durationBeats) → \(capped[0].durationBeats)")
 let cappedGap = capped[1].startBeat - (capped[0].startBeat + capped[0].durationBeats)
 check("what's left is still a real rest", cappedGap >= 1.0 - 1e-9, "gap \(cappedGap)")
+// maxHold is two bars: one bar had no headroom to absorb a real hole with.
 check("the excess became a held note, not a drone",
-      capped[0].durationBeats <= 4.0 + 1e-9, "\(capped[0].durationBeats) beats")
+      capped[0].durationBeats <= 8.0 + 1e-9, "\(capped[0].durationBeats) beats")
+check("and the gap it leaves is within the rest limit",
+      capped[1].startBeat - (capped[0].startBeat + capped[0].durationBeats) <= 2 + 1e-9)
 check("onsets are never moved", zip(capped, sparse).allSatisfy { $0.startBeat == $1.startBeat })
 // The first four notes are back-to-back, so nothing to absorb. The fifth ends at
 // beat 4 with the next at 7.5 — 3.5 beats of silence, which is dead air by design.

@@ -300,17 +300,26 @@ enum MelodyExpression {
 
     /// Caps dead air.
     ///
-    /// A gap of a beat or two is a breath; six beats is the line having stopped.
+    /// A gap of a beat or two is a breath; eight beats is the line having stopped.
     /// The excess is absorbed by *extending the note before it*, which is what a
     /// phrase ending actually sounds like — a long note, then a breath — rather
     /// than a clipped note followed by nothing.
     ///
-    /// The extension is itself capped, or a take whose output petered out early
-    /// would turn into a drone.
+    /// `maxHold` is two bars, not one. The first version capped it at one bar,
+    /// which meant a note that was *already* a bar long had no headroom at all
+    /// and an eight-beat hole after it survived untouched — the guard did nothing
+    /// in exactly the case it existed for. A note held across two bars is
+    /// ordinary; a bar of silence in the middle of a chorus is not.
+    ///
+    /// Contract: afterwards, every gap is at most `maxRest` *unless* the note
+    /// before it has reached `maxHold`, in which case there was more hole than
+    /// one note could absorb. That residue means the model under-produced for
+    /// that stretch, which `MelodyGenerator` patches from the stored library
+    /// rather than leaving as silence.
     static func capDeadAir(_ notes: [SequencedNote],
                            totalBeats: Double,
                            maxRest: Double = 2,
-                           maxHold: Double = 4) -> [SequencedNote] {
+                           maxHold: Double = 8) -> [SequencedNote] {
         guard !notes.isEmpty, totalBeats > 0 else { return notes }
 
         return notes.enumerated().map { index, note in

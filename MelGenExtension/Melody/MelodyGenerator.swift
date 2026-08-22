@@ -202,7 +202,13 @@ enum MelodyGenerator {
     /// Takes a plain note array rather than a `MelodyIdea` because a long
     /// progression is assembled from several requests, and the smoothing has to
     /// run over the whole line for the seams to disappear.
+    /// Which stored line patches an under-produced stretch. Varied per call so
+    /// repeated generations over the same changes don't all borrow the same
+    /// figure, and settable so tests are deterministic.
+    static var patchPatternCursor = 0
+
     static func sequence(from ideaNotes: [MelodyIdeaNote], progression: ChordProgression) -> [SequencedNote] {
+        defer { patchPatternCursor += 1 }
         let totalEighths = Int((progression.totalBeats * 2).rounded())
         let notes = ideaNotes
             .filter { $0.startEighth >= 0 && $0.startEighth < totalEighths }
@@ -245,9 +251,19 @@ enum MelodyGenerator {
                 durationBeats: Double(lengthEighths) / 2
             ))
         }
+        // A chunk that under-produced leaves bars of silence, which extending the
+        // previous note can't fix. Borrow from the stored library for those
+        // stretches — the model's material is kept wherever it actually wrote
+        // any, and a two-bar hole becomes music instead of a dropout.
+        let patched = MelodyPatterns.fillHoles(
+            in: result,
+            over: progression,
+            pattern: MelodyPatterns.seed(at: patchPatternCursor)
+        )
+
         // Open a rest where there is none, then cap any that are so long the line
         // reads as having stopped rather than breathed.
-        let breathing = MelodyExpression.ensureBreathing(result, totalBeats: progression.totalBeats)
+        let breathing = MelodyExpression.ensureBreathing(patched, totalBeats: progression.totalBeats)
         return MelodyExpression.capDeadAir(breathing, totalBeats: progression.totalBeats)
     }
 

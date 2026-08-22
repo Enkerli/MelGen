@@ -461,6 +461,13 @@ struct MelGenExtensionMainView: View {
                 Text(takeSummary)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(theme.textMuted)
+
+                if let analysis = state.currentTake?.analysis {
+                    Text(analysis.summary)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(MelGenMetrics.space2)
@@ -621,6 +628,12 @@ struct MelGenExtensionMainView: View {
         if take.generationSeconds > 0 {
             parts.append("\(take.generationSeconds.formatted(.number.precision(.fractionLength(1))))s")
         }
+        if let analysis = take.analysis {
+            parts.append("variety \(Int((analysis.varietyScore * 100).rounded()))%")
+            if analysis.notesToReview > 0 {
+                parts.append("⚑\(analysis.notesToReview)")
+            }
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -721,6 +734,7 @@ struct MelGenExtensionMainView: View {
             density: current.expression.density,
             durationPalette: current.durationPalette,
             source: .pattern,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
             lengthBeats: progression.totalBeats,
             notes: notes
         )
@@ -885,6 +899,7 @@ struct MelGenExtensionMainView: View {
                         durationPalette: durationPalette,
                         generationSeconds: Date().timeIntervalSince(startedAt),
                         requestCount: phrases,
+                        analysis: MelodyAnalyser.analyse(notes, over: progression),
                         lengthBeats: progression.totalBeats,
                         notes: notes
                     )

@@ -104,6 +104,53 @@ enum MelodyPatterns {
         )
     }
 
+    /// Fills stretches a generated line left empty.
+    ///
+    /// A chunk that under-produces leaves bars of silence, and no amount of
+    /// extending the previous note fixes a two-bar hole. Since fitting a stored
+    /// line to arbitrary harmony is instant and already correct, the library is
+    /// the natural patch: the take keeps the model's material everywhere the
+    /// model actually wrote something, and borrows for the rest.
+    ///
+    /// - Parameter minimumHole: only stretches at least this long are filled;
+    ///   anything shorter is phrasing.
+    static func fillHoles(in notes: [SequencedNote],
+                          over progression: ChordProgression,
+                          pattern: MelodyPattern,
+                          minimumHole: Double = 8) -> [SequencedNote] {
+        guard progression.totalBeats > 0 else { return notes }
+
+        // Where the line is silent for long enough to be a hole rather than a rest.
+        var holes: [(start: Double, end: Double)] = []
+        var cursor = 0.0
+        for note in notes.sorted(by: { $0.startBeat < $1.startBeat }) {
+            if note.startBeat - cursor >= minimumHole - 0.001 {
+                holes.append((cursor, note.startBeat))
+            }
+            cursor = max(cursor, note.startBeat + note.durationBeats)
+        }
+        if progression.totalBeats - cursor >= minimumHole - 0.001 {
+            holes.append((cursor, progression.totalBeats))
+        }
+        guard !holes.isEmpty else { return notes }
+
+        var filled = notes
+        for hole in holes {
+            // Start on a bar line so the borrowed material lands in time.
+            let start = (hole.start / beatsPerBar).rounded(.up) * beatsPerBar
+            guard hole.end - start >= beatsPerBar else { continue }
+
+            let slice = MelodyChunker.slice(progression, from: start, to: hole.end)
+            for note in realize(pattern, over: slice) {
+                var shifted = note
+                shifted.startBeat += start
+                guard shifted.startBeat + shifted.durationBeats <= hole.end + 0.001 else { continue }
+                filled.append(shifted)
+            }
+        }
+        return filled.sorted { $0.startBeat < $1.startBeat }
+    }
+
     /// Turns a degree into a MIDI note against the chord sounding at `beat`.
     static func pitch(for note: PatternNote,
                       at beat: Double,
