@@ -297,6 +297,34 @@ enum MelodyExpression {
         }
         return kept
     }
+
+    /// Caps dead air.
+    ///
+    /// A gap of a beat or two is a breath; six beats is the line having stopped.
+    /// The excess is absorbed by *extending the note before it*, which is what a
+    /// phrase ending actually sounds like — a long note, then a breath — rather
+    /// than a clipped note followed by nothing.
+    ///
+    /// The extension is itself capped, or a take whose output petered out early
+    /// would turn into a drone.
+    static func capDeadAir(_ notes: [SequencedNote],
+                           totalBeats: Double,
+                           maxRest: Double = 2,
+                           maxHold: Double = 4) -> [SequencedNote] {
+        guard !notes.isEmpty, totalBeats > 0 else { return notes }
+
+        return notes.enumerated().map { index, note in
+            var note = note
+            let nextStart = index + 1 < notes.count ? notes[index + 1].startBeat : totalBeats
+            let gap = nextStart - (note.startBeat + note.durationBeats)
+            guard gap > maxRest else { return note }
+
+            let wanted = gap - maxRest
+            let headroom = max(0, maxHold - note.durationBeats)
+            note.durationBeats += min(wanted, headroom)
+            return note
+        }
+    }
 }
 
 /// Small deterministic generator, so a take always renders the same way.

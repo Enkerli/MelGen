@@ -245,7 +245,10 @@ enum MelodyGenerator {
                 durationBeats: Double(lengthEighths) / 2
             ))
         }
-        return MelodyExpression.ensureBreathing(result, totalBeats: progression.totalBeats)
+        // Open a rest where there is none, then cap any that are so long the line
+        // reads as having stopped rather than breathed.
+        let breathing = MelodyExpression.ensureBreathing(result, totalBeats: progression.totalBeats)
+        return MelodyExpression.capDeadAir(breathing, totalBeats: progression.totalBeats)
     }
 
     /// Transposes a pitch by octaves until it sits within an octave of its

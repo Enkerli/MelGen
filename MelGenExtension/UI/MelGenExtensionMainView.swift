@@ -6,9 +6,30 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 // No #Preview here: Xcode can't host previews inside a
 // "com.apple.AudioUnit-UI" app extension, so the layout is checked in a host.
+
+/// Wrapper so `fileExporter` can write already-encoded JSON straight out,
+/// without a temp file or a share-sheet detour.
+struct MelGenJSONDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 struct MelGenExtensionMainView: View {
     var parameterTree: ObservableAUParameterGroup
@@ -26,6 +47,9 @@ struct MelGenExtensionMainView: View {
     /// reopened session should start from what was actually playing.
     @State private var pendingTake: GenerationRecord?
     @State private var pendingReadyPass: Int64 = 0
+
+    @State private var isExporting = false
+    @State private var exportDocument: MelGenJSONDocument?
 
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
@@ -460,6 +484,7 @@ struct MelGenExtensionMainView: View {
                         historyRow(take)
                     }
                 }
+                exportButton
             }
         }
     }
@@ -502,6 +527,53 @@ struct MelGenExtensionMainView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(take.progressionText), \(take.briefName), \(take.noteCount) notes")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Writes the history out as JSON — every take with the settings it was
+    /// generated from and how long it took, so a run of takes can be read and
+    /// analysed outside the plug-in.
+    private var exportButton: some View {
+        Button {
+            do {
+                exportDocument = try MelGenJSONDocument(data: state.historyExportData())
+                isExporting = true
+            } catch {
+                statusMessage = "Couldn't prepare the export: \(error.localizedDescription)"
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Export history")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, MelGenMetrics.space3)
+            .frame(height: MelGenMetrics.controlHeight)
+            .foregroundStyle(theme.text)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .fileExporter(
+            isPresented: $isExporting,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: state.historyExportFilename()
+        ) { result in
+            switch result {
+            case .success(let url):
+                statusMessage = "Exported \(state.history.count) takes to \(url.lastPathComponent)."
+            case .failure(let error):
+                statusMessage = "Export failed: \(error.localizedDescription)"
+            }
+            exportDocument = nil
+        }
     }
 
     /// Time, note count, temperature — and how long the model took, so a run of

@@ -256,6 +256,42 @@ check("takes from before timing existed read as unmeasured", {
         && decoded?.history.first?.requestCount == 1
 }())
 
+// 11e. Dead air is capped: a breath, not the line stopping.
+let sparse: [SequencedNote] = [
+    SequencedNote(note: 60, velocity: 90, startBeat: 0.0, durationBeats: 0.5),
+    // six beats of nothing
+    SequencedNote(note: 64, velocity: 90, startBeat: 6.5, durationBeats: 0.5),
+]
+let capped = MelodyExpression.capDeadAir(sparse, totalBeats: 8)
+check("a six-beat gap is trimmed", capped[0].durationBeats > sparse[0].durationBeats,
+      "\(sparse[0].durationBeats) → \(capped[0].durationBeats)")
+let cappedGap = capped[1].startBeat - (capped[0].startBeat + capped[0].durationBeats)
+check("what's left is still a real rest", cappedGap >= 1.0 - 1e-9, "gap \(cappedGap)")
+check("the excess became a held note, not a drone",
+      capped[0].durationBeats <= 4.0 + 1e-9, "\(capped[0].durationBeats) beats")
+check("onsets are never moved", zip(capped, sparse).allSatisfy { $0.startBeat == $1.startBeat })
+// The first four notes are back-to-back, so nothing to absorb. The fifth ends at
+// beat 4 with the next at 7.5 — 3.5 beats of silence, which is dead air by design.
+check("ordinary gaps are left alone",
+      MelodyExpression.capDeadAir(raw, totalBeats: 8).prefix(4).map(\.durationBeats)
+        == raw.prefix(4).map(\.durationBeats))
+
+// 11f. The history export carries the settings and the timing.
+var exportable = MelGenState()
+exportable.add(GenerationRecord(progressionText: "Dm7|G7", temperature: 0.7,
+                                briefName: "Sparse", generationSeconds: 11.5, requestCount: 1,
+                                lengthBeats: 12, notes: raw))
+let exported = try exportable.historyExportData()
+let reread = try MelGenState.decodeHistoryExport(exported)
+check("export round-trips the takes", reread.takes.count == 1 && reread.takeCount == 1)
+check("export keeps the timing", reread.takes.first?.generationSeconds == 11.5)
+check("export keeps the settings it was rendered with",
+      reread.expressionAtExport == exportable.expression)
+check("export filename is dated and sortable",
+      exportable.historyExportFilename().hasPrefix("MelGen-history-")
+      && exportable.historyExportFilename().hasSuffix(".json"),
+      exportable.historyExportFilename())
+
 // 12. Note duration is a separate axis from gate length, and round-trips.
 check("duration palette defaults to mixed", MelGenState().durationPalette == .mixed)
 var withPalette = MelGenState()

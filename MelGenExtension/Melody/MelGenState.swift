@@ -245,6 +245,55 @@ struct MelGenState: Codable, Sendable {
     }
 }
 
+/// The take history in a form that can leave the plug-in.
+///
+/// Carries the settings each take was generated with *and* how long it took, so
+/// a run of takes is a usable record of how the model behaves — which is the
+/// only way to reason about generation time without guessing.
+struct MelGenHistoryExport: Codable, Sendable {
+    var exportedAt: Date
+    var takeCount: Int
+    /// The realization settings in force at export, since the stored notes are
+    /// pre-expression and won't sound like what was heard without them.
+    var expressionAtExport: ExpressionSettings
+    var takes: [GenerationRecord]
+}
+
+extension MelGenState {
+    func historyExport() -> MelGenHistoryExport {
+        MelGenHistoryExport(
+            exportedAt: Date(),
+            takeCount: history.count,
+            expressionAtExport: expression,
+            takes: history
+        )
+    }
+
+    func historyExportData() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(historyExport())
+    }
+
+    /// The counterpart to `historyExportData()`. Paired with it deliberately: the
+    /// export writes ISO-8601 dates so the file is readable by anything, and a
+    /// default `JSONDecoder` would fail on it — that shouldn't be something the
+    /// next reader has to rediscover.
+    static func decodeHistoryExport(_ data: Data) throws -> MelGenHistoryExport {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(MelGenHistoryExport.self, from: data)
+    }
+
+    /// A filename that sorts and reads well in Files.
+    func historyExportFilename(now: Date = Date()) -> String {
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withYear, .withMonth, .withDay, .withDashSeparatorInDate]
+        return "MelGen-history-\(stamp.string(from: now)).json"
+    }
+}
+
 extension UUID {
     /// A stable seed, so a take's expression renders identically every session
     /// (UUID's own hashValue is salted per process).
