@@ -25,6 +25,12 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     var density: Double = 0.5
     /// The rhythmic palette this take was written with, for the log.
     var durationPalette: DurationPalette = .mixed
+    /// Wall-clock seconds the model took. Recorded because "new take every loop"
+    /// is only a promise we can keep if generation finishes inside a loop, and
+    /// nobody knew whether it did.
+    var generationSeconds: Double = 0
+    /// How many model requests this take needed (one per 4-bar phrase).
+    var requestCount: Int = 1
     var lengthBeats: Double
     var notes: [SequencedNote]
 
@@ -42,6 +48,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         briefName = try container.decodeIfPresent(String.self, forKey: .briefName) ?? ""
         density = try container.decodeIfPresent(Double.self, forKey: .density) ?? 0.5
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
+        generationSeconds = try container.decodeIfPresent(Double.self, forKey: .generationSeconds) ?? 0
+        requestCount = try container.decodeIfPresent(Int.self, forKey: .requestCount) ?? 1
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -53,6 +61,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          briefName: String,
          density: Double = 0.5,
          durationPalette: DurationPalette = .mixed,
+         generationSeconds: Double = 0,
+         requestCount: Int = 1,
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -62,6 +72,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.briefName = briefName
         self.density = density
         self.durationPalette = durationPalette
+        self.generationSeconds = generationSeconds
+        self.requestCount = requestCount
         self.lengthBeats = lengthBeats
         self.notes = notes
     }

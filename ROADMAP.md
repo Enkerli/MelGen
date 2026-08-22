@@ -76,18 +76,22 @@ So Wave 1 is "make what exists trustworthy", and it comes before everything else
 | G2 | Rests | **High** | S–M | — | ✅ **done 2026-08-22** — schema field, prompt requirement, and a guaranteed breath every two bars |
 | G3 | Per-note gate | **High** | M | — | ✅ **done 2026-08-22** — derived per note from the next interval; the slider is now an amount over that shape |
 | G5 | Variety scoring (pre-curation) | **High** | M | — | Ostinato-ish takes at high temperature mean temperature isn't the variety lever we assumed. Turns 24 takes-to-audition into 24 takes-worth-keeping |
-| G4 | Measure generation time | Medium | S | — | "New take every loop" is a promise we currently can't keep. Measure before designing the fix |
-| G6 | Buffer takes ahead | **High** | M | G1, G4 | What makes auto-regeneration honest. Much easier once G1 makes generation incremental |
+| G4 | Measure generation time | Medium | S | — | ✅ **done 2026-08-22** — recorded per take, and compared against the actual loop duration |
+| G6 | Buffer takes ahead | **High** | M | G1, G4 | ✅ **done 2026-08-22** — generates a loop ahead and swaps on the boundary |
 
-G1, G2 and G3 are done. **G4 (measure generation time) is next**, and it matters
-more than it did: a 16-bar take now costs four requests, so "new take every loop"
-is further from true than when it was one. G4 then unblocks G6 (buffer ahead),
-which is the last Wave 1 item. G5 (variety scoring) is independent and can go
-before or after.
+**Wave 1 is complete apart from G5 (variety scoring)**, which is independent of
+everything else and is the last thing standing between "24 takes to audition"
+and "24 takes worth keeping".
 
-Worth re-listening before starting G4: G2 and G3 change what the line *sounds*
-like more than anything since generation started working, and the piano roll (U1)
-is the only way to see whether the rests and the gate shape land where intended.
+After that, Wave 2 opens with **U1 (piano roll)**. Its case keeps getting
+stronger: G2's rests, G3's gate shaping and D4's feels are all things you
+currently have to take on trust, and the text grid only shows them to the nearest
+eighth.
+
+Worth a listen before G5, though — the density fix (F18) is the first change that
+should be plainly audible, and if the line still doesn't breathe then the model is
+ignoring the notes-per-bar target and `ensureBreathing` needs to do more of the
+work than it currently does.
 
 ### Wave 2 — make it interactive
 
@@ -145,7 +149,7 @@ prototyping only once Wave 1 means a single take is reliably good.
 | F8 | **Component identity collision** — loading **Progression Studio** in AUM launched MelGen | S | ✅ fixed 2026-08-22 — the Xcode template's default subtype was `Prst`, which is Progression Studio's `PLUGIN_CODE`. An AUv3 is identified by the (type, subtype, manufacturer) triple, so two components sharing one means the host resolves either name to whichever it indexed. MelGen is now `MlGn`; `Scripts/verify.sh identity` fails the build if the triple ever collides again or drifts from the host app's lookup |
 | F9 | **Direction buttons stretched to fill** — a small arrow centred in a 400pt-wide button in a wide plug-in window | Trivial | ✅ fixed 2026-08-22 — direction group capped at 240pt, loop-count chips at 320pt |
 | F5 | **Ping-pong repeats the pivot note** at each turnaround | S | Open — deliberate for now: shortening the reversed pass would break bar alignment. Revisit if it grates |
-| F6 | **Auto-regeneration swaps mid-loop** — a take commits the moment the model returns | M | Open — needs a deferred commit that flips at the next loop point; the kernel's double buffer would need a third slot to stay allocation-free |
+| F6 | **Auto-regeneration swaps mid-loop** — a take committed the moment the model returned | M | ✅ fixed 2026-08-22 via G6 — finished takes are held for the next loop boundary. No extra kernel buffer needed after all |
 | F7 | **UI mirror can go stale** if the host restores session state while the editor is open | S | Open — refreshes on next `onAppear`; a state-generation counter on the audio unit would close it properly |
 
 ---
@@ -162,9 +166,9 @@ reading the code.
 | G1 | **Chunked generation** | M–L | ✅ done 2026-08-22. `MelodyChunker` splits a progression into 4-bar requests at bar lines, rebased to beat 0 so eighth indices stay small; a chord straddling a boundary appears in each chunk it sounds in, clipped. Each chunk gets a **fresh session** (Apple's guidance for data that won't fit) and is told the note the previous phrase ended on, so registers don't jump at the seams. Post-processing runs over the *assembled* line, not per chunk, because `fold` and `snap` work from the previous note — that's what makes the seams disappear. Kept free of any FoundationModels dependency so `Scripts/verify.sh chunking` can test it. Still to do: progressive playback of finished chunks, and sizing chunks from `tokenCount(for:)` at runtime rather than a fixed 4 bars |
 | G2 | **Rests** | S–M | ✅ done 2026-08-22. Three layers, because prompting alone had already failed: `restAfterEighths` is now a **schema field** (a value the schema doesn't ask for is a value the model doesn't consider); the instructions state rests as a requirement with a target rather than a preference; and `MelodyExpression.ensureBreathing` guarantees it — any two-bar window with no gap of half a beat or more loses its least structurally important note, reusing the ranking density thinning already uses. Honouring a requested rest never costs more than half the note, so "four eighths of silence after this eighth note" reads as "end the phrase", not "delete the note" |
 | G3 | **Per-note gate** | M | ✅ done 2026-08-22. Gate is derived per note from the move to the next one — a step connects (0.95 of the slot), a wide leap detaches (0.65), a repeated pitch breaks (0.55) — and the slider became an *amount* over that shape: 0.5 as derived, 0 clips, 1 pushes toward legato. Same structure as Expression. Two rules that make it musical rather than mechanical: a gap of half a beat or more is a **rest** and legato won't extend into it, and a repeated pitch never fills its slot whatever the setting — without a gap the second note-on lands as the first note-off does and most synths render one held note. Expression no longer touches duration at all; Gate owns it |
-| G4 | **Measure generation time** | S | Time each generation, record it on the take, and show it. Right now `runAutoRegeneration` skips when `isGenerating`, so "new take every loop" silently degrades to "every loop generation can keep up with" — which at 120bpm over 4 bars is 8 seconds of music and probably less generation time than that, but nobody has measured. Prerequisite for G6 and for choosing sensible chunk sizes in G1. |
+| G4 | **Measure generation time** | S | ✅ done 2026-08-22. Each take records wall-clock seconds and how many requests it needed, shown in the history row and in the status line. The kernel now publishes tempo and loop length too, so the status can compare the two directly — "took 4.2s over 4 phrases, loop is 8.0s", or "longer than the 8.0s loop, so takes arrive late" when it doesn't fit. That comparison is the whole point: "new take every loop" is only a promise we can keep if generation finishes inside a loop |
 | G5 | **Variety scoring** | M | Takes come out ostinato-like even at temperature 0.89, so temperature is not the variety lever we assumed. Score a take before it reaches the history: pitch-class and interval-class entropy, rhythmic distinctness, and self-similarity across bars (an autocorrelation over the note sequence catches literal repetition). Two uses — reject-and-retry below a floor, and show the score in the history so curation has something to sort by. Cheap to compute, deterministic, testable, and it belongs in `verify.sh` with hand-picked repetitive and varied fixtures. Note this is *pre*-curation and distinct from L1's keep/discard: the machine filters, then the human chooses. |
-| G6 | **Buffer takes ahead** | M | Generate the next take while the current one plays and swap at a loop boundary, so "every loop" means every loop. Needs G1 (so generation is incremental enough to finish inside a loop) and G4 (so we know how far ahead to run). Also fixes F6's mid-loop swap: with a take already in hand, the commit can wait for the loop point instead of landing whenever the model returns. |
+| G6 | **Buffer takes ahead** | M | ✅ done 2026-08-22. Auto-regeneration now generates the *next* take while the current one plays and holds it until the pass counter ticks, so the swap lands on a loop boundary instead of wherever the model happened to finish. A take asked for by hand still commits immediately — you pressed the button. This also closes F6: the deferred commit was what that needed, without the third sequence buffer I'd assumed. Still open: if generation is slower than a loop the take simply arrives a loop late, which the status line now says out loud rather than hiding |
 | G7 | **Accept ProgGenie output directly** | S | ✅ works 2026-08-22, given G1. ProgGenie's `Cmaj7 \| Em7♭5 \| A7 \| …` parses as-is — format, spacing and `♭` spelling all fine — and the 16-bar form now generates as four phrases. That progression is a fixture in `Scripts/verify.sh chunking` so it stays true. Open question is whether it should stay a paste or become a route (N4/X4) |
 
 ### Templates & Motifs

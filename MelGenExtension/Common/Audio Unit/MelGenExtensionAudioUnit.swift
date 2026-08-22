@@ -83,6 +83,16 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
         kernel.currentPass()
     }
 
+    /// How long one pass through the loop lasts, in seconds, at the tempo the
+    /// render thread is actually using — so the UI can say whether generating a
+    /// take fits inside a loop. Nil until something has played.
+    var loopDuration: TimeInterval? {
+        let tempo = kernel.currentTempo()
+        let beats = kernel.currentLoopBeats()
+        guard tempo > 0, beats > 0 else { return nil }
+        return beats / tempo * 60
+    }
+
     // MARK: - Session state
     //
     // The progression, generation settings and take history live here rather

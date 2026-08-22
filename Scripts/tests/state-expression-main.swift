@@ -239,6 +239,23 @@ check("summary reports a gate range", notationSummary.contains("gate"), notation
 check("empty take reads as empty",
       MelodyNotation.summary(for: [], lengthBeats: 4) == "No notes yet.")
 
+// 11d. Generation timing is recorded on the take (G4) and survives saving.
+var timed = MelGenState()
+timed.add(GenerationRecord(progressionText: "Dm7|G7", temperature: 0.5,
+                           briefName: "Sparse", generationSeconds: 4.25, requestCount: 4,
+                           lengthBeats: 8, notes: raw))
+let timedDecoded = try JSONDecoder().decode(
+    MelGenState.self, from: try JSONEncoder().encode(timed))
+check("generation timing round-trips",
+      timedDecoded.currentTake?.generationSeconds == 4.25
+      && timedDecoded.currentTake?.requestCount == 4)
+check("takes from before timing existed read as unmeasured", {
+    let legacyTake = #"{"progressionText":"C","temperature":0.5,"history":[{"progressionText":"C∆","temperature":0.5,"briefName":"x","lengthBeats":4,"notes":[]}]}"#
+    let decoded = try? JSONDecoder().decode(MelGenState.self, from: Data(legacyTake.utf8))
+    return decoded?.history.first?.generationSeconds == 0
+        && decoded?.history.first?.requestCount == 1
+}())
+
 // 12. Note duration is a separate axis from gate length, and round-trips.
 check("duration palette defaults to mixed", MelGenState().durationPalette == .mixed)
 var withPalette = MelGenState()

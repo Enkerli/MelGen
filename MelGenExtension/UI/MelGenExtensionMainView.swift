@@ -21,6 +21,12 @@ struct MelGenExtensionMainView: View {
     @State private var isGenerating = false
     @State private var savedExampleIDs: Set<UUID> = []
 
+    /// A take generated ahead of time, waiting for a loop boundary to be swapped
+    /// in. Deliberately not part of the saved session: it's in-flight work, and a
+    /// reopened session should start from what was actually playing.
+    @State private var pendingTake: GenerationRecord?
+    @State private var pendingReadyPass: Int64 = 0
+
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
     @Environment(\.colorScheme) private var ambientScheme
@@ -474,7 +480,7 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
                         .foregroundStyle(theme.text)
                         .lineLimit(1)
-                    Text("\(take.date.formatted(date: .omitted, time: .shortened)) · \(take.noteCount) notes · temp \(take.temperature.formatted(.number.precision(.fractionLength(2))))")
+                    Text(historyDetail(take))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(theme.textMuted)
                         .lineLimit(1)
@@ -496,6 +502,20 @@ struct MelGenExtensionMainView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(take.progressionText), \(take.briefName), \(take.noteCount) notes")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Time, note count, temperature — and how long the model took, so a run of
+    /// takes shows whether generation is keeping up.
+    private func historyDetail(_ take: GenerationRecord) -> String {
+        var parts = [
+            take.date.formatted(date: .omitted, time: .shortened),
+            "\(take.noteCount) notes",
+            "temp \(take.temperature.formatted(.number.precision(.fractionLength(2))))"
+        ]
+        if take.generationSeconds > 0 {
+            parts.append("\(take.generationSeconds.formatted(.number.precision(.fractionLength(1))))s")
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - State plumbing
@@ -564,34 +584,78 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Generation
 
-    /// Polls the kernel's loop counter and queues a new take every few passes.
-    /// The counter only advances while the melody is playing, so this idles when
-    /// the transport is stopped.
+    /// Polls the kernel's loop counter, generates the *next* take while the
+    /// current one plays, and swaps it in on a loop boundary.
+    ///
+    /// Generation takes seconds, so committing the moment the model returns lands
+    /// the change somewhere in the middle of a bar — and "new take every loop"
+    /// silently became "every loop generation could keep up with". Holding the
+    /// finished take until the pass counter ticks fixes both: the swap is musical,
+    /// and the work happens during the loop before the one it plays in.
     private func runAutoRegeneration() async {
         guard state.autoRegenerate else { return }
 
-        // Nothing to loop yet: make the first take straight away.
+        // Nothing to loop yet: make the first take straight away and commit it,
+        // since there's nothing playing for it to interrupt.
         if liveState.currentTake == nil {
             generate(auto: true)
         }
-        var lastPass = audioUnit?.currentPass ?? 0
+        var lastStartedPass = audioUnit?.currentPass ?? 0
 
         while !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(250))
             let current = liveState
             guard current.autoRegenerate else { return }
             guard let pass = audioUnit?.currentPass else { continue }
-            let due = pass >= lastPass + Int64(max(1, current.regenerateEveryPasses))
-            if due, !isGenerating {
-                lastPass = pass
-                generate(auto: true)
+
+            // A take finished during the last loop: swap it in now that the loop
+            // has come round.
+            if let ready = pendingTake, pass > pendingReadyPass {
+                pendingTake = nil
+                commit {
+                    $0.add(ready)
+                    $0.briefCursor += 1
+                }
+                statusMessage = "\(ready.briefName): \(ready.noteCount) notes"
+                    + timingNote(for: ready)
+            }
+
+            let due = pass >= lastStartedPass + Int64(max(1, current.regenerateEveryPasses))
+            if due, !isGenerating, pendingTake == nil {
+                lastStartedPass = pass
+                generate(auto: true, holdForLoopPoint: true)
             }
         }
     }
 
-    private func generate(auto: Bool = false) {
+    /// Says whether generation actually fits inside a loop, which is the only
+    /// thing that makes "every loop" honest.
+    private func timingNote(for take: GenerationRecord) -> String {
+        guard take.generationSeconds > 0 else { return "" }
+        let seconds = take.generationSeconds.formatted(.number.precision(.fractionLength(1)))
+        let requests = take.requestCount > 1 ? " over \(take.requestCount) phrases" : ""
+        guard let loop = audioUnit?.loopDuration, loop > 0 else {
+            return " · took \(seconds)s\(requests)"
+        }
+        let fits = take.generationSeconds <= loop
+        let loopText = loop.formatted(.number.precision(.fractionLength(1)))
+        return fits
+            ? " · took \(seconds)s\(requests), loop is \(loopText)s"
+            : " · took \(seconds)s\(requests) — longer than the \(loopText)s loop, so takes arrive late"
+    }
+
+    /// - Parameter holdForLoopPoint: keep the finished take aside instead of
+    ///   committing it, so the auto loop can swap it in on a boundary. A take you
+    ///   asked for by hand is always committed immediately — you pressed the
+    ///   button, you want to hear it.
+    private func generate(auto: Bool = false, holdForLoopPoint: Bool = false) {
         guard !isGenerating else { return }
         let current = liveState
+
+        // A manual Generate supersedes anything queued up.
+        if !holdForLoopPoint {
+            pendingTake = nil
+        }
 
         let progression: ChordProgression
         do {
@@ -633,6 +697,7 @@ struct MelGenExtensionMainView: View {
         isGenerating = true
 
         Task {
+            let startedAt = Date()
             do {
                 let notes = try await MelodyGenerator.generate(
                     for: progression,
@@ -650,14 +715,23 @@ struct MelGenExtensionMainView: View {
                         briefName: brief.name,
                         density: density,
                         durationPalette: durationPalette,
+                        generationSeconds: Date().timeIntervalSince(startedAt),
+                        requestCount: phrases,
                         lengthBeats: progression.totalBeats,
                         notes: notes
                     )
-                    commit {
-                        $0.add(record)
-                        $0.briefCursor += 1
+                    if holdForLoopPoint {
+                        pendingTake = record
+                        pendingReadyPass = audioUnit?.currentPass ?? 0
+                        statusMessage = "Next take ready\(timingNote(for: record)) — swapping at the loop point."
+                    } else {
+                        commit {
+                            $0.add(record)
+                            $0.briefCursor += 1
+                        }
+                        statusMessage = "\(brief.name): \(notes.count) notes over \(progressionText)"
+                            + timingNote(for: record)
                     }
-                    statusMessage = "\(brief.name): \(notes.count) notes over \(progressionText)."
                 }
             } catch {
                 statusMessage = "Generation failed: \(error.localizedDescription)"

@@ -114,11 +114,33 @@ static void testPassCounter() {
     printf("  (expect 0 1 2 3)\n");
 }
 
+// The UI reads tempo and loop length to work out how long a loop lasts, which
+// is how it reports whether generation fits inside one.
+static void testTimingPublication() {
+    MelGenExtensionDSPKernel kernel;
+    kernel.initialize(48000);
+    wire(kernel);
+    loadSequence(kernel);   // 4-beat loop
+    kernel.setMusicalContextBlock(^BOOL(double *tempo, double *num, NSInteger *den,
+                                        double *beat, NSInteger *offset, double *downbeat) {
+        if (tempo) { *tempo = 96.0; }
+        return YES;
+    });
+    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    run(kernel, 4.05);
+
+    const double t = kernel.currentTempo();
+    const double beats = kernel.currentLoopBeats();
+    printf("%-10s tempo=%.1f loopBeats=%.1f → loop %.2fs  (expect 96.0, 4.0, 2.50)\n",
+           "timing", t, beats, t > 0 ? beats / t * 60.0 : 0.0);
+}
+
 int main() {
     testDirection("forward", MelGenPlaybackDirectionForward);
     testDirection("backward", MelGenPlaybackDirectionBackward);
     testDirection("pingpong", MelGenPlaybackDirectionPingPong);
     testHostSync();
     testPassCounter();
+    testTimingPublication();
     return 0;
 }

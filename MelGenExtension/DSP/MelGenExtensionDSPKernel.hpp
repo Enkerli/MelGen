@@ -252,11 +252,23 @@ public:
     }
 
     void publishPassIndex(double timelineBeats) {
+        mShared.tempo.store(mTempo, std::memory_order_relaxed);
         const uint32_t seq = mShared.activeIndex.load(std::memory_order_acquire);
         const double loopLength = mSequenceLengths[seq];
         if (loopLength <= 0) { return; }
+        mShared.loopBeats.store(loopLength, std::memory_order_relaxed);
         mShared.passIndex.store((int64_t)std::floor(timelineBeats / loopLength),
                                 std::memory_order_relaxed);
+    }
+
+    /// Tempo and loop length as the render thread sees them, so the UI can say
+    /// how long a loop lasts in seconds.
+    double currentTempo() const {
+        return mShared.tempo.load(std::memory_order_relaxed);
+    }
+
+    double currentLoopBeats() const {
+        return mShared.loopBeats.load(std::memory_order_relaxed);
     }
 
     /**
@@ -442,14 +454,23 @@ public:
         /// How many complete loop passes have played (render thread writes, the
         /// UI reads it to drive auto-regeneration).
         std::atomic<int64_t> passIndex{0};
+        /// The tempo the render thread is working from, so the UI can work out
+        /// how long a loop actually lasts and whether generation fits inside one.
+        std::atomic<double> tempo{120.0};
+        /// Loop length in beats, for the same reason.
+        std::atomic<double> loopBeats{0};
 
         SharedFields() = default;
         SharedFields(const SharedFields &other)
         : activeIndex{other.activeIndex.load(std::memory_order_acquire)},
-          passIndex{other.passIndex.load(std::memory_order_acquire)} {}
+          passIndex{other.passIndex.load(std::memory_order_acquire)},
+          tempo{other.tempo.load(std::memory_order_relaxed)},
+          loopBeats{other.loopBeats.load(std::memory_order_relaxed)} {}
         SharedFields &operator=(const SharedFields &other) {
             activeIndex.store(other.activeIndex.load(std::memory_order_acquire), std::memory_order_release);
             passIndex.store(other.passIndex.load(std::memory_order_acquire), std::memory_order_release);
+            tempo.store(other.tempo.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            loopBeats.store(other.loopBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
             return *this;
         }
     };
