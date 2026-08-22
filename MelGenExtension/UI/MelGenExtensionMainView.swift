@@ -222,6 +222,37 @@ struct MelGenExtensionMainView: View {
                 .buttonStyle(.plain)
                 .disabled(!generateEnabled)
             }
+
+            // Instant, no model. Generation runs about four times slower than
+            // real time, so this is the difference between playing now and
+            // waiting half a minute.
+            Button {
+                adaptStoredLine()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Fit a stored line")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(MelodyPatterns.seed(at: state.patternCursor).name)
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.textMuted)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, MelGenMetrics.space3)
+                .frame(height: MelGenMetrics.controlHeight)
+                .foregroundStyle(theme.text)
+                .background(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .fill(theme.raised)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(state.progressionText.isEmpty)
         }
     }
 
@@ -581,9 +612,12 @@ struct MelGenExtensionMainView: View {
     private func historyDetail(_ take: GenerationRecord) -> String {
         var parts = [
             take.date.formatted(date: .omitted, time: .shortened),
-            "\(take.noteCount) notes",
-            "temp \(take.temperature.formatted(.number.precision(.fractionLength(2))))"
+            take.source.label,
+            "\(take.noteCount) notes"
         ]
+        if take.source == .model {
+            parts.append("temp \(take.temperature.formatted(.number.precision(.fractionLength(2))))")
+        }
         if take.generationSeconds > 0 {
             parts.append("\(take.generationSeconds.formatted(.number.precision(.fractionLength(1))))s")
         }
@@ -654,6 +688,55 @@ struct MelGenExtensionMainView: View {
                                lengthBeats: state.currentTake?.lengthBeats ?? 0)
     }
 
+    // MARK: - Adapting a stored line
+
+    /// Fits the next stored generic line to the current progression and plays it.
+    ///
+    /// No model, so it's instant. This is what makes the plug-in usable while
+    /// generation — measured at roughly four times slower than real time — catches
+    /// up in the background.
+    @discardableResult
+    private func adaptStoredLine(commitNow: Bool = true) -> GenerationRecord? {
+        let current = liveState
+
+        let progression: ChordProgression
+        do {
+            progression = try ChordProgression.parse(current.progressionText)
+        } catch {
+            statusMessage = error.localizedDescription
+            return nil
+        }
+
+        let pattern = MelodyPatterns.seed(at: current.patternCursor)
+        let notes = MelodyPatterns.realize(pattern, over: progression)
+        guard !notes.isEmpty else {
+            statusMessage = "That line didn't fit this progression."
+            return nil
+        }
+
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: pattern.name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .pattern,
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+
+        if commitNow {
+            commit {
+                $0.add(record)
+                $0.patternCursor += 1
+            }
+            statusMessage = "\(pattern.name) — \(pattern.summary.lowercased()), fitted to \(current.progressionText)."
+        } else {
+            commit(reloadKernel: false) { $0.patternCursor += 1 }
+        }
+        return record
+    }
+
     // MARK: - Generation
 
     /// Polls the kernel's loop counter, generates the *next* take while the
@@ -667,12 +750,14 @@ struct MelGenExtensionMainView: View {
     private func runAutoRegeneration() async {
         guard state.autoRegenerate else { return }
 
-        // Nothing to loop yet: make the first take straight away and commit it,
-        // since there's nothing playing for it to interrupt.
+        // Nothing to loop yet: fit a stored line immediately so there's music
+        // within a beat, rather than half a minute of silence while the model
+        // thinks.
         if liveState.currentTake == nil {
-            generate(auto: true)
+            adaptStoredLine()
         }
         var lastStartedPass = audioUnit?.currentPass ?? 0
+        var lastFilledPass = audioUnit?.currentPass ?? 0
 
         while !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(250))
@@ -680,8 +765,10 @@ struct MelGenExtensionMainView: View {
             guard current.autoRegenerate else { return }
             guard let pass = audioUnit?.currentPass else { continue }
 
-            // A take finished during the last loop: swap it in now that the loop
-            // has come round.
+            let due = pass >= lastStartedPass + Int64(max(1, current.regenerateEveryPasses))
+
+            // A model take finished during the last loop: it wins, so swap it in
+            // now the loop has come round.
             if let ready = pendingTake, pass > pendingReadyPass {
                 pendingTake = nil
                 commit {
@@ -690,9 +777,18 @@ struct MelGenExtensionMainView: View {
                 }
                 statusMessage = "\(ready.briefName): \(ready.noteCount) notes"
                     + timingNote(for: ready)
+                lastFilledPass = pass
+            } else if due, pass > lastFilledPass {
+                // Nothing from the model yet. Rather than repeat the same take
+                // until it arrives, fit the next stored line — instant, and it
+                // keeps the changes moving while the model works.
+                if let line = adaptStoredLine(commitNow: false) {
+                    commit { $0.add(line) }
+                    statusMessage = "\(line.briefName) (stored line) — model still working…"
+                }
+                lastFilledPass = pass
             }
 
-            let due = pass >= lastStartedPass + Int64(max(1, current.regenerateEveryPasses))
             if due, !isGenerating, pendingTake == nil {
                 lastStartedPass = pass
                 generate(auto: true, holdForLoopPoint: true)

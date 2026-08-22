@@ -73,16 +73,22 @@ So Wave 1 is "make what exists trustworthy", and it comes before everything else
 
 | # | Item | Impact | Effort | Depends on | Why now |
 |---|------|--------|--------|-----------|---------|
+| G8 | Adapt stored lines (no model) | **Critical** | L | — | ✅ **done 2026-08-22** — instant lines, so playback no longer waits on a model that runs 4× slower than real time |
 | G1 | Chunked generation (long progressions) | **Critical** | M–L | — | ✅ **done 2026-08-22** — 16 bars now generates as four phrases, and ProgGenie output works |
 | G2 | Rests | **High** | S–M | — | ✅ **done 2026-08-22** — schema field, prompt requirement, and a guaranteed breath every two bars |
 | G3 | Per-note gate | **High** | M | — | ✅ **done 2026-08-22** — derived per note from the next interval; the slider is now an amount over that shape |
-| G5 | Variety scoring (pre-curation) | **High** | M | — | Ostinato-ish takes at high temperature mean temperature isn't the variety lever we assumed. Turns 24 takes-to-audition into 24 takes-worth-keeping |
+| G5 | Variety scoring (pre-curation) | **High** | M | — | Last Wave 1 item. Matters more now that takes arrive from two sources — a scored library is how you tell a good stored line from a dull one |
 | G4 | Measure generation time | Medium | S | — | ✅ **done 2026-08-22** — recorded per take, and compared against the actual loop duration |
 | G6 | Buffer takes ahead | **High** | M | G1, G4 | ✅ **done 2026-08-22** — generates a loop ahead and swaps on the boundary |
 
-**Wave 1 is complete apart from G5 (variety scoring)**, which is independent of
-everything else and is the last thing standing between "24 takes to audition"
-and "24 takes worth keeping".
+**Wave 1 is complete, and G8 landed on top of it** — the plug-in now plays
+instantly from stored lines and uses the model to add new material rather than to
+keep up. G5 (variety scoring) is the last Wave 1 item, and it matters more now
+that takes arrive from two sources.
+
+The natural follow-on to G8 is **R1/R2**: the machinery to turn a *generated*
+take into a degree-relative pattern, which is what closes the loop — the model
+grows the library instead of producing one-offs.
 
 After that, Wave 2 opens with **U1 (piano roll)**. Its case keeps getting
 stronger: G2's rests, G3's gate shaping and D4's feels are all things you
@@ -176,7 +182,7 @@ reading the code.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| G8 | **Adapt stored lines to new harmony, without the model** | L | Raised 2026-08-22 from G4's numbers, and it reframes the architecture. Generation runs ~4× slower than real time, so the model can never be the thing that feeds continuous playback. But *adapting an existing line to new harmony is deterministic and instant* — it's R1/R2 (degree-relative patterns plus re-harmonization) applied to a seed library rather than to takes you happen to have generated. So: ship a library of generic lines, adapt them to whatever progression is loaded, and cycle through those while the model works in the background on genuinely new material. The model becomes the thing that *grows the library*, not the thing that plays. Depends on R2 (degree-relative representation) and shares everything with R1; the new part is a seed corpus and the cycling logic. This is the most valuable item on the roadmap that isn't already done. |
+| G8 | **Adapt stored lines to new harmony, without the model** | L | ✅ first cut done 2026-08-22. `MelodyPattern` describes a line in **scale degrees** rather than pitches, so the same rhythm and contour comes out consonant over any chord — degrees 0/2/4/6 of a seven-note scale are its chord tones, which is why landing on those on strong beats fits whatever the harmony turns out to be. `MelodyPatterns.realize` tiles a pattern across a progression, re-pitching every repetition against the chord under it, and folds each note into register the same way the model path does. Six seed lines ship (long tones, guide tones, arch, running eighths, syncopated, call and response). "Fit a stored line" is instant; Auto now fits a line on the first loop and on any loop where the model hasn't finished, so the changes keep moving instead of the same take repeating for half a minute. `Scripts/verify.sh patterns` checks all 24 line×progression combinations for scale membership, monophony, register, leap width, recurrence and determinism. Still to do: derive patterns *from* takes (R1), user-authored lines, and weighting rather than a plain cycle |
 | G9 | **Report the cost of a generation before running it** | S | With ~2s per note measured, expected duration is predictable from bars × notes-per-bar. Say so before starting — "about 40s for 16 bars at 5 notes/bar" — rather than leaving a spinner running for two minutes. Also lets Auto refuse a configuration it can't sustain instead of quietly falling behind. |
 
 ### Templates & Motifs
@@ -291,8 +297,8 @@ cables.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| R1 | **Apply an existing pattern to a new progression** | L | The payoff of separating pattern from harmony. A pattern's *contour and rhythm* are kept while its pitches are remapped to the new chord-scales — the machinery already exists in `MelodyGenerator.snap` and `fold`, but it needs to work from scale degrees rather than absolute pitches, which means storing patterns degree-relative (or deriving degrees on import). |
-| R2 | **Degree-relative pattern representation** | M | Prerequisite for R1. A pattern note becomes (scale degree, octave offset, chromatic alteration) against whatever chord is sounding. Also makes patterns transposable and comparable, which helps L3 and S3. |
+| R1 | **Apply an existing pattern to a new progression** | L | ✅ mechanism done 2026-08-22 as part of G8 — `MelodyPatterns.realize` does exactly this, for hand-written patterns. What's left is the *input*: converting a generated take into a degree-relative pattern so takes you like become reusable lines. That's R2, and it's now the highest-value remaining item |
+| R2 | **Degree-relative pattern representation** | M | Half done: `PatternNote` (degree, octave, alteration) is the representation, and it's proven over four progressions. The missing direction is **analysis** — given a take's absolute pitches and the progression it was generated over, infer the degrees. Mostly straightforward (pitch class against the sounding chord's scale) with one real decision: what to do with a note that isn't in the scale at all, since that's either a chromatic approach worth keeping as an alteration or a mistake worth snapping away |
 | R3 | **Fit report** | S | Some patterns don't survive re-harmonization — a pattern built on a ♯11 over a progression with no altered chords. Say so rather than silently mangling it. |
 
 ### Interface

@@ -11,8 +11,23 @@
 
 import Foundation
 
-/// One generated take. `notes` is the raw model output, before expression is
-/// applied, so changing the expression controls re-renders old takes too.
+/// Where a take's notes came from.
+enum TakeSource: String, Codable, Sendable {
+    /// Composed by the on-device model.
+    case model
+    /// A stored generic line fitted to this progression — instant, no model.
+    case pattern
+
+    var label: String {
+        switch self {
+        case .model: return "model"
+        case .pattern: return "line"
+        }
+    }
+}
+
+/// One take. `notes` is the raw output, before expression is applied, so changing
+/// the expression controls re-renders old takes too.
 struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     var id: UUID = UUID()
     var date: Date = Date()
@@ -31,6 +46,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     var generationSeconds: Double = 0
     /// How many model requests this take needed (one per 4-bar phrase).
     var requestCount: Int = 1
+    var source: TakeSource = .model
     var lengthBeats: Double
     var notes: [SequencedNote]
 
@@ -50,6 +66,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         generationSeconds = try container.decodeIfPresent(Double.self, forKey: .generationSeconds) ?? 0
         requestCount = try container.decodeIfPresent(Int.self, forKey: .requestCount) ?? 1
+        source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -63,6 +80,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          durationPalette: DurationPalette = .mixed,
          generationSeconds: Double = 0,
          requestCount: Int = 1,
+         source: TakeSource = .model,
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -74,6 +92,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.durationPalette = durationPalette
         self.generationSeconds = generationSeconds
         self.requestCount = requestCount
+        self.source = source
         self.lengthBeats = lengthBeats
         self.notes = notes
     }
@@ -195,6 +214,8 @@ struct MelGenState: Codable, Sendable {
 
     /// Rotates through the style briefs so successive takes differ.
     var briefCursor: Int = 0
+    /// Rotates through the stored generic lines, for the same reason.
+    var patternCursor: Int = 0
 
     /// Newest first. The take at `currentTakeID` is the one loaded in the kernel.
     var history: [GenerationRecord] = []
@@ -215,6 +236,7 @@ struct MelGenState: Codable, Sendable {
         autoRegenerate = try container.decodeIfPresent(Bool.self, forKey: .autoRegenerate) ?? false
         regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses) ?? 1
         briefCursor = try container.decodeIfPresent(Int.self, forKey: .briefCursor) ?? 0
+        patternCursor = try container.decodeIfPresent(Int.self, forKey: .patternCursor) ?? 0
         history = try container.decodeIfPresent([GenerationRecord].self, forKey: .history) ?? []
         currentTakeID = try container.decodeIfPresent(UUID.self, forKey: .currentTakeID)
     }
@@ -286,10 +308,13 @@ extension MelGenState {
         return try decoder.decode(MelGenHistoryExport.self, from: data)
     }
 
-    /// A filename that sorts and reads well in Files.
+    /// A filename that sorts, reads well in Files, and — because exporting twice
+    /// in a day is normal — doesn't collide with the last one.
     func historyExportFilename(now: Date = Date()) -> String {
-        let stamp = ISO8601DateFormatter()
-        stamp.formatOptions = [.withYear, .withMonth, .withDay, .withDashSeparatorInDate]
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.timeZone = .current
+        stamp.dateFormat = "yyyy-MM-dd-HHmmss"
         return "MelGen-history-\(stamp.string(from: now)).json"
     }
 }

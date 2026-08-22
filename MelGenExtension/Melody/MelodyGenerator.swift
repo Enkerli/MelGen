@@ -256,10 +256,9 @@ enum MelodyGenerator {
     /// result readable as a single line without altering its pitch classes.
     static func fold(pitch: Int, near previous: Int?) -> Int {
         guard let previous else { return pitch }
-        var folded = pitch
-        while folded - previous > 12, folded - 12 >= 0 { folded -= 12 }
-        while previous - folded > 12, folded + 12 <= 127 { folded += 12 }
-        return folded
+        // Shared with the pattern path so a generated line and an adapted one are
+        // folded into register by exactly the same rule.
+        return MelodyGeneratorSupport.fold(pitch: pitch, near: previous)
     }
 
     /// Keeps a pitch that already fits the chord's scale, and otherwise moves it

@@ -291,6 +291,23 @@ check("export filename is dated and sortable",
       exportable.historyExportFilename().hasPrefix("MelGen-history-")
       && exportable.historyExportFilename().hasSuffix(".json"),
       exportable.historyExportFilename())
+// Exporting twice in a day is normal, so the name carries the time too.
+let earlier = exportable.historyExportFilename(now: Date(timeIntervalSince1970: 1_700_000_000))
+let later = exportable.historyExportFilename(now: Date(timeIntervalSince1970: 1_700_000_007))
+check("two exports the same day don't collide", earlier != later, "\(earlier) vs \(later)")
+
+// A take's source is recorded, so the log distinguishes an adapted line from a
+// generated one.
+var mixed = MelGenState()
+mixed.add(GenerationRecord(progressionText: "C∆", temperature: 0.5, briefName: "Arch",
+                           source: .pattern, lengthBeats: 4, notes: raw))
+let mixedDecoded = try JSONDecoder().decode(MelGenState.self, from: try JSONEncoder().encode(mixed))
+check("take source round-trips", mixedDecoded.currentTake?.source == .pattern)
+check("takes from before sources existed read as model-generated", {
+    let old = #"{"progressionText":"C","temperature":0.5,"history":[{"progressionText":"C","temperature":0.5,"briefName":"x","lengthBeats":4,"notes":[]}]}"#
+    return (try? JSONDecoder().decode(MelGenState.self, from: Data(old.utf8)))?
+        .history.first?.source == .model
+}())
 
 // 12. Note duration is a separate axis from gate length, and round-trips.
 check("duration palette defaults to mixed", MelGenState().durationPalette == .mixed)
