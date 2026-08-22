@@ -208,6 +208,37 @@ if let legacy = try? JSONDecoder().decode(MelGenState.self, from: Data(legacyJSO
     check("older saved state still decodes", false, "threw")
 }
 
+// 11b. Density must not ask for more notes than an eighth-note bar has slots.
+// Asking for 9-14 notes in an 8-slot bar is what made rests impossible.
+let perBar = [0.0, 0.25, 0.5, 0.75, 1.0].map { MelodyExpression.notesPerBar(forDensity: $0) }
+check("density never exceeds the 8 eighths in a bar", perBar.allSatisfy { $0 <= 8 },
+      "\(perBar)")
+check("the default density leaves room for rests",
+      MelodyExpression.notesPerBar(forDensity: 0.5) <= 6,
+      "\(MelodyExpression.notesPerBar(forDensity: 0.5)) notes in an 8-slot bar")
+check("density still spans a useful range", perBar.first! < perBar.last!, "\(perBar)")
+
+// 11c. Notation: rests and note lengths have to be readable.
+let notated: [SequencedNote] = [
+    SequencedNote(note: 60, velocity: 90, startBeat: 0.0, durationBeats: 1.0),  // 2 eighths
+    SequencedNote(note: 64, velocity: 90, startBeat: 1.0, durationBeats: 0.5),
+    // beat 1.5-3.0 is silent: a phrase rest
+    SequencedNote(note: 67, velocity: 90, startBeat: 3.0, durationBeats: 1.0),
+]
+let rows = MelodyNotation.bars(for: notated, lengthBeats: 4)
+check("notation renders one row per bar", rows.count == 1, "\(rows.count) rows")
+if let row = rows.first {
+    check("a rest gets its own symbol", row.contains(MelodyNotation.rest), row)
+    check("a held note shows a sustain mark", row.contains(MelodyNotation.sustain), row)
+    check("note names appear at their onsets",
+          row.contains("C4") && row.contains("E4") && row.contains("G4"), row)
+}
+let notationSummary = MelodyNotation.summary(for: notated, lengthBeats: 4)
+check("summary counts the rests", notationSummary.contains("1 rest"), notationSummary)
+check("summary reports a gate range", notationSummary.contains("gate"), notationSummary)
+check("empty take reads as empty",
+      MelodyNotation.summary(for: [], lengthBeats: 4) == "No notes yet.")
+
 // 12. Note duration is a separate axis from gate length, and round-trips.
 check("duration palette defaults to mixed", MelGenState().durationPalette == .mixed)
 var withPalette = MelGenState()

@@ -72,6 +72,19 @@ enum MelodyExpression {
                      lengthBeats: lengthBeats)
     }
 
+    /// Notes per bar asked of the model for a density setting: a bare motif at 0,
+    /// a running line of eighths at 1.
+    ///
+    /// The ceiling is 8 because a 4/4 bar *has* 8 eighth slots. The old mapping
+    /// topped out at 14, so anything above the midpoint asked for more notes than
+    /// there was room for — which is why asking for rests in the same prompt
+    /// never produced any. The default (0.5 → 5) leaves three eighths of the bar
+    /// free, which is what phrasing is made of.
+    static func notesPerBar(forDensity density: Double) -> Int {
+        let clamped = min(max(density, 0), 1)
+        return Int((2 + clamped * 6).rounded())
+    }
+
     /// Drops notes to bring a take down to the requested density, which is how
     /// rests appear. Weakest positions go first — offbeats before beats,
     /// shortest before longest — and the first note is always kept so the line
@@ -244,10 +257,13 @@ enum MelodyExpression {
     /// generated line sound machine-made. So every two bars that contains no gap
     /// worth hearing gets one, by dropping its least structurally important note
     /// — the same ranking density thinning uses.
+    /// - Parameter minimumRest: a gap has to be a beat to read as a phrase
+    ///   ending. Half a beat is 250ms at 120bpm — a hiccup, not a breath, which
+    ///   is why the first attempt at this wasn't audible.
     static func ensureBreathing(_ notes: [SequencedNote],
                                 totalBeats: Double,
                                 windowBeats: Double = 8,
-                                minimumRest: Double = 0.5) -> [SequencedNote] {
+                                minimumRest: Double = 1.0) -> [SequencedNote] {
         guard notes.count > 2, totalBeats > 0 else { return notes }
 
         var kept = notes

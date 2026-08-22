@@ -93,7 +93,7 @@ is the only way to see whether the rests and the gate shape land where intended.
 
 | # | Item | Impact | Effort | Depends on | Why |
 |---|------|--------|--------|-----------|-----|
-| U1 | Piano-roll display | **High** | L | — | Gate, rests and variety are all invisible as text — and Wave 1 changes exactly those things |
+| U1 | Piano-roll display | **High** | L | — | Now the top of Wave 2. The text grid (F19) made rests and note lengths readable, but sub-eighth gate shaping still isn't visible, and D4 (feels) can't be chosen without seeing what it does |
 | N1 | Probe multi-cable input | Medium | S | — | An afternoon that decides the shape of all input routing |
 | T1/T2 | Template selection, cycle vs randomize | Medium | S | — | Cheap, and pairs with G5: choosing templates is manual variety control where scoring is automatic |
 | X1/X2 | MIDI export and drag-out | **High** | M | — | Nothing leaves the plug-in today except live MIDI. Independent of everything else |
@@ -135,6 +135,8 @@ prototyping only once Wave 1 means a single take is reliably good.
 | F15 | **"Still downloading" is a lie in the Simulator** — Foundation Models reports `.modelNotReady` there and never becomes ready | Trivial | ✅ fixed 2026-08-22 — `targetEnvironment(simulator)` branch says so plainly |
 | F16 | **Host app title read "aumi MlGn Enke"** — three four-character codes run together | Trivial | ✅ fixed 2026-08-22 — separated with `·` |
 | F17 | **Host app uses a deprecated AU accessor** | Trivial | Open — `AudioUnitHostModel.swift:108` uses `auAudioUnit`, deprecated in iOS 27 in favour of `withAUAudioUnit`. Template code, host app only, doesn't affect the plug-in |
+| F18 | **Density asked for more notes than the bar has slots** — so rests were impossible no matter what the prompt said | Trivial | ✅ fixed 2026-08-22. A 4/4 bar has 8 eighth slots; the mapping ran 3→14 notes/bar, so the *default* of 0.5 asked for 8 (every slot) and anything above it asked for the impossible. Now 2→8, default 5. This, not the rest logic, is why G2 wasn't audible |
+| F19 | **A take's notation showed neither rests nor note lengths** — "note@beat" pairs made a line with rests look identical to one without | S | ✅ fixed 2026-08-22 — `MelodyNotation` renders a bar-per-row grid, one column per eighth, with a symbol for a rest and one for a sustained note, plus a summary line carrying the rest count and the actual gate range |
 | F11 | **Generation errors are all reported the same way** | S | Open — `exceededContextWindowSize`, `rateLimited` and `guardrailViolation` all surface as "Generation failed: …". The context one especially deserves "that progression is too long, try 8 bars" |
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
@@ -185,7 +187,7 @@ to become first-class, selectable things.
 | D1 | **Finer grid — 16ths and triplets** | L | The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
 | D2 | **Duration patterns beyond pairs** | M | Long–short and short–long are pair figures. Real rhythmic identity often lives in longer cells (3+3+2). Express as a selectable cell that the model is asked to repeat and vary. Related: T5. |
 | D3 | **Per-note gate** | M | Promoted to Wave 1 as **G3** — playing it confirmed a single number can't give staccato notes with legato transitions. |
-| D4 | **Groove templates** | M | Swing is a single number applied to offbeat eighths. A groove template (per-position timing and velocity offsets) generalizes it and would be shareable with the rest of the suite. |
+| D4 | **Feel presets** | L | Raised 2026-08-22, and probably the right answer to "I'm unclear on the gate variability". Accents, swing, gate shape, gate *variability* and micro-timing are five knobs describing one thing: a feel. Named feels (straight, swung, laid back, pushed, clipped funk, rubato) would bundle them, with the individual sliders demoted to an advanced disclosure — you pick a feel and adjust, rather than assembling one from five numbers. Needs: a per-feel curve for each axis, a variability amount per axis (currently the gate shape's spread is fixed), and micro-timing beyond the current uniform jitter — probably per-metric-position offsets, which is also what a groove template is. Shareable with the rest of the suite. Do it *after* U1: choosing between feels you can't see is guesswork |
 
 ### Polyphony & Comping
 

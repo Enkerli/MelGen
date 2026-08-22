@@ -79,6 +79,9 @@ run_state() {
     cp "$REPO/Scripts/tests/state-expression-main.swift" "$BUILD/main.swift"
     swiftc -O "$MELODY/MelodyModels.swift" "$MELODY/MelGenState.swift" \
         "$MELODY/MelodyExpression.swift" "$MELODY/StyleBriefs.swift" \
+        "$MELODY/MelodyNotation.swift" "$MELODY/ChordDictionary.swift" \
+        "$MELODY/ChordDictionary+Generated.swift" "$MELODY/ChordScale.swift" \
+        "$MELODY/ChordParser.swift" \
         "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
     "$BUILD/state" || status=1
 }

@@ -102,13 +102,6 @@ enum MelodyGenerator {
         return sequence(from: collected, progression: progression)
     }
 
-    /// Notes per bar asked of the model for a density setting: sparse enough to
-    /// be a motif at 0, a running line at 1.
-    static func notesPerBar(forDensity density: Double) -> Int {
-        let clamped = min(max(density, 0), 1)
-        return Int((3 + clamped * 11).rounded())
-    }
-
     // MARK: - Prompt construction
 
     static func instructions(examples: [PatternExample]) -> String {
@@ -186,7 +179,7 @@ enum MelodyGenerator {
         lines.append("")
         lines.append(brief.text)
         lines.append("")
-        lines.append("Density: aim for about \(notesPerBar(forDensity: density)) notes per bar, "
+        lines.append("Density: aim for about \(MelodyExpression.notesPerBar(forDensity: density)) notes per bar, "
                      + "counting rests as part of the phrasing rather than padding with notes.")
         lines.append("")
         lines.append(durationPalette.promptText)

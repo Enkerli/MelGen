@@ -308,7 +308,7 @@ struct MelGenExtensionMainView: View {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
                                value: binding(\.expression.density), theme: theme,
-                               format: { "\(MelodyGenerator.notesPerBar(forDensity: $0))/bar" })
+                               format: { "\(MelodyExpression.notesPerBar(forDensity: $0))/bar" })
 
                 LabelledSlider(title: "Temperature", lowLabel: "expected", highLabel: "surprising",
                                value: binding(\.temperature, reloadKernel: false), theme: theme)
@@ -331,7 +331,7 @@ struct MelGenExtensionMainView: View {
     }
 
     private var shapeSummary: String {
-        "\(MelodyGenerator.notesPerBar(forDensity: state.expression.density))/bar · "
+        "\(MelodyExpression.notesPerBar(forDensity: state.expression.density))/bar · "
         + state.durationPalette.label.lowercased()
     }
 
@@ -345,12 +345,22 @@ struct MelGenExtensionMainView: View {
                            isExpanded: binding(\.showFeel, reloadKernel: false),
                            theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                // The three sliders own three separate things, which isn't
+                // obvious from their names alone.
+                Text("Three separate things: Gate is note length, Expression is "
+                     + "velocity and timing, Swing shifts offbeats.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 VStack(alignment: .leading, spacing: 2) {
                     LabelledSlider(title: "Gate length", lowLabel: "staccato", highLabel: "legato",
                                    value: binding(\.expression.noteLength), theme: theme)
-                    Text("Shaped per note — steps connect, leaps detach. Rests are kept.")
+                    Text("Shaped per note: steps connect, leaps and repeats detach. "
+                         + "Rests are never filled in. See the gate range under Current take.")
                         .font(.system(size: 11))
                         .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 LabelledSlider(title: "Expression", lowLabel: "flat", highLabel: "shaped",
@@ -374,16 +384,29 @@ struct MelGenExtensionMainView: View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             Eyebrow(text: "Current take", theme: theme)
 
-            Text(melodySummary)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(theme.textSecondary)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(MelGenMetrics.space2)
-                .background(
-                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                        .fill(theme.raised)
-                )
+            VStack(alignment: .leading, spacing: 4) {
+                // A grid, not a run of note names: one column per eighth, so
+                // rests and note lengths are visible rather than inferred.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(Array(takeBars.enumerated()), id: \.offset) { _, row in
+                            Text(row)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(theme.text)
+                        }
+                    }
+                }
+
+                Text(takeSummary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(MelGenMetrics.space2)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
 
             if let take = state.currentTake {
                 let saved = savedExampleIDs.contains(take.id)
@@ -529,13 +552,14 @@ struct MelGenExtensionMainView: View {
         )
     }
 
-    private var melodySummary: String {
-        let melody = state.renderedMelody
-        guard !melody.isEmpty else { return "No notes yet." }
-        return melody.map { note in
-            "\(ChordProgression.noteName(forMIDINote: Int(note.note)))@\(note.startBeat.formatted(.number.precision(.fractionLength(0...1))))"
-        }
-        .joined(separator: " ")
+    private var takeBars: [String] {
+        MelodyNotation.bars(for: state.renderedMelody,
+                            lengthBeats: state.currentTake?.lengthBeats ?? 0)
+    }
+
+    private var takeSummary: String {
+        MelodyNotation.summary(for: state.renderedMelody,
+                               lengthBeats: state.currentTake?.lengthBeats ?? 0)
     }
 
     // MARK: - Generation
