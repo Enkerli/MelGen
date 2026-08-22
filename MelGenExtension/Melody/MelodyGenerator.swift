@@ -133,10 +133,16 @@ enum MelodyGenerator {
         its root: approach it by a semitone or whole tone, from above or below.
         - Keep the whole line inside about a twelfth, so it reads as one voice.
 
+        Rests are required, not optional. A line with no silence in it is wrong:
+        - Every two bars must contain at least one rest of two eighths or more. Set \
+        restAfterEighths on the note that ends each phrase; leave it 0 elsewhere.
+        - Phrases are two to four bars long. End one, breathe, start the next.
+        - A rest before a strong beat is worth more than a note on it.
+
         Rhythm — never write an unbroken run of equal note lengths:
         - Mix durations freely: 1, 2, 3, 4 and 6 eighths, and let notes tie across beats.
         - Syncopate: start some phrases on an odd eighth (an offbeat) rather than on the beat.
-        - Leave rests between phrases, and let a phrase end on a long note.
+        - Let a phrase end on a long note.
 
         - Notes must not overlap: each note starts at or after the previous note ends.
 
@@ -215,7 +221,17 @@ enum MelodyGenerator {
             var lengthEighths = min(note.lengthEighths, totalEighths - note.startEighth)
             // Monophonic: truncate at the next note's start.
             if index + 1 < notes.count {
-                lengthEighths = min(lengthEighths, notes[index + 1].startEighth - note.startEighth)
+                let slot = notes[index + 1].startEighth - note.startEighth
+                lengthEighths = min(lengthEighths, slot)
+
+                // Honour the rest the model asked for, but never at the cost of
+                // more than half the note: a model that asks for four eighths of
+                // silence after a one-eighth note means "end the phrase here",
+                // not "delete the note".
+                let requested = max(0, min(note.restAfterEighths, slot))
+                if requested > 0 {
+                    lengthEighths = min(lengthEighths, max(slot - requested, (slot + 1) / 2))
+                }
             }
             guard lengthEighths > 0 else { continue }
 
@@ -236,7 +252,7 @@ enum MelodyGenerator {
                 durationBeats: Double(lengthEighths) / 2
             ))
         }
-        return result
+        return MelodyExpression.ensureBreathing(result, totalBeats: progression.totalBeats)
     }
 
     /// Transposes a pitch by octaves until it sits within an octave of its

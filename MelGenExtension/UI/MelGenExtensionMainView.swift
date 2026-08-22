@@ -345,8 +345,13 @@ struct MelGenExtensionMainView: View {
                            isExpanded: binding(\.showFeel, reloadKernel: false),
                            theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                LabelledSlider(title: "Gate length", lowLabel: "staccato", highLabel: "legato",
-                               value: binding(\.expression.noteLength), theme: theme)
+                VStack(alignment: .leading, spacing: 2) {
+                    LabelledSlider(title: "Gate length", lowLabel: "staccato", highLabel: "legato",
+                                   value: binding(\.expression.noteLength), theme: theme)
+                    Text("Shaped per note — steps connect, leaps detach. Rests are kept.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                }
 
                 LabelledSlider(title: "Expression", lowLabel: "flat", highLabel: "shaped",
                                value: binding(\.expression.amount), theme: theme)

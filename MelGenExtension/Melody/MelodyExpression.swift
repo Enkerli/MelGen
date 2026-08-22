@@ -56,11 +56,10 @@ enum MelodyExpression {
             let jitter = (random.nextUnit() - 0.5) * 0.02 * amount
             start = max(0, start + jitter)
 
-            // Articulation: short notes get more air than long ones, so the
-            // line breathes instead of running together.
-            let gapFraction = duration <= 0.5 ? 0.22 : (duration <= 1.0 ? 0.12 : 0.05)
-            duration *= 1 - gapFraction * amount
-
+            // Note that Expression deliberately doesn't touch duration. Gate owns
+            // it: shortening here as well would double-count, and it would also
+            // widen the gaps that `applyGate` reads to tell a rest from
+            // articulation space, inventing rests that were never written.
             shaped.append(SequencedNote(
                 note: note.note,
                 velocity: velocity(for: note, at: start, index: index, amount: amount, random: &random),
@@ -69,7 +68,7 @@ enum MelodyExpression {
             ))
         }
 
-        return clean(applyNoteLength(to: shaped, noteLength: settings.noteLength),
+        return clean(applyGate(to: shaped, setting: settings.noteLength),
                      lengthBeats: lengthBeats)
     }
 
@@ -101,7 +100,9 @@ enum MelodyExpression {
         return notes.indices.filter { !dropped.contains($0) }.map { notes[$0] }
     }
 
-    /// Higher is more structurally important, so less droppable. The tiers match
+    /// Higher is more structurally important, so less droppable. Shared by
+    /// density thinning and the breathing guarantee, so both agree about which
+    /// note matters least. The tiers match
     /// the accent hierarchy in `velocity(for:...)`: the downbeat carries the bar,
     /// beat 3 is the secondary strong beat, then the remaining beats, then
     /// offbeats. Without the separate beat-3 tier, thinning drops the middle of
@@ -114,26 +115,75 @@ enum MelodyExpression {
         return 1                                                              // offbeat
     }
 
-    /// Staccato below the midpoint, as written at it, legato above: at 1 each
-    /// note runs right up to the next one.
-    private static func applyNoteLength(to notes: [SequencedNote], noteLength: Double) -> [SequencedNote] {
-        let setting = min(max(noteLength, 0), 1)
-        guard abs(setting - 0.5) > 0.001 else { return notes }
+    /// A gap of at least this much is a rest — part of the phrasing — rather than
+    /// articulation space between two notes of the same phrase.
+    static let restThreshold: Double = 0.5
+
+    /// Gate length, shaped per note.
+    ///
+    /// A single number can't give staccato notes *and* legato transitions, which
+    /// is the combination that makes a line sound played rather than stepped. So
+    /// each note gets a target gate from what happens next — stepwise motion
+    /// connects, leaps detach, a repeated pitch must detach or you can't hear two
+    /// notes — and the control becomes an *amount* applied to that shape: 0.5
+    /// takes the shape as derived, 0 clips everything, 1 pushes toward full
+    /// legato. Same structure as Expression, which shapes velocity the same way.
+    ///
+    /// Rests are protected. Extending into a real rest would undo the phrasing
+    /// the model was asked for, so a note followed by one keeps its written
+    /// length as the ceiling; only notes separated by articulation-sized gaps
+    /// can reach the next note.
+    private static func applyGate(to notes: [SequencedNote], setting: Double) -> [SequencedNote] {
+        let amount = min(max(setting, 0), 1)
 
         return notes.enumerated().map { index, note in
             var note = note
-            if setting < 0.5 {
-                // 0 → a quarter of the written length, 0.5 → unchanged.
-                let scale = 0.25 + (setting / 0.5) * 0.75
-                note.durationBeats = max(note.durationBeats * scale, 0.05)
-            } else if index + 1 < notes.count {
-                let gap = notes[index + 1].startBeat - note.startBeat
-                if gap > note.durationBeats {
-                    let reach = (setting - 0.5) / 0.5
-                    note.durationBeats += (gap - note.durationBeats) * reach
-                }
+            let written = note.durationBeats
+
+            let available: Double
+            let target: Double
+            if index + 1 < notes.count {
+                let next = notes[index + 1]
+                let slot = next.startBeat - note.startBeat
+                let gap = next.startBeat - (note.startBeat + written)
+                // A real rest caps the note at its written length; otherwise the
+                // note may reach all the way to the next one.
+                available = gap >= restThreshold - 0.001 ? min(written, slot) : slot
+                target = gapTarget(from: Int(note.note), to: Int(next.note))
+            } else {
+                available = written
+                target = 0.85
             }
+
+            // 0.5 uses the derived target; below scales it down toward a clip,
+            // above pushes it up toward filling the space.
+            var ratio: Double = amount < 0.5
+                ? target * (0.25 + (amount / 0.5) * 0.75)
+                : target + (1 - target) * ((amount - 0.5) / 0.5)
+
+            // A repeated pitch never fills its slot, whatever the setting asks
+            // for: without a gap the second note-on lands the instant the first
+            // note-off does, and most synths render that as one held note rather
+            // than two. Legato between two of the same note isn't legato, it's a
+            // missing note.
+            if index + 1 < notes.count, notes[index + 1].note == note.note {
+                ratio = min(ratio, 0.85)
+            }
+
+            note.durationBeats = max(available * ratio, 0.05)
             return note
+        }
+    }
+
+    /// How much of its slot a note should sound, given the move to the next one.
+    private static func gapTarget(from pitch: Int, to nextPitch: Int) -> Double {
+        let interval = abs(nextPitch - pitch)
+        switch interval {
+        case 0:      return 0.55   // repeated pitch: needs a clear break
+        case 1...2:  return 0.95   // step: connect
+        case 3...4:  return 0.85
+        case 5...7:  return 0.75
+        default:     return 0.65   // wide leap: detach
         }
     }
 
@@ -186,6 +236,50 @@ enum MelodyExpression {
             result.append(note)
         }
         return result
+    }
+    /// Guarantees the line comes up for air.
+    ///
+    /// Asking for rests in the prompt and in the schema both help, but neither is
+    /// a guarantee, and a wall of notes is the single thing that makes a
+    /// generated line sound machine-made. So every two bars that contains no gap
+    /// worth hearing gets one, by dropping its least structurally important note
+    /// — the same ranking density thinning uses.
+    static func ensureBreathing(_ notes: [SequencedNote],
+                                totalBeats: Double,
+                                windowBeats: Double = 8,
+                                minimumRest: Double = 0.5) -> [SequencedNote] {
+        guard notes.count > 2, totalBeats > 0 else { return notes }
+
+        var kept = notes
+        var windowStart = 0.0
+        while windowStart < totalBeats - 0.001 {
+            let windowEnd = min(windowStart + windowBeats, totalBeats)
+            let indices = kept.indices.filter {
+                kept[$0].startBeat >= windowStart - 0.001 && kept[$0].startBeat < windowEnd - 0.001
+            }
+            // One note in a window is already mostly silence.
+            guard indices.count > 2 else {
+                windowStart = windowEnd
+                continue
+            }
+
+            let breathes = indices.contains { index in
+                let note = kept[index]
+                let nextStart = index + 1 < kept.count ? kept[index + 1].startBeat : windowEnd
+                return nextStart - (note.startBeat + note.durationBeats) >= minimumRest - 0.001
+            }
+            if !breathes, let weakest = indices.dropFirst().min(by: {
+                let left = metricWeight(kept[$0])
+                let right = metricWeight(kept[$1])
+                return left == right ? kept[$0].durationBeats < kept[$1].durationBeats : left < right
+            }) {
+                kept.remove(at: weakest)
+                // Re-examine this window: removing a note may not have been enough.
+                continue
+            }
+            windowStart = windowEnd
+        }
+        return kept
     }
 }
 

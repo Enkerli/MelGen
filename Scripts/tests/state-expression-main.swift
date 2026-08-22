@@ -110,7 +110,7 @@ check("thinning keeps the downbeats",
       thinned.contains { abs($0.startBeat - 0.0) < 1e-9 }
       && thinned.contains { abs($0.startBeat - 2.0) < 1e-9 })
 
-// 9. Note length: staccato shortens, legato runs each note into the next.
+// 9. Gate length (G3): shaped per note, and rests survive legato (G2).
 state.expression = ExpressionSettings(amount: 0, swing: 0, noteLength: 0, density: 0.5)
 let staccato = state.renderedMelody
 check("staccato shortens every note",
@@ -118,16 +118,75 @@ check("staccato shortens every note",
 
 state.expression = ExpressionSettings(amount: 0, swing: 0, noteLength: 1, density: 0.5)
 let legato = state.renderedMelody
-let gaps = zip(legato, legato.dropFirst()).map {
-    $1.startBeat - ($0.startBeat + $0.durationBeats)
-}
-check("legato closes the gaps between consecutive notes",
-      gaps.allSatisfy { abs($0) < 1e-9 },
-      "largest gap \((gaps.map { abs($0) }.max() ?? 0))")
-check("legato still doesn't overlap",
+check("legato never overlaps the next note",
       zip(legato, legato.dropFirst()).allSatisfy {
           $0.startBeat + $0.durationBeats <= $1.startBeat + 1e-9
       })
+// The raw take runs notes back to back through beat 4, then rests until 7.5.
+let articulationGaps = zip(legato, legato.dropFirst())
+    .filter { $1.startBeat - ($0.startBeat + $0.durationBeats) < MelodyExpression.restThreshold }
+check("legato closes articulation-sized gaps",
+      articulationGaps.allSatisfy {
+          abs($1.startBeat - ($0.startBeat + $0.durationBeats)) < 1e-9
+      },
+      "\(articulationGaps.count) connected")
+// Note 4 (start 2.5, written 1.5, ends 4.0) is followed by a rest until 7.5.
+if let beforeRest = legato.first(where: { abs($0.startBeat - 2.5) < 0.01 }) {
+    check("legato does not swallow a rest",
+          beforeRest.durationBeats <= 1.5 + 1e-9,
+          "held \(beforeRest.durationBeats) of the 5.0 beats available")
+} else {
+    check("legato does not swallow a rest", false, "note not found")
+}
+
+// Gate is derived from what happens next: a step connects, a wide leap detaches,
+// and a repeated pitch must break or you can't hear two notes.
+let shapeProbe: [SequencedNote] = [
+    SequencedNote(note: 60, velocity: 90, startBeat: 0.0, durationBeats: 0.5),   // step up
+    SequencedNote(note: 62, velocity: 90, startBeat: 0.5, durationBeats: 0.5),   // wide leap
+    SequencedNote(note: 74, velocity: 90, startBeat: 1.0, durationBeats: 0.5),   // repeat
+    SequencedNote(note: 74, velocity: 90, startBeat: 1.5, durationBeats: 0.5),
+    SequencedNote(note: 72, velocity: 90, startBeat: 2.0, durationBeats: 0.5),
+]
+var probeState = MelGenState()
+probeState.add(GenerationRecord(progressionText: "C∆", temperature: 0.5,
+                                briefName: "probe", lengthBeats: 4, notes: shapeProbe))
+probeState.expression = ExpressionSettings(amount: 0, swing: 0, noteLength: 0.5, density: 0.5)
+let shaped2 = probeState.renderedMelody
+if shaped2.count >= 4 {
+    check("a step is held longer than a wide leap",
+          shaped2[0].durationBeats > shaped2[1].durationBeats,
+          "step \(shaped2[0].durationBeats) vs leap \(shaped2[1].durationBeats)")
+    check("a repeated pitch gets the shortest gate",
+          shaped2[2].durationBeats < shaped2[0].durationBeats,
+          "repeat \(shaped2[2].durationBeats) vs step \(shaped2[0].durationBeats)")
+    check("even at full legato a repeated pitch still breaks", {
+        probeState.expression = ExpressionSettings(amount: 0, swing: 0, noteLength: 1, density: 0.5)
+        let full = probeState.renderedMelody
+        return full.count > 3 && full[2].durationBeats < 0.5 - 1e-9
+    }())
+} else {
+    check("gate shape probe produced notes", false, "\(shaped2.count) notes")
+}
+
+// 9b. The breathing guarantee (G2): a wall of notes gains a rest.
+let wall = (0..<16).map {
+    SequencedNote(note: UInt8(60 + $0 % 5), velocity: 90,
+                  startBeat: Double($0) * 0.5, durationBeats: 0.5)
+}
+let breathing = MelodyExpression.ensureBreathing(wall, totalBeats: 8)
+check("a wall-to-wall line gains a rest", breathing.count < wall.count,
+      "\(breathing.count) of \(wall.count) notes kept")
+let breathingGaps = zip(breathing, breathing.dropFirst()).map {
+    $1.startBeat - ($0.startBeat + $0.durationBeats)
+}
+check("the gap it opens is audible",
+      (breathingGaps.max() ?? 0) >= 0.5 - 1e-9,
+      "largest gap \(breathingGaps.max() ?? 0)")
+check("breathing keeps the first note",
+      breathing.first?.startBeat == wall.first?.startBeat)
+check("a line that already breathes is left alone",
+      MelodyExpression.ensureBreathing(raw, totalBeats: 8).count == raw.count)
 
 // 10. Appearance defaults to light and survives the round trip.
 check("appearance defaults to light", MelGenState().appearance == .light)
