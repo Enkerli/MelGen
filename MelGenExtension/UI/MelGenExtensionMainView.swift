@@ -324,7 +324,81 @@ struct MelGenExtensionMainView: View {
             // The fourth source, and the only one that sounds like this
             // musician: slot statistics over the takes they kept, sampled.
             sampleStyleButton
+
+            modeRow
         }
+    }
+
+    /// Line or chords, and — when it's chords — which figure.
+    private var modeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ChipPicker(options: PlayMode.allCases.map { ($0, $0.label) },
+                       selection: binding(\.mode, reloadKernel: false),
+                       theme: theme)
+                .frame(maxWidth: 240)
+
+            Text(state.mode.explanation)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+
+            if state.mode == .comping {
+                FlowChips(items: CompingFigure.all.map(\.name),
+                          isSelected: { $0 == state.compingFigureName },
+                          theme: theme) { name in
+                    commit(reloadKernel: false) { $0.compingFigureName = name }
+                }
+                Text(CompingFigure.named(state.compingFigureName).summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    compChanges()
+                } label: {
+                    findLabel("Comp the changes", systemImage: "pianokeys")
+                }
+                .buttonStyle(.plain)
+                .disabled(state.progressionText.isEmpty)
+            }
+        }
+    }
+
+    /// Lays voicings under the progression and plays them.
+    ///
+    /// No model involved, and none wanted: comping is a voicing policy and a
+    /// rhythm, both of which are decisions rather than guesses.
+    private func compChanges() {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else {
+            statusMessage = "That progression doesn't parse."
+            return
+        }
+        let figure = CompingFigure.named(current.compingFigureName)
+        let notes = MelodyComping.comp(progression,
+                                       figure: figure,
+                                       seed: UInt64(bitPattern: Int64(current.patternCursor &* 2_246_822_519)))
+        guard !notes.isEmpty else {
+            statusMessage = "Nothing to comp — check the progression."
+            return
+        }
+
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: "\(figure.name) · \(figure.style.label)",
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .comping,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+        commit {
+            $0.add(record)
+            $0.patternCursor += 1
+        }
+        statusMessage = "\(figure.name): \(notes.count) notes, up to "
+            + "\(MelodyComping.maximumPolyphony(of: notes)) voices. \(figure.summary)."
     }
 
     @ViewBuilder

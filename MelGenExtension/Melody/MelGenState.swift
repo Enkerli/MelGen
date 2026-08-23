@@ -33,6 +33,8 @@ enum TakeSource: String, Codable, Sendable {
     case mutated
     /// Played in. The only source that didn't come from this plug-in at all.
     case captured
+    /// Chords rather than a line.
+    case comping
 
     var label: String {
         switch self {
@@ -43,6 +45,7 @@ enum TakeSource: String, Codable, Sendable {
         case .chained: return "chained"
         case .mutated: return "variant"
         case .captured: return "played"
+        case .comping: return "comp"
         }
     }
 }
@@ -285,6 +288,16 @@ struct MelGenState: Codable, Sendable {
     var durationPalette: DurationPalette = .mixed
     var expression = ExpressionSettings()
 
+    /// Line or chords.
+    ///
+    /// Explicit and visible because the *receiving instrument* differs: a mono
+    /// synth handed comping chords plays whichever note wins its note-priority
+    /// rule, which is not music. This is the one setting in the plug-in that
+    /// changes what you should plug it into.
+    var mode: PlayMode = .line
+    /// Which comping figure is in play, by name.
+    var compingFigureName: String = CompingFigure.charleston.name
+
     /// Which groups of the interface are unfolded.
     var showShape: Bool = true
     var showFeel: Bool = true
@@ -343,6 +356,9 @@ struct MelGenState: Codable, Sendable {
         temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.6
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         expression = try container.decodeIfPresent(ExpressionSettings.self, forKey: .expression) ?? ExpressionSettings()
+        mode = try container.decodeIfPresent(PlayMode.self, forKey: .mode) ?? .line
+        compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
+            ?? CompingFigure.charleston.name
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true
         showFeel = try container.decodeIfPresent(Bool.self, forKey: .showFeel) ?? true
         showHistory = try container.decodeIfPresent(Bool.self, forKey: .showHistory) ?? false
@@ -376,7 +392,10 @@ struct MelGenState: Codable, Sendable {
             settings: expression,
             generatedDensity: take.density,
             lengthBeats: take.lengthBeats,
-            seed: take.id.uuidStableSeed
+            seed: take.id.uuidStableSeed,
+            // Judged by the take, not by the mode: a comping take stays
+            // polyphonic when the mode is switched back, and a line stays a line.
+            polyphonic: take.source == .comping
         )
     }
 

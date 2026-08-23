@@ -1,0 +1,263 @@
+//
+//  MelodyComping.swift
+//  MelGenExtension
+//
+//  Chords instead of a line — and the reason it's a mode rather than a setting.
+//
+//  A mono synth handed comping chords plays whichever note wins its note-priority
+//  rule, which is not music. The receiving instrument differs, so the mode has to
+//  be explicit and visible: this is the one decision in the plug-in that changes
+//  what you should plug it into.
+//
+//  What it needed turned out to be less than expected. The kernel is already
+//  polyphonic — sixty-four active notes, and sequence entries are scheduled
+//  independently, so two entries sharing a start beat simply both sound. Nothing
+//  in the DSP changed. The realization axis is unchanged too: expression, swing
+//  and gate all operate on `SequencedNote`s and don't care how many of them start
+//  at once.
+//
+//  So a comping figure is exactly what ROADMAP P4 guessed it was: **a rhythm plus
+//  a voicing policy**. The rhythms are the same `GestureRhythm` vocabulary the
+//  melodic side uses — a charleston is a charleston whether it's one note or
+//  four — which means the two modes share their sense of time rather than having
+//  two unrelated ideas of it.
+//
+//  Deliberately free of any FoundationModels dependency.
+//
+
+import Foundation
+
+/// A comping pattern: when to play, and what to play when you do.
+struct CompingFigure: Hashable, Sendable, Identifiable {
+    var id: String { name }
+    var name: String
+    var summary: String
+    /// When the chords land. Reused from the melodic vocabulary on purpose.
+    var rhythm: GestureRhythm
+    /// How the chords are laid out.
+    var style: VoicingStyle
+    /// Whether alternate chords swap to the other rootless inversion, which is
+    /// how a left hand voice-leads down a ii–V–I without thinking about it.
+    var alternatesInversion: Bool
+    /// Whether to include a bass note.
+    var includeBass: Bool
+    /// How many of the figure's onsets get the full voicing; the rest get the
+    /// top two voices only, which is what a player does on the weak hits.
+    var fullVoicingShare: Double
+
+    init(_ name: String,
+         _ summary: String,
+         rhythm: GestureRhythm,
+         style: VoicingStyle = .rootlessA,
+         alternatesInversion: Bool = true,
+         includeBass: Bool = false,
+         fullVoicingShare: Double = 0.6) {
+        self.name = name
+        self.summary = summary
+        self.rhythm = rhythm
+        self.style = style
+        self.alternatesInversion = alternatesInversion
+        self.includeBass = includeBass
+        self.fullVoicingShare = fullVoicingShare
+    }
+}
+
+extension CompingFigure {
+
+    static let all: [CompingFigure] = [charleston, freddie, pad, stabs, bossa, tresilloComp]
+
+    /// The downbeat and the and-of-two, and nothing else. The most-played comping
+    /// figure in the idiom, and the one that leaves the most room.
+    static let charleston = CompingFigure(
+        "Charleston",
+        "Beat one and the and of two — the classic, and mostly air",
+        rhythm: .charleston,
+        style: .rootlessA
+    )
+
+    /// Every offbeat, quietly. Named for the way Freddie Green's part functions
+    /// rather than for what he actually played, which was four to the bar.
+    static let freddie = CompingFigure(
+        "Offbeat shells",
+        "A shell on every offbeat, light and continuous",
+        rhythm: .even,
+        style: .shell,
+        alternatesInversion: false,
+        fullVoicingShare: 0.35
+    )
+
+    /// One voicing, held. What a synth pad wants and what a comping algorithm
+    /// usually gets wrong by being busier than the music needs.
+    static let pad = CompingFigure(
+        "Pad",
+        "One voicing per chord, held for as long as it lasts",
+        rhythm: .longWithAir,
+        style: .close,
+        alternatesInversion: false,
+        includeBass: true,
+        fullVoicingShare: 1
+    )
+
+    /// Short, hard, off the beat.
+    static let stabs = CompingFigure(
+        "Stabs",
+        "Short chords off the beat, with silence around them",
+        rhythm: .pushedPair,
+        style: .drop2,
+        fullVoicingShare: 0.8
+    )
+
+    /// The bossa pattern: anticipations across the bar line.
+    static let bossa = CompingFigure(
+        "Bossa",
+        "Anticipated, tied across the bar, never quite on the beat",
+        rhythm: .tiedOverTheBar,
+        style: .rootlessB,
+        includeBass: true
+    )
+
+    /// 3+3+2 as a comping figure rather than a melodic one.
+    static let tresilloComp = CompingFigure(
+        "Tresillo",
+        "Three, three, two — the cell, played as chords",
+        rhythm: .tresillo,
+        style: .quartal,
+        alternatesInversion: false,
+        fullVoicingShare: 0.5
+    )
+}
+
+enum MelodyComping {
+
+    static let beatsPerBar: Double = 4
+
+    /// Comps a progression.
+    ///
+    /// The voicings are led through the whole progression first and *then*
+    /// rhythmicized, rather than being chosen chord by chord as the rhythm asks
+    /// for them. That ordering is the difference between a comp that moves and
+    /// one that jumps: voice leading is a property of the sequence, so it has to
+    /// be decided over the sequence.
+    static func comp(_ progression: ChordProgression,
+                     figure: CompingFigure = .charleston,
+                     centre: Int = ChordVoicings.defaultCentre,
+                     seed: UInt64 = 0x60D,
+                     gate: Double = 0.9) -> [SequencedNote] {
+        guard progression.totalBeats > 0, !progression.chords.isEmpty else { return [] }
+        var rng = SplitMix64(seed: seed)
+
+        // Alternating the rootless inversion is what voice-leads a ii–V–I; doing
+        // it before the lead pass means the lead pass has less work to do and the
+        // result keeps the idiom's shape.
+        var voicings: [Voicing] = []
+        var previous: [Int]?
+        for (index, placed) in progression.chords.enumerated() {
+            let style: VoicingStyle
+            if figure.alternatesInversion, figure.style == .rootlessA || figure.style == .rootlessB {
+                style = index.isMultiple(of: 2) ? .rootlessA : .rootlessB
+            } else {
+                style = figure.style
+            }
+            var voicing = ChordVoicings.voice(placed.symbol,
+                                              style: style,
+                                              centre: centre,
+                                              includeBass: figure.includeBass)
+            if let previous, !voicing.pitches.isEmpty {
+                voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches, centre: centre)
+            }
+            previous = voicing.pitches
+            voicings.append(voicing)
+        }
+
+        var notes: [SequencedNote] = []
+        let totalEighths = Int((progression.totalBeats * 2).rounded())
+        let cycle = max(1, figure.rhythm.spanEighths)
+
+        var onset = 0
+        var hit = 0
+        while onset < totalEighths {
+            for (index, position) in figure.rhythm.positions.enumerated() {
+                let eighth = onset + position
+                guard eighth < totalEighths else { continue }
+                let beat = Double(eighth) / 2
+
+                guard let chordIndex = progression.chords.firstIndex(where: {
+                    beat >= $0.startBeat - 0.001 && beat < $0.startBeat + $0.durationBeats - 0.001
+                }) else { continue }
+                let voicing = voicings[chordIndex]
+                guard !voicing.isEmpty else { continue }
+
+                // Weak hits get the top of the voicing only — which is what a
+                // player does, and what stops a comp sounding like a sequencer
+                // playing the same block over and over.
+                let full = rng.nextUnit() < figure.fullVoicingShare
+                var pitches = full ? voicing.pitches : Array(voicing.pitches.suffix(2))
+                if full, let bass = voicing.bass { pitches.append(bass) }
+
+                // A chord never sounds past its own chord's end: holding a ii
+                // voicing into the V is the one thing that makes a comp sound
+                // wrong rather than merely dull.
+                let chordEnd = progression.chords[chordIndex].startBeat
+                    + progression.chords[chordIndex].durationBeats
+                let written = Double(max(1, figure.rhythm.lengths[index])) / 2
+                let duration = max(0.25, min(written * gate, chordEnd - beat))
+
+                let velocity = figure.rhythm.accents.contains(index) ? 96 : 78
+                for pitch in pitches where (0...127).contains(pitch) {
+                    notes.append(SequencedNote(note: UInt8(pitch),
+                                               velocity: UInt8(max(1, min(127, velocity))),
+                                               startBeat: beat,
+                                               durationBeats: duration))
+                }
+                hit += 1
+            }
+            onset += cycle
+        }
+
+        return notes.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) }
+    }
+
+    /// How many voices sound at once, at most. The kernel allows sixty-four; a
+    /// comp that needs more than a handful is a comp that has gone wrong.
+    static func maximumPolyphony(of notes: [SequencedNote]) -> Int {
+        var maximum = 0
+        for note in notes {
+            let sounding = notes.filter {
+                $0.startBeat <= note.startBeat + 1e-9
+                    && $0.startBeat + $0.durationBeats > note.startBeat + 1e-9
+            }.count
+            maximum = max(maximum, sounding)
+        }
+        return maximum
+    }
+}
+
+/// What the plug-in is producing.
+///
+/// A mode rather than a setting, and visible rather than inferred, because it
+/// decides what the output should be plugged into. Everything downstream of a
+/// take — expression, swing, gate, the kernel — is indifferent to it, which is
+/// why the fork lives here and not in five places.
+enum PlayMode: String, Codable, CaseIterable, Sendable {
+    case line, comping
+
+    var label: String {
+        switch self {
+        case .line: return "Line"
+        case .comping: return "Chords"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .line: return "A monophonic line — point it at a lead sound."
+        case .comping: return "Voicings under the changes — point it at something polyphonic."
+        }
+    }
+}
+
+extension CompingFigure {
+    static func named(_ name: String) -> CompingFigure {
+        all.first { $0.name == name } ?? .charleston
+    }
+}
