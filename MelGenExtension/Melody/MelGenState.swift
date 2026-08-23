@@ -31,6 +31,8 @@ enum TakeSource: String, Codable, Sendable {
     /// A transform of another take, or a point on the morph between two of them.
     /// The only source whose provenance names a parent rather than a progression.
     case mutated
+    /// Played in. The only source that didn't come from this plug-in at all.
+    case captured
 
     var label: String {
         switch self {
@@ -40,6 +42,7 @@ enum TakeSource: String, Codable, Sendable {
         case .sampled: return "learned"
         case .chained: return "chained"
         case .mutated: return "variant"
+        case .captured: return "played"
         }
     }
 }

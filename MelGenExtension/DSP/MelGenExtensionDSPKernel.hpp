@@ -9,6 +9,7 @@
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreMIDI/MIDIMessages.h>
+#import <CoreMIDI/MIDIServices.h>
 
 #import <algorithm>
 #import <atomic>
@@ -261,6 +262,34 @@ public:
                                 std::memory_order_relaxed);
     }
 
+    // MARK: - Capture
+
+    /// Whether incoming MIDI is collected for learning. Off by default: capture
+    /// is a thing you turn on, not something that happens to you.
+    void setCaptureEnabled(bool enabled) {
+        mCaptureEnabled = enabled;
+    }
+
+    bool isCaptureEnabled() const { return mCaptureEnabled; }
+
+    /// How many events have ever been captured. The UI keeps its own cursor and
+    /// reads forward from it, which is what makes the ring single-writer,
+    /// single-reader and lock-free.
+    uint64_t capturedEventCount() const {
+        return mShared.captureWrite.load(std::memory_order_acquire);
+    }
+
+    /// The oldest event still in the ring. Anything before this was overwritten.
+    uint64_t oldestCapturedEvent() const {
+        const uint64_t written = capturedEventCount();
+        return written > kCaptureCapacity ? written - kCaptureCapacity : 0;
+    }
+
+    double capturedBeat(uint64_t index) const { return mCapture[index % kCaptureCapacity].beat; }
+    uint8_t capturedNote(uint64_t index) const { return mCapture[index % kCaptureCapacity].note; }
+    uint8_t capturedVelocity(uint64_t index) const { return mCapture[index % kCaptureCapacity].velocity; }
+    bool capturedIsOn(uint64_t index) const { return mCapture[index % kCaptureCapacity].isOn != 0; }
+
     /// Tempo and loop length as the render thread sees them, so the UI can say
     /// how long a loop lasts in seconds.
     double currentTempo() const {
@@ -397,11 +426,89 @@ public:
     }
 
     void handleMIDIEventList(AUEventSampleTime now, AUMIDIEventList const* midiEvent) {
+        // Capture before forwarding. The capture is a fixed ring written by this
+        // thread and read by the UI, so nothing here allocates, locks or blocks —
+        // the whole point of learning from playing is that it costs the render
+        // thread nothing.
+        if (mCaptureEnabled) {
+            captureEventList(&midiEvent->eventList);
+        }
+
         // Pass incoming MIDI through unchanged.
         if (mMIDIOutBlock)
         {
             mMIDIOutBlock(now, 0, &midiEvent->eventList);
         }
+    }
+
+    /// Pulls note-ons and note-offs out of a UMP event list into the capture ring.
+    ///
+    /// Both encodings are handled because both turn up: a host that negotiated
+    /// MIDI 1.0 sends message type 2, one that negotiated MIDI 2.0 sends type 4
+    /// with 16-bit velocity. Everything else — control change, pitch bend, clock —
+    /// is passed through untouched and not captured; this is learning *melody*
+    /// from playing, and a mod wheel isn't one.
+    void captureEventList(const MIDIEventList *list) {
+        if (list == nullptr) { return; }
+        const MIDIEventPacket *packet = &list->packet[0];
+        for (uint32_t index = 0; index < list->numPackets; ++index) {
+            for (uint32_t word = 0; word < packet->wordCount; ++word) {
+                const uint32_t first = packet->words[word];
+                const uint8_t messageType = (uint8_t)((first >> 28) & 0xF);
+
+                if (messageType == 0x2) {
+                    // MIDI 1.0 in a UMP: status, note, velocity in one word.
+                    const uint8_t status = (uint8_t)((first >> 20) & 0xF);
+                    const uint8_t note = (uint8_t)((first >> 8) & 0x7F);
+                    const uint8_t velocity = (uint8_t)(first & 0x7F);
+                    if (status == 0x9 && velocity > 0) {
+                        pushCapture(note, velocity, true);
+                    } else if (status == 0x8 || (status == 0x9 && velocity == 0)) {
+                        pushCapture(note, 0, false);
+                    }
+                } else if (messageType == 0x4 && word + 1 < packet->wordCount) {
+                    // MIDI 2.0: velocity is 16-bit in the second word.
+                    const uint8_t status = (uint8_t)((first >> 20) & 0xF);
+                    const uint8_t note = (uint8_t)((first >> 8) & 0x7F);
+                    const uint16_t wide = (uint16_t)((packet->words[word + 1] >> 16) & 0xFFFF);
+                    const uint8_t velocity = (uint8_t)(wide >> 9);
+                    if (status == 0x9 && wide > 0) {
+                        pushCapture(note, velocity > 0 ? velocity : 1, true);
+                    } else if (status == 0x8 || (status == 0x9 && wide == 0)) {
+                        pushCapture(note, 0, false);
+                    }
+                    ++word;
+                }
+
+                // A UMP's word count tells us how far to step; unknown message
+                // types are skipped by the loop rather than mis-parsed.
+                const uint8_t words = umpWordCount(messageType);
+                if (words > 1) { word += (words - 1); }
+            }
+            packet = MIDIEventPacketNext(packet);
+        }
+    }
+
+    static uint8_t umpWordCount(uint8_t messageType) {
+        switch (messageType) {
+            case 0x0: case 0x1: case 0x2: return 1;
+            case 0x3: case 0x4: return 2;
+            case 0x5: return 4;
+            default: return 1;
+        }
+    }
+
+    /// One entry into the ring. Never blocks: if the UI hasn't drained it in
+    /// time the oldest entries are simply lost, which is the right trade for a
+    /// render thread — a dropped phrase is a nuisance, a glitch is a bug.
+    void pushCapture(uint8_t note, uint8_t velocity, bool isOn) {
+        const uint64_t sequence = mShared.captureWrite.load(std::memory_order_relaxed);
+        CapturedEvent &slot = mCapture[sequence % kCaptureCapacity];
+        slot.beat = mTimelineBeats;
+        slot.note = note;
+        slot.velocity = velocity;
+        slot.isOn = isOn ? 1 : 0;
+        mShared.captureWrite.store(sequence + 1, std::memory_order_release);
     }
     
     void handleParameterEvent(AUEventSampleTime now, AUParameterEvent const& parameterEvent) {
@@ -418,6 +525,18 @@ public:
     
     AUMIDIEventListBlock mMIDIOutBlock;
     AUMIDIOutputEventBlock mLegacyMIDIOutBlock;
+
+    /// One captured note-on or note-off, in timeline beats.
+    struct CapturedEvent {
+        double beat = 0;
+        uint8_t note = 0;
+        uint8_t velocity = 0;
+        uint8_t isOn = 0;
+    };
+    static constexpr uint32_t kCaptureCapacity = 1024;
+
+    bool mCaptureEnabled = false;
+    CapturedEvent mCapture[kCaptureCapacity];
 
     // Melody playback state
     struct ActiveNote {
@@ -459,18 +578,23 @@ public:
         std::atomic<double> tempo{120.0};
         /// Loop length in beats, for the same reason.
         std::atomic<double> loopBeats{0};
+        /// How many MIDI events have been captured, ever. The render thread
+        /// writes; the UI reads forward from its own cursor.
+        std::atomic<uint64_t> captureWrite{0};
 
         SharedFields() = default;
         SharedFields(const SharedFields &other)
         : activeIndex{other.activeIndex.load(std::memory_order_acquire)},
           passIndex{other.passIndex.load(std::memory_order_acquire)},
           tempo{other.tempo.load(std::memory_order_relaxed)},
-          loopBeats{other.loopBeats.load(std::memory_order_relaxed)} {}
+          loopBeats{other.loopBeats.load(std::memory_order_relaxed)},
+          captureWrite{other.captureWrite.load(std::memory_order_acquire)} {}
         SharedFields &operator=(const SharedFields &other) {
             activeIndex.store(other.activeIndex.load(std::memory_order_acquire), std::memory_order_release);
             passIndex.store(other.passIndex.load(std::memory_order_acquire), std::memory_order_release);
             tempo.store(other.tempo.load(std::memory_order_relaxed), std::memory_order_relaxed);
             loopBeats.store(other.loopBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            captureWrite.store(other.captureWrite.load(std::memory_order_acquire), std::memory_order_release);
             return *this;
         }
     };

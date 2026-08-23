@@ -72,6 +72,12 @@ struct MelGenExtensionMainView: View {
     @State private var morphMix: Double = 0.5
     @State private var showVariants = false
 
+    /// What's been played in since capture was turned on, and whether it's on.
+    /// Not session state: a recording buffer isn't a document.
+    @State private var isListening = false
+    @State private var capturedEvents: [CapturedMIDIEvent] = []
+    @State private var showCapture = false
+
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
     @Environment(\.colorScheme) private var ambientScheme
@@ -113,6 +119,7 @@ struct MelGenExtensionMainView: View {
                     currentTakeSection
                 }
 
+                captureSection
                 curationSection
                 if state.currentTake != nil {
                     variantsSection
@@ -136,6 +143,9 @@ struct MelGenExtensionMainView: View {
         }
         .task(id: state.autoRegenerate) {
             await runAutoRegeneration()
+        }
+        .task(id: isListening) {
+            await collectPlaying()
         }
     }
 
@@ -733,6 +743,124 @@ struct MelGenExtensionMainView: View {
         statusMessage = "Kept as \"\(stored.name)\" — \(stored.summary). It's in the rotation now."
     }
 
+    // MARK: - Listening
+
+    /// Learning from what's played in, rather than only from what's generated.
+    ///
+    /// The two learned models were written so that adding material is `add` and
+    /// nothing else, which is why this is a section rather than a subsystem: get
+    /// the notes off the wire, split them at the silences, read them back as
+    /// degrees against the progression that was on screen, and hand them to the
+    /// same two methods the kept takes go to.
+    private var captureSection: some View {
+        CollapsibleSection(title: "Listen",
+                           summary: isListening
+                               ? "listening · \(capturedEvents.filter(\.isOn).count) notes"
+                               : (capturedEvents.isEmpty ? "off" : "\(capturedEvents.filter(\.isOn).count) notes held"),
+                           isExpanded: $showCapture,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                ToggleChip(title: isListening ? "Listening" : "Listen to what I play",
+                           systemImage: isListening ? "waveform.circle.fill" : "waveform.circle",
+                           isOn: Binding(get: { isListening },
+                                         set: { isListening = $0 }),
+                           theme: theme)
+
+                Text("MIDI coming in still passes through untouched. This only "
+                     + "watches it — and only while it's on.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !capturedEvents.isEmpty {
+                    capturedReadout
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var capturedReadout: some View {
+        let sounded = MelodyCapture.notes(from: capturedEvents)
+        let phrases = MelodyCapture.phrases(from: sounded)
+
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(sounded.count) notes · \(phrases.count) phrase\(phrases.count == 1 ? "" : "s")")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(theme.textSecondary)
+
+            ForEach(phrases) { phrase in
+                Text("· \(phrase.summary)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+            }
+
+            HStack(spacing: MelGenMetrics.space2) {
+                Button {
+                    learnFromPlaying()
+                } label: {
+                    findLabel("Learn from it", systemImage: "brain")
+                }
+                .buttonStyle(.plain)
+                .disabled(phrases.isEmpty)
+
+                Button {
+                    capturedEvents = []
+                    statusMessage = "Cleared what was played in."
+                } label: {
+                    findLabel("Clear", systemImage: "trash")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Polls the kernel's capture ring while listening is on.
+    ///
+    /// A quarter of a second is far longer than the ring needs and far shorter
+    /// than a phrase, which is the whole requirement: the render thread never
+    /// waits for this, and nothing gets lost between polls unless someone plays
+    /// a thousand events in 250ms.
+    private func collectPlaying() async {
+        guard isListening else { return }
+        audioUnit?.isCapturing = true
+        defer { audioUnit?.isCapturing = false }
+
+        while !Task.isCancelled, isListening {
+            try? await Task.sleep(for: .milliseconds(250))
+            let fresh = audioUnit?.drainCapturedEvents() ?? []
+            if !fresh.isEmpty { capturedEvents.append(contentsOf: fresh) }
+        }
+    }
+
+    /// Turns what was played into library material and into both learned models.
+    private func learnFromPlaying() {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else {
+            statusMessage = "Set a progression first — a played phrase needs harmony to be read against."
+            return
+        }
+
+        let patterns = MelodyCapture.learn(from: capturedEvents, over: progression)
+        guard !patterns.isEmpty else {
+            statusMessage = "Nothing long enough to be a phrase yet — play a few more notes."
+            return
+        }
+
+        for pattern in patterns { PatternStore.add(pattern) }
+        libraryRevision += 1
+
+        // The first phrase is loaded so it can be heard and judged like anything
+        // else, which is what puts captured material into the same curation loop
+        // as everything the plug-in made itself.
+        if let first = patterns.first {
+            play(first,
+                 describedAs: "\(patterns.count) phrase\(patterns.count == 1 ? "" : "s") learned from your playing",
+                 source: .captured)
+        }
+        capturedEvents = []
+    }
+
     // MARK: - Variants
 
     /// Curation pointed at variants rather than at takes.
@@ -864,7 +992,9 @@ struct MelGenExtensionMainView: View {
     }
 
     /// Commits a pattern as a take so it can be heard and judged like any other.
-    private func play(_ pattern: MelodyPattern, describedAs description: String) {
+    private func play(_ pattern: MelodyPattern,
+                      describedAs description: String,
+                      source: TakeSource = .mutated) {
         let current = liveState
         guard let progression = try? ChordProgression.parse(current.progressionText) else { return }
         let notes = MelodyPatterns.realize(pattern, over: progression)
@@ -879,7 +1009,7 @@ struct MelGenExtensionMainView: View {
             briefName: pattern.name,
             density: current.expression.density,
             durationPalette: current.durationPalette,
-            source: .mutated,
+            source: source,
             analysis: MelodyAnalyser.analyse(notes, over: progression),
             lengthBeats: progression.totalBeats,
             notes: notes
