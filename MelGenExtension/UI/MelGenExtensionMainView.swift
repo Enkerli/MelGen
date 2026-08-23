@@ -659,6 +659,36 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    /// Comps once with every figure, so the six can be compared by ear rather
+    /// than by cycling through them one press at a time.
+    private func compEveryFigure() {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else {
+            statusMessage = "That progression doesn't parse."
+            return
+        }
+        var added = 0
+        for (index, figure) in CompingFigure.all.enumerated() {
+            let notes = MelodyComping.comp(progression, figure: figure,
+                                           seed: UInt64(bitPattern: Int64(index &* 7919 &+ 13)))
+            guard !notes.isEmpty else { continue }
+            commit(reloadKernel: index == CompingFigure.all.count - 1) {
+                $0.add(GenerationRecord(
+                    progressionText: progression.text,
+                    temperature: current.temperature,
+                    briefName: "\(figure.name) · \(figure.style.label)",
+                    density: current.expression.density,
+                    durationPalette: current.durationPalette,
+                    source: .comping,
+                    analysis: MelodyAnalyser.analyse(notes, over: progression),
+                    lengthBeats: progression.totalBeats,
+                    notes: notes))
+            }
+            added += 1
+        }
+        statusMessage = "\(added) comps, one per figure — they're in the history, judge them there."
+    }
+
     /// Lays voicings under the progression and plays them.
     ///
     /// No model involved, and none wanted: comping is a voicing policy and a
@@ -958,18 +988,37 @@ struct MelGenExtensionMainView: View {
             Eyebrow(text: "Instant · no model", theme: theme)
 
             HStack(spacing: MelGenMetrics.space2) {
-                Button { adaptStoredLine() } label: {
-                    findLabel("Stored line", systemImage: "bolt.fill",
-                              detail: state.nextLine(from: PatternStore.library).name)
-                }
-                .buttonStyle(.plain)
-                .disabled(state.progressionText.isEmpty)
+                // In Chords mode these have to comp. They produced lines
+                // whatever the mode said, which made "Chords" look like a
+                // setting that only the Generate button honoured.
+                if state.mode == .comping {
+                    Button { compChanges() } label: {
+                        findLabel("Comp these changes", systemImage: "pianokeys",
+                                  detail: state.nextTemplate.name)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.progressionText.isEmpty)
 
-                Button { composeLine() } label: {
-                    findLabel("Compose", systemImage: "wand.and.stars", detail: "new every time")
+                    Button { compEveryFigure() } label: {
+                        findLabel("Try every figure", systemImage: "square.grid.2x2",
+                                  detail: "\(CompingFigure.all.count) at once")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.progressionText.isEmpty)
+                } else {
+                    Button { adaptStoredLine() } label: {
+                        findLabel("Stored line", systemImage: "bolt.fill",
+                                  detail: state.nextLine(from: PatternStore.library).name)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.progressionText.isEmpty)
+
+                    Button { composeLine() } label: {
+                        findLabel("Compose", systemImage: "wand.and.stars", detail: "new every time")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.progressionText.isEmpty)
                 }
-                .buttonStyle(.plain)
-                .disabled(state.progressionText.isEmpty)
             }
 
             HStack(spacing: MelGenMetrics.space2) {
@@ -1741,6 +1790,7 @@ struct MelGenExtensionMainView: View {
                 take.briefName.components(separatedBy: " · ").first ?? "")
             let voiced = MelodyComping.variants(of: progression,
                                                 figure: figure,
+                                                parent: take.notes,
                                                 seed: take.id.uuidStableSeed)
             let parentKeys = Set(take.notes.map { "\($0.note):\($0.startBeat)" })
             variantParent = nil
