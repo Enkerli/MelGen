@@ -151,7 +151,7 @@ enum MelGenTemplates {
     static let chords: [MelGenTemplate] = CompingFigure.all.map(MelGenTemplate.init(figure:))
 
     static func all(for mode: PlayMode) -> [MelGenTemplate] {
-        mode == .line ? line : chords
+        mode == .line ? line + TemplateStore.templates : chords
     }
 
     static func named(_ name: String, mode: PlayMode) -> MelGenTemplate? {

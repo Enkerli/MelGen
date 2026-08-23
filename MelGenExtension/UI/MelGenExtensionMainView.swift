@@ -76,6 +76,10 @@ struct MelGenExtensionMainView: View {
     @State private var modelIsDown = false
     @State private var showRotationPicker = false
     @State private var showDrift = false
+    /// The last template the model wrote, and what the gate made of it.
+    @State private var authored: TemplateCharacter?
+    @State private var authoredVerdict: TemplateVerdict?
+    @State private var isAuthoring = false
 
     /// Mutations of the current take, and the morph between it and one of them.
     /// Not session state: they're a working surface, regenerated on demand.
@@ -591,6 +595,8 @@ struct MelGenExtensionMainView: View {
                 .foregroundStyle(theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
+            authorRow
+
             Button {
                 showRotationPicker.toggle()
             } label: {
@@ -707,6 +713,111 @@ struct MelGenExtensionMainView: View {
         if isGenerating { return "Working" }
         if state.mode == .comping { return modelIsDown ? "Comp" : "Comp" }
         return modelIsDown ? "Compose" : "Generate"
+    }
+
+    /// Asking the model for a way of playing, rather than for a line.
+    ///
+    /// The one request whose economics work: a take costs about 1.8 seconds a
+    /// note every time it's asked for, and a template costs one request once,
+    /// after which the deterministic path composes from it instantly for as long
+    /// as it's kept. And the answer is checked — a template that composes to
+    /// something the rotation already has is refused and says which one it
+    /// duplicates, so this can't quietly fill the list with renames.
+    @ViewBuilder
+    private var authorRow: some View {
+        if state.mode == .line {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: MelGenMetrics.space2) {
+                    Button {
+                        authorTemplate()
+                    } label: {
+                        findLabel(isAuthoring ? "Writing…" : "Write a new template",
+                                  systemImage: "square.and.pencil",
+                                  detail: modelIsDown ? "needs the model" : "one request, kept forever")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAuthoring || modelIsDown)
+
+                    if let authored, authoredVerdict?.accepted == false {
+                        Button {
+                            self.authored = nil
+                            authoredVerdict = nil
+                        } label: {
+                            findLabel("Discard", systemImage: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Discard \(authored.name)")
+                    }
+                }
+
+                if let authored, let verdict = authoredVerdict {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Image(systemName: verdict.accepted ? "checkmark.circle" : "xmark.circle")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(verdict.accepted ? theme.accent : theme.warning)
+                            Text(authored.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                        }
+                        Text(authored.brief)
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(String(format: "%.0f notes a bar · %.0f%% air · %.0f%% offbeat · "
+                                    + "notes of about %.0f eighths",
+                                    authored.notesPerBar, authored.airiness * 100,
+                                    authored.offbeatness * 100, authored.noteLength))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(theme.textMuted)
+                        Text(verdict.summary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(verdict.accepted ? theme.textSecondary : theme.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(MelGenMetrics.space2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .fill(theme.raised)
+                    )
+                }
+            }
+        }
+    }
+
+    private func authorTemplate() {
+        guard #available(iOS 26.0, macOS 26.0, *) else { return }
+        isAuthoring = true
+        authored = nil
+        authoredVerdict = nil
+        let existing = MelGenTemplates.all(for: .line)
+
+        Task {
+            do {
+                let character = try await MelodyGenerator.writeTemplate(avoiding: existing)
+                let verdict = TemplateGate.judge(character, against: existing)
+                authored = character
+                authoredVerdict = verdict
+
+                if verdict.accepted {
+                    TemplateStore.add(character)
+                    libraryRevision += 1
+                    // Straight into the rotation and selected, because a template
+                    // you just asked for is one you want to hear.
+                    useTemplate(character.name)
+                    statusMessage = "\(character.name) — \(verdict.summary)"
+                } else {
+                    statusMessage = "\(character.name) was refused: \(verdict.summary)"
+                }
+            } catch {
+                let failure = MelodyGenerator.describe(error)
+                lastFailureWasModel = true
+                if failure.isSystemwide { modelIsDown = true }
+                statusMessage = failure.message
+            }
+            isAuthoring = false
+        }
     }
 
     /// Makes a template the next one, whatever mode the rotation is in.

@@ -112,6 +112,62 @@ enum MelodyGenerator {
         return sequence(from: collected, progression: progression)
     }
 
+    // MARK: - Writing a template
+
+    /// Asks the model to invent a way of playing.
+    ///
+    /// The existing templates are handed over as things *not* to write, with
+    /// their measurements, because the failure mode is a tenth template that
+    /// composes like the nine already there — and the model can't avoid that
+    /// unless it's told what they are. What comes back is checked anyway:
+    /// `TemplateGate` composes from it and refuses a rename.
+    static func writeTemplate(avoiding existing: [MelGenTemplate],
+                              temperature: Double = 0.9) async throws -> TemplateCharacter {
+        let session = LanguageModelSession(instructions: templateInstructions(avoiding: existing))
+        let response = try await session.respond(
+            to: templatePrompt(avoiding: existing),
+            generating: AuthoredTemplateIdea.self,
+            options: GenerationOptions(samplingMode: nil, temperature: min(max(temperature, 0), 1))
+        )
+        let idea = response.content
+        return TemplateCharacter(name: idea.name,
+                                 brief: idea.brief,
+                                 notesPerBar: Double(idea.notesPerBar),
+                                 airiness: Double(idea.airiness) / 100,
+                                 offbeatness: Double(idea.offbeatness) / 100,
+                                 noteLength: Double(idea.noteLength),
+                                 shape: idea.shape)
+    }
+
+    static func templateInstructions(avoiding existing: [MelGenTemplate]) -> String {
+        var text = "You invent ways of playing a melodic line — the kind of thing a player means "
+        text += "by \"take it sparse\" or \"lean on the offbeats\". Each one gets a name, a "
+        text += "sentence or two of instruction, and a few numbers describing what it measures "
+        text += "like.\n\n"
+        text += "The instruction is for a musician, not a machine: say what to do, not what it "
+        text += "measures like, and never put a number in it. The numbers are separate and "
+        text += "cover that.\n\n"
+        text += "The one thing that would make this useless is inventing something the list "
+        text += "below already has. A new way of playing has to differ in what it *does* — how "
+        text += "busy, how much air, how far off the beat, how long the notes — and not only in "
+        text += "what it's called.\n"
+        return text
+    }
+
+    static func templatePrompt(avoiding existing: [MelGenTemplate]) -> String {
+        var lines = ["Invent one way of playing that isn't in this list.", "", "Already taken:"]
+        for template in existing {
+            lines.append("- \(template.name): about "
+                         + "\(template.density.formatted(.number.precision(.fractionLength(1)))) notes "
+                         + "per bar, \(Int(template.restiness * 100))% air")
+        }
+        lines.append("")
+        lines.append("Reach for a part of the space they leave empty. If they are all middling, "
+                     + "go to an extreme; if several are already extreme, find the gap between "
+                     + "them.")
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Comping
 
     /// Asks the model for a comping part.
