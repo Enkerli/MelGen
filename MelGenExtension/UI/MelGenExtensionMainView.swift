@@ -64,6 +64,14 @@ struct MelGenExtensionMainView: View {
     /// the store to what fits on screen was the actual mistake.
     @State private var historyRowLimit = 40
 
+    /// Mutations of the current take, and the morph between it and one of them.
+    /// Not session state: they're a working surface, regenerated on demand.
+    @State private var variants: [MelodyVariant] = []
+    @State private var variantParent: MelodyPattern?
+    @State private var morphTarget: MelodyPattern?
+    @State private var morphMix: Double = 0.5
+    @State private var showVariants = false
+
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
     @Environment(\.colorScheme) private var ambientScheme
@@ -106,6 +114,9 @@ struct MelGenExtensionMainView: View {
                 }
 
                 curationSection
+                if state.currentTake != nil {
+                    variantsSection
+                }
                 historySection
             }
             .padding(MelGenMetrics.space4)
@@ -720,6 +731,161 @@ struct MelGenExtensionMainView: View {
         let stored = PatternStore.add(pattern)
         libraryRevision += 1
         statusMessage = "Kept as \"\(stored.name)\" — \(stored.summary). It's in the rotation now."
+    }
+
+    // MARK: - Variants
+
+    /// Curation pointed at variants rather than at takes.
+    ///
+    /// Take a line, produce a dozen mutations of it, score them against what's
+    /// been kept, hear the survivors — then dial between two you like and mark
+    /// the point where it becomes the thing you wanted. The slider generates
+    /// candidates, the dispositions are the fitness function, and the pass
+    /// structure means the answer is allowed to change next week.
+    private var variantsSection: some View {
+        CollapsibleSection(title: "Variants · from the current take",
+                           summary: variants.isEmpty ? "not explored" : "\(variants.count) offered",
+                           isExpanded: $showVariants,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                Button {
+                    exploreVariants()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "circle.hexagongrid")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Explore variants")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .padding(.horizontal, MelGenMetrics.space3)
+                    .frame(height: MelGenMetrics.controlHeight)
+                    .foregroundStyle(theme.text)
+                    .background(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .fill(theme.raised)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if variants.isEmpty {
+                    Text("One transform each: rhythm, pitch, density and register move "
+                         + "separately, so a variant that works can be traced to the thing "
+                         + "that made it work.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(spacing: 3) {
+                        ForEach(variants.prefix(8)) { variant in
+                            VariantRow(variant: variant, theme: theme) {
+                                play(variant.pattern, describedAs: variant.transform)
+                            } onMorphTarget: {
+                                morphTarget = variant.pattern
+                                morphMix = 0.5
+                            }
+                        }
+                    }
+                    morphControl
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var morphControl: some View {
+        if let parent = variantParent, let target = morphTarget {
+            VStack(alignment: .leading, spacing: 4) {
+                Eyebrow(text: "Morph", theme: theme)
+                Text("\(parent.name) → \(target.name)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+
+                LabelledSlider(title: "Mix",
+                               lowLabel: "this",
+                               highLabel: "that",
+                               value: $morphMix,
+                               theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+
+                Button {
+                    let morphed = MelodyMorph.between(parent, target, mix: morphMix)
+                    play(morphed, describedAs: "morph at \(Int(morphMix * 100))%")
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pin")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Hear this point")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .padding(.horizontal, MelGenMetrics.space3)
+                    .frame(height: MelGenMetrics.controlHeight)
+                    .foregroundStyle(theme.text)
+                    .background(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .fill(theme.raised)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Loads the line at this point on the morph, so it can be judged like any other take")
+            }
+        }
+    }
+
+    /// Reads the current take back to degrees and mutates it.
+    private func exploreVariants() {
+        let current = liveState
+        guard let take = current.currentTake,
+              let progression = try? ChordProgression.parse(take.progressionText),
+              let pattern = MelodyPatterns.extract(from: take.notes,
+                                                   over: progression,
+                                                   name: take.displayName,
+                                                   lengthBeats: take.lengthBeats)
+        else {
+            statusMessage = "Nothing to vary — load a take first."
+            return
+        }
+
+        let style = StyleLearner.learn(from: current.curatedTakes)
+        variantParent = pattern
+        variants = MelodyVariants.explore(pattern,
+                                          seed: take.id.uuidStableSeed,
+                                          style: style.isEmpty ? nil : style)
+        morphTarget = variants.first?.pattern
+        statusMessage = "\(variants.count) variants of \(pattern.name)."
+    }
+
+    /// Commits a pattern as a take so it can be heard and judged like any other.
+    private func play(_ pattern: MelodyPattern, describedAs description: String) {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else { return }
+        let notes = MelodyPatterns.realize(pattern, over: progression)
+        guard !notes.isEmpty else {
+            statusMessage = "That variant didn't fit this progression."
+            return
+        }
+
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: pattern.name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .mutated,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+        commit { $0.add(record) }
+        statusMessage = "\(description) — judge it like anything else."
     }
 
     // MARK: - Rotation

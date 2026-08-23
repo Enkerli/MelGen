@@ -276,3 +276,69 @@ struct ReviewRow: View {
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
     }
 }
+
+/// One mutation, offered for audition.
+///
+/// The three numbers are shown side by side and not added together: collapsing
+/// them into one score would decide in advance what "good" means, and that
+/// decision belongs to whoever is listening. The order they're offered in is a
+/// default, not a verdict.
+struct VariantRow: View {
+    let variant: MelodyVariant
+    let theme: MelGenTheme
+    let onAudition: () -> Void
+    let onMorphTarget: () -> Void
+
+    var body: some View {
+        HStack(spacing: MelGenMetrics.space2) {
+            Button(action: onAudition) {
+                HStack(spacing: MelGenMetrics.space2) {
+                    Image(systemName: "play.circle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.textMuted)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(variant.transform)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            scoreChip("new", variant.novelty)
+                            scoreChip("varied", variant.variety)
+                            if variant.styleDistance > 0 {
+                                scoreChip("from you", variant.styleDistance)
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(variant.transform)
+            .accessibilityValue(variant.summary)
+            .accessibilityHint("Plays this variant")
+
+            Button(action: onMorphTarget) {
+                Image(systemName: "arrow.left.and.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.textMuted)
+                    .frame(width: 28, height: MelGenMetrics.smallControlHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Morph toward \(variant.transform)")
+        }
+        .padding(.horizontal, MelGenMetrics.space2)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(theme.raised)
+        )
+    }
+
+    private func scoreChip(_ label: String, _ value: Double) -> some View {
+        Text("\(Int(value * 100))% \(label)")
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(theme.textMuted)
+    }
+}

@@ -28,6 +28,9 @@ enum TakeSource: String, Codable, Sendable {
     /// material. Also yours, and — unlike the slot draw — it has phrases, because
     /// it remembers what it just played.
     case chained
+    /// A transform of another take, or a point on the morph between two of them.
+    /// The only source whose provenance names a parent rather than a progression.
+    case mutated
 
     var label: String {
         switch self {
@@ -36,6 +39,7 @@ enum TakeSource: String, Codable, Sendable {
         case .composed: return "phrase"
         case .sampled: return "learned"
         case .chained: return "chained"
+        case .mutated: return "variant"
         }
     }
 }
