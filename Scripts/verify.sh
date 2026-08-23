@@ -24,6 +24,7 @@
 #   steps — interval cells: Hanon's self-sequencing figures and Samchillian streams
 #   capture — pairing, segmenting and quantizing what was played in
 #   comping — the voicing layer, voice leading, and chords instead of a line
+#   drift — the live mutation layer: probabilities that re-roll every pass
 #   progression — generating the changes, ported from ProgGenie's corpus tables
 #   analysis — take measurement (variety, harmonic roles) and the dead-air guard
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
@@ -231,6 +232,14 @@ run_progression() {
     "$BUILD/progression" || status=1
 }
 
+run_drift() {
+    echo "── drift ─────────────────────────────────────────"
+    cp "$REPO/Scripts/tests/drift-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/drift" || { status=1; return 0; }
+    "$BUILD/drift" || status=1
+}
+
 run_analysis() {
     echo "── analysis ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
@@ -254,7 +263,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_progression; run_analysis; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_progression; run_analysis; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -270,12 +279,13 @@ case "$which" in
     steps)    run_steps ;;
     capture)  run_capture ;;
     comping)  run_comping ;;
+    drift)    run_drift ;;
     progression) run_progression ;;
     analysis) run_analysis ;;
     contrast) run_contrast ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|progression|analysis|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|progression|analysis|contrast|kernel]"; exit 2 ;;
 esac
 
 echo

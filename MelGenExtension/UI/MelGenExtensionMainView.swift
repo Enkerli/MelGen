@@ -70,6 +70,7 @@ struct MelGenExtensionMainView: View {
     /// appears when it's relevant and not before.
     @State private var lastFailureWasModel = false
     @State private var showRotationPicker = false
+    @State private var showDrift = false
 
     /// Mutations of the current take, and the morph between it and one of them.
     /// Not session state: they're a working surface, regenerated on demand.
@@ -131,6 +132,7 @@ struct MelGenExtensionMainView: View {
                 shapeSection
                 lineLibrarySection
                 feelSection
+                driftSection
 
                 if state.currentTake != nil {
                     currentTakeSection
@@ -163,6 +165,12 @@ struct MelGenExtensionMainView: View {
         }
         .task(id: isListening) {
             await collectPlaying()
+        }
+        // Drift runs on its own, not inside auto-regeneration: it's a property of
+        // playing rather than of generating, and tying it to Auto meant it only
+        // worked when something else was also happening.
+        .task(id: state.liveMutation.isActive) {
+            await runDrift()
         }
     }
 
@@ -939,6 +947,106 @@ struct MelGenExtensionMainView: View {
         let gate = state.expression.noteLength
         let name = gate < 0.45 ? "staccato" : (gate > 0.55 ? "legato" : "as written")
         return "gate \(name) · swing \(state.expression.swing.formatted(.number.precision(.fractionLength(2))))"
+    }
+
+    // MARK: - Drift
+
+    /// Probabilities that re-roll every pass, so the loop moves while it plays.
+    ///
+    /// The rest of the plug-in gives you a new take to judge, which is the right
+    /// shape for deciding what to keep and the wrong one for playing. This is the
+    /// hardware-sequencer control: you steer by how much it drifts rather than by
+    /// choosing between candidates. Nothing here is written back to the take.
+    private var driftSection: some View {
+        CollapsibleSection(title: "Drift · live",
+                           summary: state.liveMutation.summary,
+                           isExpanded: $showDrift,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                LabelledSlider(title: "Note order", lowLabel: "fixed", highLabel: "shuffled",
+                               value: binding(\.liveMutation.noteOrder), theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+                LabelledSlider(title: "Accents", lowLabel: "as played", highLabel: "moving",
+                               value: binding(\.liveMutation.accents), theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+                LabelledSlider(title: "Slides", lowLabel: "none", highLabel: "everywhere",
+                               value: binding(\.liveMutation.slides), theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+                LabelledSlider(title: "Skip", lowLabel: "every note", highLabel: "sparse",
+                               value: binding(\.liveMutation.skipSteps), theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+                LabelledSlider(title: "Octaves", lowLabel: "in place", highLabel: "leaping",
+                               value: binding(\.liveMutation.octaves), theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+
+                Text("Re-rolled every time the loop comes round, and seeded by which pass "
+                     + "it is — so a pass that sounded good can be got back rather than "
+                     + "being gone. Pass \(state.mutationPass).")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: MelGenMetrics.space2) {
+                    Button {
+                        commit { $0.mutationPass -= 1 }
+                    } label: {
+                        findLabel("Previous pass", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!state.liveMutation.isActive)
+
+                    Button {
+                        keepThisPass()
+                    } label: {
+                        findLabel("Keep this pass", systemImage: "arrow.down.doc")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!state.liveMutation.isActive)
+                }
+            }
+        }
+    }
+
+    /// Re-rolls the drift on every loop boundary.
+    ///
+    /// A quarter of a second is far shorter than any loop and costs nothing; the
+    /// alternative is a callback from the render thread, which would mean the
+    /// audio thread waiting on the interface.
+    private func runDrift() async {
+        guard state.liveMutation.isActive else { return }
+        var lastPass = audioUnit?.currentPass ?? 0
+        while !Task.isCancelled, liveState.liveMutation.isActive {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let pass = audioUnit?.currentPass, pass != lastPass else { continue }
+            lastPass = pass
+            commit { $0.mutationPass += 1 }
+        }
+    }
+
+    /// Freezes the drifted loop as a take of its own.
+    ///
+    /// The drift is a performance and doesn't touch the take, which is right
+    /// until the moment a pass comes out better than what it was performing.
+    private func keepThisPass() {
+        let current = liveState
+        guard let take = current.currentTake else { return }
+        let notes = current.renderedMelody
+        guard !notes.isEmpty else { return }
+
+        let record = GenerationRecord(
+            progressionText: take.progressionText,
+            temperature: take.temperature,
+            briefName: "\(take.briefName) · pass \(current.mutationPass)",
+            density: take.density,
+            durationPalette: take.durationPalette,
+            source: take.source,
+            analysis: (try? ChordProgression.parse(take.progressionText))
+                .map { MelodyAnalyser.analyse(notes, over: $0) },
+            lengthBeats: take.lengthBeats,
+            notes: notes
+        )
+        commit { $0.add(record) }
+        statusMessage = "Pass \(current.mutationPass) kept as a take of its own."
     }
 
     // MARK: - Current take

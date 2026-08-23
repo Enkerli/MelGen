@@ -287,6 +287,12 @@ struct MelGenState: Codable, Sendable {
     var temperature: Double = 0.6
     var durationPalette: DurationPalette = .mixed
     var expression = ExpressionSettings()
+    /// How much the loop drifts as it plays. Applied at render time, so it never
+    /// touches the take.
+    var liveMutation = LiveMutation()
+    /// Which pass the drift is on. Bumped by the transport loop, and part of the
+    /// seed, so a pass that sounded good can be got back.
+    var mutationPass: Int = 0
 
     /// Line or chords.
     ///
@@ -374,6 +380,8 @@ struct MelGenState: Codable, Sendable {
         temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.6
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         expression = try container.decodeIfPresent(ExpressionSettings.self, forKey: .expression) ?? ExpressionSettings()
+        liveMutation = try container.decodeIfPresent(LiveMutation.self, forKey: .liveMutation) ?? LiveMutation()
+        mutationPass = try container.decodeIfPresent(Int.self, forKey: .mutationPass) ?? 0
         mode = try container.decodeIfPresent(PlayMode.self, forKey: .mode) ?? .line
         progressionKey = try container.decodeIfPresent(Int.self, forKey: .progressionKey) ?? 0
         progressionMode = try container.decodeIfPresent(ProgressionMode.self, forKey: .progressionMode) ?? .major
@@ -414,7 +422,15 @@ struct MelGenState: Codable, Sendable {
     /// The notes that should be playing, with expression applied.
     var renderedMelody: [SequencedNote] {
         guard let take = currentTake else { return [] }
-        return MelodyExpression.apply(
+        let polyphonic = take.source == .comping
+
+        // Expression first, drift second — and getting this the wrong way round
+        // is a real bug rather than a preference. Expression's gate pass clips
+        // every note to the next one's start, which is exactly what a slide must
+        // not be; drifting first meant every slide was closed again before it
+        // reached the kernel. Expression is the realization of the take, and the
+        // drift is a performance of that realization, so it goes last.
+        let rendered = MelodyExpression.apply(
             to: take.notes,
             settings: expression,
             generatedDensity: take.density,
@@ -422,7 +438,16 @@ struct MelGenState: Codable, Sendable {
             seed: take.id.uuidStableSeed,
             // Judged by the take, not by the mode: a comping take stays
             // polyphonic when the mode is switched back, and a line stays a line.
-            polyphonic: take.source == .comping
+            polyphonic: polyphonic
+        )
+
+        guard liveMutation.isActive else { return rendered }
+        return MelodyLiveMutations.apply(
+            to: rendered,
+            settings: liveMutation,
+            lengthBeats: take.lengthBeats,
+            polyphonic: polyphonic,
+            seed: take.id.uuidStableSeed &+ UInt64(bitPattern: Int64(mutationPass &* 0x9E3779B9))
         )
     }
 
