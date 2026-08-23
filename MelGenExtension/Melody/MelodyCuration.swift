@@ -235,9 +235,18 @@ struct TakeFacets: Codable, Hashable, Sendable {
     var source: TakeSource
 
     /// The chips a library row shows, in the order they're worth reading.
+    ///
+    /// Source comes first and is never elided. Whether a line was composed by
+    /// the model or fitted from the library is the single most useful thing to
+    /// know about it — it says what it cost, how it got here, and what changing
+    /// a setting will do to it — and it was briefly missing from these rows,
+    /// which made the whole history unreadable at a glance.
     var chips: [String] {
-        [density.rawValue, placement == .mixed ? "" : placement.rawValue.lowercasedWords,
-         colour == .diatonic ? "" : colour.rawValue, motion.rawValue,
+        [source.label,
+         density.rawValue,
+         placement == .mixed ? "" : placement.rawValue.lowercasedWords,
+         colour == .diatonic ? "" : colour.rawValue,
+         motion.rawValue,
          register == .middle ? "" : register.rawValue]
             .filter { !$0.isEmpty }
     }

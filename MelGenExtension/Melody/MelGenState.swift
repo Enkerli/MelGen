@@ -15,13 +15,17 @@ import Foundation
 enum TakeSource: String, Codable, Sendable {
     /// Composed by the on-device model.
     case model
-    /// A stored generic line fitted to this progression — instant, no model.
+    /// A stored line fitted to this progression — instant, no model.
     case pattern
+    /// Built here and now out of gestures, by the phrase grammar. Also instant,
+    /// and unlike a stored line it has never existed before.
+    case composed
 
     var label: String {
         switch self {
         case .model: return "model"
         case .pattern: return "line"
+        case .composed: return "phrase"
         }
     }
 }
@@ -245,11 +249,19 @@ enum MelGenAppearance: String, Codable, CaseIterable, Sendable {
 
 struct MelGenState: Codable, Sendable {
     /// How many unjudged takes the ring holds before it starts dropping them.
-    static let historyLimit = 24
+    ///
+    /// Was 24, which came from "a history is a scrollable list" and made sense
+    /// when a take was a log entry. It isn't one any more — it's curation
+    /// material, and a sweep over a second pass needs the first pass still to be
+    /// there. A take is a few kilobytes of JSON in the host's saved state; two
+    /// hundred of them is about a megabyte, which is nothing next to the audio
+    /// in the same project. The list is what needed bounding, not the store, so
+    /// the interface pages instead.
+    static let historyLimit = 250
     /// And the hard ceiling, past which even judged takes go. Far above the ring
-    /// because keeping a take costs a few hundred bytes and losing one you marked
-    /// is unrecoverable.
-    static let historyCeiling = 128
+    /// because keeping a take costs a few kilobytes and losing one you marked is
+    /// unrecoverable.
+    static let historyCeiling = 1000
 
     var progressionText: String = "E♭7 Gm9|D∆|A♭6"
     var temperature: Double = 0.6

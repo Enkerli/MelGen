@@ -60,6 +60,9 @@ struct MelGenExtensionMainView: View {
     /// Redrawn when the library changes, since it lives outside the session state
     /// the rest of this view mirrors.
     @State private var libraryRevision = 0
+    /// The store keeps hundreds of takes; the list shows a page of them. Bounding
+    /// the store to what fits on screen was the actual mistake.
+    @State private var historyRowLimit = 40
 
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
@@ -248,6 +251,37 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 13, weight: .medium))
                     Text(state.nextLine(from: PatternStore.library).name)
                         .font(.system(size: 13))
+                        .foregroundStyle(theme.textMuted)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, MelGenMetrics.space3)
+                .frame(height: MelGenMetrics.controlHeight)
+                .foregroundStyle(theme.text)
+                .background(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .fill(theme.raised)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(state.progressionText.isEmpty)
+
+            // Not a stored line: a new one, built out of gestures. The library
+            // was six hand-written cells, which is why a run of takes kept
+            // sounding like the same run of takes.
+            Button {
+                composeLine()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Compose a phrase")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("new every time, no model")
+                        .font(.system(size: 11))
                         .foregroundStyle(theme.textMuted)
                         .lineLimit(1)
                 }
@@ -916,9 +950,20 @@ struct MelGenExtensionMainView: View {
                     .foregroundStyle(theme.textMuted)
             } else {
                 VStack(spacing: 4) {
-                    ForEach(state.history) { take in
+                    ForEach(state.history.prefix(historyRowLimit)) { take in
                         historyRow(take)
                     }
+                }
+                if state.history.count > historyRowLimit {
+                    Button {
+                        historyRowLimit += 40
+                    } label: {
+                        Text("Show 40 more of \(state.history.count - historyRowLimit) older takes")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(theme.accent)
+                            .frame(height: MelGenMetrics.smallControlHeight)
+                    }
+                    .buttonStyle(.plain)
                 }
                 exportButton
             }
@@ -945,6 +990,7 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(theme.textMuted)
                         .lineLimit(1)
+                    FacetChips(facets: take.facets, theme: theme)
                 }
 
                 Spacer(minLength: 0)
@@ -1156,6 +1202,65 @@ struct MelGenExtensionMainView: View {
         return record
     }
 
+    /// Composes a brand-new line out of gestures and plays it.
+    ///
+    /// The third source, alongside the model and the stored library, and the one
+    /// that fixes what the other two couldn't: a stored line is generic or it is
+    /// a specific past take, and the model takes two seconds a note. This is new
+    /// material, shaped into phrases, instantly.
+    @discardableResult
+    private func composeLine(commitNow: Bool = true) -> GenerationRecord? {
+        let current = liveState
+
+        let progression: ChordProgression
+        do {
+            progression = try ChordProgression.parse(current.progressionText)
+        } catch {
+            statusMessage = error.localizedDescription
+            return nil
+        }
+
+        // Seeded from the cursor so the same session replays the same lines, and
+        // from the progression so the same cursor over different changes isn't
+        // the same idea twice.
+        let seed = UInt64(bitPattern: Int64(current.patternCursor &* 2_654_435_761))
+            ^ UInt64(truncatingIfNeeded: abs(current.progressionText.hashValue))
+        let style = StyleLearner.learn(from: current.curatedTakes)
+        let bars = max(2, Int(ceil(progression.totalBeats / 4)))
+        let pattern = MelodyPhrases.compose(bars: min(bars, 8),
+                                            seed: seed,
+                                            style: style.isEmpty ? nil : style)
+
+        let notes = MelodyPatterns.realize(pattern, over: progression)
+        guard !notes.isEmpty else {
+            statusMessage = "That phrase didn't fit this progression."
+            return nil
+        }
+
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: pattern.name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .composed,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+
+        if commitNow {
+            commit {
+                $0.add(record)
+                $0.patternCursor += 1
+            }
+            statusMessage = "\(pattern.name) — \(pattern.summary)."
+        } else {
+            commit(reloadKernel: false) { $0.patternCursor += 1 }
+        }
+        return record
+    }
+
     // MARK: - Generation
 
     /// Polls the kernel's loop counter, generates the *next* take while the
@@ -1169,11 +1274,10 @@ struct MelGenExtensionMainView: View {
     private func runAutoRegeneration() async {
         guard state.autoRegenerate else { return }
 
-        // Nothing to loop yet: fit a stored line immediately so there's music
-        // within a beat, rather than half a minute of silence while the model
-        // thinks.
+        // Nothing to loop yet: put music under the changes within a beat, rather
+        // than half a minute of silence while the model thinks.
         if liveState.currentTake == nil {
-            adaptStoredLine()
+            composeLine()
         }
         var lastStartedPass = audioUnit?.currentPass ?? 0
         var lastFilledPass = audioUnit?.currentPass ?? 0
@@ -1199,11 +1303,17 @@ struct MelGenExtensionMainView: View {
                 lastFilledPass = pass
             } else if due, pass > lastFilledPass {
                 // Nothing from the model yet. Rather than repeat the same take
-                // until it arrives, fit the next stored line — instant, and it
-                // keeps the changes moving while the model works.
-                if let line = adaptStoredLine(commitNow: false) {
-                    commit { $0.add(line) }
-                    statusMessage = "\(line.briefName) (stored line) — model still working…"
+                // until it arrives, put a new line under the changes — instant,
+                // and it keeps them moving while the model works. Alternating
+                // between a fresh phrase and a stored one is what stops an
+                // unattended session settling into either the same six lines or
+                // the same one grammar.
+                let filler = liveState.patternCursor.isMultiple(of: 2)
+                    ? composeLine(commitNow: false)
+                    : adaptStoredLine(commitNow: false)
+                if let filler {
+                    commit { $0.add(filler) }
+                    statusMessage = "\(filler.briefName) (\(filler.source.label)) — model still working…"
                 }
                 lastFilledPass = pass
             }
