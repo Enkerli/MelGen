@@ -37,6 +37,11 @@ CHECKS = [
     ("accent", "background", COMPONENT_MIN, "selected control fill on paper"),
     ("accent", "raised", COMPONENT_MIN, "selected control fill on a panel"),
     ("accent", "sunken", COMPONENT_MIN, "selected row outline"),
+    # The piano roll fills notes with these on the roll's own surface, so they
+    # are UI component colours rather than text — 3:1, and against `sunken`
+    # because that's what the roll is drawn on.
+    ("warning", "sunken", COMPONENT_MIN, "avoid-note fill in the piano roll"),
+    ("warning", "raised", COMPONENT_MIN, "avoid-note fill on a chord's lighter region"),
 ]
 
 

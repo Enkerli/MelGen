@@ -63,13 +63,15 @@ struct MelGenExtensionMainView: View {
     /// The store keeps hundreds of takes; the list shows a page of them. Bounding
     /// the store to what fits on screen was the actual mistake.
     @State private var historyRowLimit = 40
+    @State private var showTextGrid = false
 
     /// Mutations of the current take, and the morph between it and one of them.
     /// Not session state: they're a working surface, regenerated on demand.
     @State private var variants: [MelodyVariant] = []
     @State private var variantParent: MelodyPattern?
     @State private var morphTarget: MelodyPattern?
-    @State private var morphMix: Double = 0.5
+    @State private var morphRhythm: Double = 0.5
+    @State private var morphPitch: Double = 0.5
     @State private var showVariants = false
 
     /// What's been played in since capture was turned on, and whether it's on.
@@ -769,14 +771,38 @@ struct MelGenExtensionMainView: View {
             Eyebrow(text: "Current take", theme: theme)
 
             VStack(alignment: .leading, spacing: 4) {
-                // A grid, not a run of note names: one column per eighth, so
-                // rests and note lengths are visible rather than inferred.
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        ForEach(Array(takeBars.enumerated()), id: \.offset) { _, row in
-                            Text(row)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(theme.text)
+                // The roll first, because it shows what the grid can't: gate
+                // length below an eighth, and two voices at once.
+                PianoRoll(notes: state.renderedMelody,
+                          progression: try? ChordProgression.parse(state.progressionText),
+                          lengthBeats: state.currentTake?.lengthBeats ?? 0,
+                          theme: theme)
+
+                Button {
+                    showTextGrid.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showTextGrid ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(showTextGrid ? "Hide the grid" : "Show it as a grid")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(theme.textMuted)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                // The text grid stays available: it's the thing that survives
+                // being copied into a note, and it reads a rhythm at a glance in
+                // a way a picture doesn't.
+                if showTextGrid {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(Array(takeBars.enumerated()), id: \.offset) { _, row in
+                                Text(row)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(theme.text)
+                            }
                         }
                     }
                 }
@@ -1119,7 +1145,8 @@ struct MelGenExtensionMainView: View {
                                 play(variant.pattern, describedAs: variant.transform)
                             } onMorphTarget: {
                                 morphTarget = variant.pattern
-                                morphMix = 0.5
+                                morphRhythm = 0.5
+                                morphPitch = 0.5
                             }
                         }
                     }
@@ -1132,44 +1159,55 @@ struct MelGenExtensionMainView: View {
     @ViewBuilder
     private var morphControl: some View {
         if let parent = variantParent, let target = morphTarget {
+            let morphed = MelodyMorph.between(parent, target,
+                                              rhythmMix: morphRhythm, pitchMix: morphPitch)
             VStack(alignment: .leading, spacing: 4) {
                 Eyebrow(text: "Morph", theme: theme)
-                Text("\(parent.name) → \(target.name)")
-                    .font(.system(size: 11))
+                Text("\(parent.name)  →  \(target.name)")
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(theme.textMuted)
                     .lineLimit(1)
 
-                LabelledSlider(title: "Mix",
-                               lowLabel: "this",
-                               highLabel: "that",
-                               value: $morphMix,
-                               theme: theme,
+                // Two axes, because "keep this rhythm and take those pitches" is
+                // the instruction anyone actually has, and one slider hides it.
+                LabelledSlider(title: "Rhythm", lowLabel: "this", highLabel: "that",
+                               value: $morphRhythm, theme: theme,
+                               format: { "\(Int($0 * 100))%" })
+                LabelledSlider(title: "Pitch", lowLabel: "this", highLabel: "that",
+                               value: $morphPitch, theme: theme,
                                format: { "\(Int($0 * 100))%" })
 
-                Button {
-                    let morphed = MelodyMorph.between(parent, target, mix: morphMix)
-                    play(morphed, describedAs: "morph at \(Int(morphMix * 100))%")
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "pin")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Hear this point")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .padding(.horizontal, MelGenMetrics.space3)
-                    .frame(height: MelGenMetrics.controlHeight)
-                    .foregroundStyle(theme.text)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(theme.raised)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .strokeBorder(theme.borderStrong, lineWidth: 1.5)
-                    )
+                // Seen before it's heard: the whole difficulty with a morph is
+                // that the interesting point is somewhere in the middle and
+                // there's no way to find it by pressing a button repeatedly.
+                if let changes = try? ChordProgression.parse(state.progressionText) {
+                    PianoRoll(notes: MelodyPatterns.realize(morphed, over: changes),
+                              progression: changes,
+                              lengthBeats: Double(morphed.bars) * 4,
+                              theme: theme,
+                              height: 110)
                 }
-                .buttonStyle(.plain)
-                .accessibilityHint("Loads the line at this point on the morph, so it can be judged like any other take")
+
+                Text(morphed.summary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+
+                HStack(spacing: MelGenMetrics.space2) {
+                    Button {
+                        play(morphed, describedAs: "morph, rhythm \(Int(morphRhythm * 100))% "
+                             + "pitch \(Int(morphPitch * 100))%")
+                    } label: {
+                        findLabel("Hear this point", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        swap(&variantParent, &morphTarget)
+                    } label: {
+                        findLabel("Swap ends", systemImage: "arrow.left.arrow.right")
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }

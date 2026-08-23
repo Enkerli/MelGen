@@ -390,7 +390,30 @@ enum MelodyMorph {
                         _ to: MelodyPattern,
                         mix: Double,
                         name: String? = nil) -> MelodyPattern {
-        let mix = max(0, min(1, mix))
+        between(from, to, rhythmMix: mix, pitchMix: mix, name: name)
+    }
+
+    /// Dials the two axes separately.
+    ///
+    /// One slider was the obvious design and it hides the instruction anyone
+    /// actually has, which is "keep this one's rhythm and take that one's
+    /// pitches". Rhythm and pitch are the two things a line is made of and they
+    /// are independently interesting — the whole pattern format is built on
+    /// separating them, and the morph was the one place that put them back
+    /// together for no reason.
+    ///
+    /// - Parameters:
+    ///   - rhythmMix: 0 keeps `from`'s onsets, lengths and note count; 1 takes
+    ///     `to`'s.
+    ///   - pitchMix: 0 keeps `from`'s degrees; 1 takes `to`'s.
+    static func between(_ from: MelodyPattern,
+                        _ to: MelodyPattern,
+                        rhythmMix: Double,
+                        pitchMix: Double,
+                        name: String? = nil) -> MelodyPattern {
+        let rhythmMix = max(0, min(1, rhythmMix))
+        let pitchMix = max(0, min(1, pitchMix))
+        let mix = rhythmMix
         let left = from.notes.sorted { $0.startEighth < $1.startEighth }
         let right = to.notes.sorted { $0.startEighth < $1.startEighth }
         guard !left.isEmpty else { return to }
@@ -412,25 +435,27 @@ enum MelodyMorph {
             let bStart = Double(b.startEighth) / Double(max(1, to.bars * 8)) * Double(span)
 
             notes.append(PatternNote(
-                startEighth: Int((aStart * (1 - mix) + bStart * mix).rounded()),
-                lengthEighths: max(1, Int((Double(a.lengthEighths) * (1 - mix)
-                                           + Double(b.lengthEighths) * mix).rounded())),
-                degree: Int((Double(a.degree) * (1 - mix) + Double(b.degree) * mix).rounded()),
-                octave: Int((Double(a.octave) * (1 - mix) + Double(b.octave) * mix).rounded()),
+                startEighth: Int((aStart * (1 - rhythmMix) + bStart * rhythmMix).rounded()),
+                lengthEighths: max(1, Int((Double(a.lengthEighths) * (1 - rhythmMix)
+                                           + Double(b.lengthEighths) * rhythmMix).rounded())),
+                degree: Int((Double(a.degree) * (1 - pitchMix) + Double(b.degree) * pitchMix).rounded()),
+                octave: Int((Double(a.octave) * (1 - pitchMix) + Double(b.octave) * pitchMix).rounded()),
                 // Alteration doesn't interpolate — half a semitone isn't a note.
-                // It follows whichever parent the mix is nearer.
-                alteration: mix < 0.5 ? a.alteration : b.alteration,
-                velocity: Int((Double(a.velocity) * (1 - mix) + Double(b.velocity) * mix).rounded()),
-                restAfterEighths: Int((Double(a.restAfterEighths) * (1 - mix)
-                                       + Double(b.restAfterEighths) * mix).rounded()),
-                role: mix < 0.5 ? a.role : b.role
+                // It follows whichever parent the pitch mix is nearer.
+                alteration: pitchMix < 0.5 ? a.alteration : b.alteration,
+                velocity: Int((Double(a.velocity) * (1 - rhythmMix)
+                               + Double(b.velocity) * rhythmMix).rounded()),
+                restAfterEighths: Int((Double(a.restAfterEighths) * (1 - rhythmMix)
+                                       + Double(b.restAfterEighths) * rhythmMix).rounded()),
+                role: pitchMix < 0.5 ? a.role : b.role
             ))
         }
 
         var morphed = MelodyPattern(
-            name: name ?? "\(from.name) → \(to.name) @\(Int(mix * 100))%",
+            name: name ?? "\(from.name) → \(to.name) r\(Int(rhythmMix * 100)) p\(Int(pitchMix * 100))",
             bars: max(1, bars),
-            summary: "\(Int((1 - mix) * 100))% \(from.name), \(Int(mix * 100))% \(to.name)",
+            summary: "rhythm \(Int(rhythmMix * 100))% toward \(to.name), "
+                   + "pitch \(Int(pitchMix * 100))% toward \(to.name)",
             notes: notes,
             origin: from.origin
         )

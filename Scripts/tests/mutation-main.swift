@@ -207,6 +207,48 @@ check("morphing with an empty line gives back the other one",
       MelodyMorph.between(parent, MelodyPattern(name: "e", bars: 4, summary: "", notes: []), mix: 0.5)
         == parent)
 
+// The two axes, which are what a morph is actually for.
+print()
+print("── rhythm and pitch, separately ───────────────────")
+
+let keepRhythm = MelodyMorph.between(parent, other, rhythmMix: 0, pitchMix: 1)
+check("keeping this rhythm keeps its onsets",
+      onsets(keepRhythm) == onsets(parent), "\(onsets(keepRhythm)) vs \(onsets(parent))")
+check("and takes the other line's degrees",
+      degrees(keepRhythm) != degrees(parent))
+
+let keepPitch = MelodyMorph.between(parent, other, rhythmMix: 1, pitchMix: 0)
+check("keeping this pitch takes its degrees and nothing else's",
+      Set(degrees(keepPitch)).isSubset(of: Set(degrees(parent))),
+      "\(Set(degrees(keepPitch)).sorted()) from \(Set(degrees(parent)).sorted())")
+check("and takes the other line's rhythm", onsets(keepPitch) == onsets(other),
+      "\(onsets(keepPitch)) vs \(onsets(other))")
+// The note count follows the rhythm, because a rhythm is how many notes there
+// are as much as where they fall.
+check("the note count follows the rhythm axis",
+      keepPitch.notes.count == other.notes.count && keepRhythm.notes.count == parent.notes.count,
+      "\(keepPitch.notes.count) vs \(other.notes.count), "
+      + "\(keepRhythm.notes.count) vs \(parent.notes.count)")
+
+check("both axes at zero is the first line",
+      degrees(MelodyMorph.between(parent, other, rhythmMix: 0, pitchMix: 0)) == degrees(parent))
+check("both at one is the second",
+      degrees(MelodyMorph.between(parent, other, rhythmMix: 1, pitchMix: 1)) == degrees(other))
+check("the one-slider version still means both at once",
+      MelodyMorph.between(parent, other, mix: 0.4)
+        == MelodyMorph.between(parent, other, rhythmMix: 0.4, pitchMix: 0.4))
+check("every combination stays playable",
+      stride(from: 0.0, through: 1.0, by: 0.25).allSatisfy { r in
+          stride(from: 0.0, through: 1.0, by: 0.25).allSatisfy { p in
+              let morphed = MelodyMorph.between(parent, other, rhythmMix: r, pitchMix: p)
+              return Set(morphed.notes.map(\.startEighth)).count == morphed.notes.count
+                  && !MelodyPatterns.realize(morphed, over: progression).isEmpty
+          }
+      })
+check("the summary says what each axis did",
+      MelodyMorph.between(parent, other, rhythmMix: 0.25, pitchMix: 0.75).summary.contains("rhythm 25%")
+        && MelodyMorph.between(parent, other, rhythmMix: 0.25, pitchMix: 0.75).summary.contains("pitch 75%"))
+
 print()
 print(failures == 0 ? "mutation: all checks passed" : "mutation: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

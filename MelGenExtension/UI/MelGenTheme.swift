@@ -39,6 +39,12 @@ struct MelGenTheme: Equatable {
 
     let accent: Color
     let accentText: Color
+    /// For the one thing the interface needs to mark as "look at this" without
+    /// saying it's wrong: a note landing on a tone the chord says not to land
+    /// on. Distinct from the accent in hue rather than only in lightness, since
+    /// the piano roll uses both as fills and a colour-blind reader needs the
+    /// difference to survive.
+    let warning: Color
 
     static let light = MelGenTheme(
         background: Color(hex: 0xf5f2eb),
@@ -51,7 +57,8 @@ struct MelGenTheme: Equatable {
         border: Color(hex: 0xddd6ca),
         borderStrong: Color(hex: 0x9d8967),
         accent: Color(hex: 0x2f66a5),
-        accentText: Color(hex: 0xffffff)
+        accentText: Color(hex: 0xffffff),
+        warning: Color(hex: 0xa8541f)
     )
 
     static let dark = MelGenTheme(
@@ -65,7 +72,8 @@ struct MelGenTheme: Equatable {
         border: Color(hex: 0x38332b),
         borderStrong: Color(hex: 0x736958),
         accent: Color(hex: 0x6da3df),
-        accentText: Color(hex: 0x14130f)
+        accentText: Color(hex: 0x14130f),
+        warning: Color(hex: 0xdb8f52)
     )
 
     static func resolved(for scheme: ColorScheme) -> MelGenTheme {
