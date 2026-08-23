@@ -298,6 +298,13 @@ struct MelGenState: Codable, Sendable {
     /// Which comping figure is in play, by name.
     var compingFigureName: String = CompingFigure.charleston.name
 
+    /// Settings for generating the changes themselves.
+    var progressionKey: Int = 0
+    var progressionMode: ProgressionMode = .major
+    var progressionBars: Int = 8
+    /// Bumped per generation so the same settings give a new progression.
+    var progressionCursor: Int = 0
+
     /// Which groups of the interface are unfolded.
     var showShape: Bool = true
     var showFeel: Bool = true
@@ -357,6 +364,10 @@ struct MelGenState: Codable, Sendable {
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         expression = try container.decodeIfPresent(ExpressionSettings.self, forKey: .expression) ?? ExpressionSettings()
         mode = try container.decodeIfPresent(PlayMode.self, forKey: .mode) ?? .line
+        progressionKey = try container.decodeIfPresent(Int.self, forKey: .progressionKey) ?? 0
+        progressionMode = try container.decodeIfPresent(ProgressionMode.self, forKey: .progressionMode) ?? .major
+        progressionBars = try container.decodeIfPresent(Int.self, forKey: .progressionBars) ?? 8
+        progressionCursor = try container.decodeIfPresent(Int.self, forKey: .progressionCursor) ?? 0
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true

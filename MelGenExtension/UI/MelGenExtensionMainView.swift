@@ -77,6 +77,11 @@ struct MelGenExtensionMainView: View {
     @State private var isListening = false
     @State private var capturedEvents: [CapturedMIDIEvent] = []
     @State private var showCapture = false
+    @State private var showProgressionMaker = false
+    /// The Roman numerals behind the current progression, when it was generated
+    /// here. Worth showing: the numerals are what the corpus actually models, and
+    /// the chord names are only one key's worth of them.
+    @State private var generatedNumerals: String?
 
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
@@ -110,6 +115,7 @@ struct MelGenExtensionMainView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                progressionMakerSection
                 transportSection
                 shapeSection
                 rotationSection
@@ -449,6 +455,85 @@ struct MelGenExtensionMainView: View {
 
     private var generateEnabled: Bool {
         !isGenerating && !state.progressionText.isEmpty
+    }
+
+    // MARK: - Generating the changes
+
+    /// Where the progression comes from, when it doesn't come from typing.
+    ///
+    /// A walk over ProgGenie's corpus transition counts — what follows "IIm7",
+    /// blended with what follows "IIm7 → V7". The same machinery as the melodic
+    /// chain, one level up, which is the point of having built it here rather
+    /// than reaching for another application: generate the changes, adapt
+    /// patterns to them, curate the results, in one place.
+    private var progressionMakerSection: some View {
+        CollapsibleSection(title: "Make changes",
+                           summary: "\(ChordProgression.flatNoteNames[state.progressionKey]) "
+                                  + "\(state.progressionMode.rawValue) · \(state.progressionBars) bars",
+                           isExpanded: $showProgressionMaker,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                HStack(spacing: MelGenMetrics.space2) {
+                    ChipPicker(options: ProgressionMode.allCases.map { ($0, $0.label) },
+                               selection: binding(\.progressionMode, reloadKernel: false),
+                               theme: theme)
+                        .frame(maxWidth: 160)
+                    ChipPicker(options: [(4, "4"), (8, "8"), (12, "12"), (16, "16")],
+                               selection: binding(\.progressionBars, reloadKernel: false),
+                               theme: theme)
+                        .frame(maxWidth: 180)
+                }
+
+                FlowChips(items: ChordProgression.flatNoteNames,
+                          isSelected: { $0 == ChordProgression.flatNoteNames[state.progressionKey] },
+                          theme: theme) { name in
+                    guard let index = ChordProgression.flatNoteNames.firstIndex(of: name) else { return }
+                    commit(reloadKernel: false) { $0.progressionKey = index }
+                }
+
+                Button {
+                    makeChanges()
+                } label: {
+                    findLabel("Generate a progression", systemImage: "arrow.triangle.branch")
+                }
+                .buttonStyle(.plain)
+
+                if let generatedNumerals {
+                    Text(generatedNumerals)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("Corpus transition counts from ProgGenie, walked at order two "
+                     + "and backed off to order one where the corpus is thin.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func makeChanges() {
+        let current = liveState
+        let seed = UInt64(bitPattern: Int64(current.progressionCursor &* 6_364_136_223 &+ 17))
+        guard let generated = ProgressionGenerator.generate(
+            bars: current.progressionBars,
+            key: current.progressionKey,
+            mode: current.progressionMode,
+            temperature: 0.6 + current.temperature,
+            seed: seed
+        ) else {
+            statusMessage = "Couldn't generate changes — the corpus tables are missing."
+            return
+        }
+
+        commit(reloadKernel: false) {
+            $0.progressionText = generated.text
+            $0.progressionCursor += 1
+        }
+        generatedNumerals = generated.labels.joined(separator: "  ")
+        statusMessage = "\(generated.summary). Generate or fit a line over it."
     }
 
     // MARK: - Transport
