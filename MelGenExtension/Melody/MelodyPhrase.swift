@@ -56,6 +56,10 @@ enum MelodyPhrases {
                         seed: UInt64,
                         style: LearnedStyle? = nil,
                         preferring preferred: [GestureRhythm] = [],
+                        contours preferredContours: [GestureContour] = [],
+                        density: Double? = nil,
+                        restiness: Double? = nil,
+                        architecture: LinePlan.Architecture? = nil,
                         palette: DurationPalette = .mixed,
                         name: String? = nil) -> MelodyPattern {
         let phraseCount = max(1, Int(ceil(Double(max(1, bars)) / 2)))
@@ -66,12 +70,28 @@ enum MelodyPhrases {
         // the same architecture — state, answer, develop, land, centred on the
         // third — and however varied the figures are the *lines* all sound like
         // one another. Which they did, and which is the complaint this answers.
-        let plan = LinePlan(rng: &rng)
+        var plan = LinePlan(rng: &rng)
+        // A template's character overrides the line's own draw where it has an
+        // opinion. Without this, the plan was drawn freely every time and the
+        // grammar drowned out the template — nine templates composed to within
+        // 0.04 of each other on every measured axis, which is to say they were
+        // one template with nine names.
+        if let architecture { plan.architecture = architecture }
+        if let restiness {
+            plan.saysMoreChance = 1 - min(0.85, max(0.05, restiness))
+            plan.fragmentChance = max(0, 0.45 - restiness * 0.5)
+            plan.pickupChance = max(0.05, 0.6 - restiness * 0.5)
+        }
+        // Density is the axis the templates differ on most and the one the
+        // grammar had no way to hear: a phrase is two figures whatever you asked
+        // for. It becomes a thinning or a doubling at the end, using the same
+        // metric ranking everything else uses to decide which note matters least.
+        let targetDensity = density
 
         // The figure the whole line is about. Everything else refers to it.
         let callRhythm = pick(rhythms(for: .statement, preferring: preferred, palette: palette),
                               style: style, using: &rng)
-        let callContour = pick(contours(for: .statement), using: &rng)
+        let callContour = pick(contours(for: .statement, preferring: preferredContours), using: &rng)
         let call = MelodyGesture(rhythm: callRhythm, contour: callContour, role: .statement)
 
         var previousTailEighth = 0
@@ -103,6 +123,7 @@ enum MelodyPhrases {
                                            isLast: isLast,
                                            style: style,
                                            preferring: preferred,
+                                           contours: preferredContours,
                                            palette: palette,
                                            using: &rng)
 
@@ -111,12 +132,15 @@ enum MelodyPhrases {
                                                  velocity: velocity(for: first.role)))
 
             // The second figure starts after the first has stopped sounding *and*
-            // after whatever air the first asked for, pushed out to an even
-            // eighth so the phrase keeps its footing. An extra beat of gap comes
-            // up often enough that phrases don't all breathe in the same place.
+            // after whatever air the first asked for. It's pushed out to an even
+            // eighth so the phrase keeps its footing — unless the template's own
+            // figures are offbeat ones, in which case forcing them onto the beat
+            // is undoing the thing that makes them what they are. Derived from
+            // the figures rather than declared, so a template can't claim to
+            // syncopate while being made of downbeats.
             let firstEnd = origin + first.spanEighths
             var secondStart = firstEnd + (rng.nextUnit() < 0.4 ? 2 : 0)
-            if !secondStart.isMultiple(of: 2) { secondStart += 1 }
+            if !secondStart.isMultiple(of: 2), !leansOffbeat(preferred) { secondStart += 1 }
             previousTailEighth = firstEnd
 
             // A phrase that is one figure and then silence is a phrase, and it's
@@ -148,7 +172,14 @@ enum MelodyPhrases {
             }
         }
 
-        let composed = tidy(notes, spanEighths: phraseCount * eighthsPerPhrase)
+        var composed = tidy(notes, spanEighths: phraseCount * eighthsPerPhrase)
+        if let targetDensity {
+            composed = fit(composed,
+                           toDensity: targetDensity,
+                           bars: phraseCount * 2,
+                           preferring: preferred,
+                           rng: &rng)
+        }
         return MelodyPattern(
             name: name ?? title(call: call, seed: seed),
             bars: phraseCount * 2,
@@ -259,6 +290,7 @@ enum MelodyPhrases {
                                  isLast: Bool,
                                  style: LearnedStyle?,
                                  preferring preferred: [GestureRhythm],
+                                 contours preferredContours: [GestureContour],
                                  palette: DurationPalette,
                                  using rng: inout SplitMix64) -> (MelodyGesture, MelodyGesture) {
         switch plan {
@@ -266,7 +298,7 @@ enum MelodyPhrases {
             let second = MelodyGesture(
                 rhythm: pick(rhythms(for: .continuation, preferring: preferred, palette: palette),
                              style: style, using: &rng),
-                contour: pick(contours(for: .continuation), using: &rng),
+                contour: pick(contours(for: .continuation, preferring: preferredContours), using: &rng),
                 role: .continuation,
                 anchor: 1
             )
@@ -302,7 +334,7 @@ enum MelodyPhrases {
             )
             let second = MelodyGesture(
                 rhythm: call.rhythm,
-                contour: pick(contours(for: .continuation), using: &rng),
+                contour: pick(contours(for: .continuation, preferring: preferredContours), using: &rng),
                 role: .continuation,
                 anchor: 0
             )
@@ -351,15 +383,31 @@ enum MelodyPhrases {
         if !preferred.isEmpty {
             let overlap = base.filter { preferred.contains($0) }
             if !overlap.isEmpty {
-                // Weighted rather than exclusive: the preferred figures appear
-                // twice in the pool, so they come up about two thirds of the time
-                // and the rest of the vocabulary is still reachable.
-                pool = overlap + overlap + base
+                // Heavily weighted rather than merely nudged. The first version
+                // put the preferred figures in the pool twice against a base of
+                // nine, which worked out at about a third of draws — far too
+                // gentle to be audible, and the measured result was nine
+                // templates that composed identically. Six copies against the
+                // base puts them at roughly four draws in five, and the rest of
+                // the vocabulary is still reachable.
+                pool = Array(repeating: overlap, count: 6).flatMap { $0 } + base
             }
         }
 
         let byPalette = pool.filter { fits($0, palette) }
         return byPalette.isEmpty ? pool : byPalette
+    }
+
+    /// Whether a template's figures live off the beat.
+    ///
+    /// Measured from the figures' own onsets. A template that says it syncopates
+    /// and is made of downbeat figures is not syncopating, and taking its word
+    /// for it is how nine templates came to compose alike.
+    static func leansOffbeat(_ rhythms: [GestureRhythm]) -> Bool {
+        guard !rhythms.isEmpty else { return false }
+        let onsets = rhythms.flatMap { $0.positions }
+        guard !onsets.isEmpty else { return false }
+        return Double(onsets.filter { !$0.isMultiple(of: 2) }.count) / Double(onsets.count) > 0.3
     }
 
     /// Whether a figure belongs to a note-duration setting.
@@ -425,6 +473,17 @@ enum MelodyPhrases {
 
     private static func pick<Element>(_ options: [Element], using rng: inout SplitMix64) -> Element {
         options[Int(rng.next() % UInt64(max(1, options.count)))]
+    }
+
+    /// Narrows a role's contours by what the template leans on, the same way
+    /// rhythms are narrowed — and never to nothing, because a role that can't
+    /// find a shape isn't a role.
+    static func contours(for role: GestureRole,
+                         preferring preferred: [GestureContour]) -> [GestureContour] {
+        let base = contours(for: role)
+        guard !preferred.isEmpty else { return base }
+        let overlap = base.filter { preferred.contains($0) }
+        return overlap.isEmpty ? base : overlap
     }
 
     /// Picks a rhythm, leaning toward the kind of figure the musician's kept
@@ -496,6 +555,79 @@ enum MelodyPhrases {
             ordered[ordered.count - 1] = last
         }
         return ordered
+    }
+
+    /// Brings a composed line to about the density its template asked for.
+    ///
+    /// Thinning takes the weakest metric positions first, which is the ranking
+    /// the whole plug-in shares; thickening inserts notes between existing ones
+    /// rather than at random positions, so the added notes are passing tones
+    /// through the shape that's already there rather than a second line laid over
+    /// it.
+    static func fit(_ notes: [PatternNote],
+                    toDensity target: Double,
+                    bars: Int,
+                    preferring preferred: [GestureRhythm],
+                    rng: inout SplitMix64) -> [PatternNote] {
+        guard !notes.isEmpty, bars > 0 else { return notes }
+        let wanted = max(2, Int((target * Double(bars)).rounded()))
+        let ordered = notes.sorted { $0.startEighth < $1.startEighth }
+
+        if wanted < ordered.count {
+            let ranked = ordered.indices.sorted {
+                MelodyTransforms.metricWeight(ordered[$0].startEighth)
+                    < MelodyTransforms.metricWeight(ordered[$1].startEighth)
+            }
+            // Never the first note or the last: the line still has to start where
+            // it started and land where it landed.
+            let droppable = ranked.filter { $0 != 0 && $0 != ordered.count - 1 }
+            let dropped = Set(droppable.prefix(ordered.count - wanted))
+            return ordered.indices.filter { !dropped.contains($0) }.map { ordered[$0] }
+        }
+
+        guard wanted > ordered.count else { return ordered }
+
+        // A dense target can't be reached by filling gaps alone: once the notes
+        // are packed there are no gaps left, and the line tops out well short of
+        // what was asked for. So a template asking for a great deal more than it
+        // got shortens what's there first — which is not a compromise. "Running
+        // eighths" means short notes; a version of it made of half notes with
+        // extra notes squeezed between them would be the wrong line.
+        var result = ordered
+        if Double(wanted) > Double(ordered.count) * 1.4 {
+            for index in result.indices {
+                result[index].lengthEighths = min(result[index].lengthEighths, 2)
+            }
+        }
+        var attempts = 0
+        while result.count < wanted, attempts < wanted * 3 {
+            attempts += 1
+            // The widest gap, so the line fills in where it is emptiest.
+            var widest = 0
+            var widestGap = 0
+            for index in result.indices.dropLast() {
+                let gap = result[index + 1].startEighth
+                    - (result[index].startEighth + result[index].lengthEighths)
+                if gap > widestGap { widestGap = gap; widest = index }
+            }
+            guard widestGap >= 1 else { break }
+
+            let anchor = result[widest]
+            let next = result[widest + 1]
+            var inserted = anchor
+            inserted.startEighth = anchor.startEighth + anchor.lengthEighths
+                + max(0, (widestGap - 1) / 2)
+            inserted.lengthEighths = 1
+            inserted.restAfterEighths = 0
+            // Between the two it sits between, so it passes rather than repeats.
+            inserted.degree = (anchor.degree + next.degree) / 2
+            if inserted.degree == anchor.degree {
+                inserted.degree += next.degree > anchor.degree ? 1 : -1
+            }
+            inserted.velocity = max(40, anchor.velocity - 10)
+            result.insert(inserted, at: widest + 1)
+        }
+        return result
     }
 
     private static func title(call: MelodyGesture, seed: UInt64) -> String {

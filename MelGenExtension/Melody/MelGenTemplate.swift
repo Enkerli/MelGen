@@ -39,15 +39,32 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
     /// composed rather than generated, so a template means the same thing on
     /// both paths instead of only shaping the prompt.
     var gestureRhythms: [GestureRhythm]
+    /// The contours it leans on. Rhythm alone turned out not to be enough to
+    /// tell two templates apart — see `character`.
+    var gestureContours: [GestureContour]
+    /// Notes per bar it implies, and how much air it wants.
+    var density: Double
+    var restiness: Double
+    /// How it prefers a line to be laid out.
+    var architecture: MelodyPhrases.LinePlan.Architecture?
     /// For chords: the comping figure.
     var figure: CompingFigure?
 
-    init(brief: StyleBrief, gestureRhythms: [GestureRhythm] = []) {
+    init(brief: StyleBrief,
+         gestureRhythms: [GestureRhythm] = [],
+         gestureContours: [GestureContour] = [],
+         density: Double = 4,
+         restiness: Double = 0.3,
+         architecture: MelodyPhrases.LinePlan.Architecture? = nil) {
         self.name = brief.name
         self.summary = brief.text
         self.mode = .line
         self.brief = brief
         self.gestureRhythms = gestureRhythms
+        self.gestureContours = gestureContours
+        self.density = density
+        self.restiness = restiness
+        self.architecture = architecture
         self.figure = nil
     }
 
@@ -61,6 +78,10 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
         // specify. They are not two descriptions of one thing.
         self.brief = StyleBrief(name: figure.name, text: CompingBriefs.brief(for: figure.name))
         self.gestureRhythms = [figure.rhythm]
+        self.gestureContours = []
+        self.density = 3
+        self.restiness = 0.5
+        self.architecture = nil
         self.figure = figure
     }
 }
@@ -79,15 +100,52 @@ enum MelGenTemplates {
     /// the figures that *are* long tones, so choosing a template shapes every
     /// source rather than only the slowest one.
     static let line: [MelGenTemplate] = [
-        MelGenTemplate(brief: StyleBriefs.all[0], gestureRhythms: [.longWithAir, .tiedOverTheBar, .dotted]),
-        MelGenTemplate(brief: StyleBriefs.all[1], gestureRhythms: [.even, .runOfFour, .tresillo]),
-        MelGenTemplate(brief: StyleBriefs.all[2], gestureRhythms: [.charleston, .pushedPair, .tresillo, .twoPlusThree]),
-        MelGenTemplate(brief: StyleBriefs.all[3], gestureRhythms: [.longWithAir, .stab, .charleston]),
-        MelGenTemplate(brief: StyleBriefs.all[4], gestureRhythms: [.dotted, .reverseDotted, .twoPlusThree]),
-        MelGenTemplate(brief: StyleBriefs.all[5], gestureRhythms: [.tresillo, .twoPlusThree, .tripletFeel]),
-        MelGenTemplate(brief: StyleBriefs.all[6], gestureRhythms: [.even, .runOfFour, .reverseDotted]),
-        MelGenTemplate(brief: StyleBriefs.all[7], gestureRhythms: [.pushedPair, .tiedOverTheBar, .charleston]),
-        MelGenTemplate(brief: StyleBriefs.all[8], gestureRhythms: [.dotted, .tripletFeel, .reverseDotted])
+        // Long tones: few notes, long ones, lots of air, and a shape that goes
+        // somewhere slowly.
+        MelGenTemplate(brief: StyleBriefs.all[0],
+                       gestureRhythms: [.longWithAir, .halfAndAir, .tiedOverTheBar],
+                       gestureContours: [.held, .ascend, .arch],
+                       density: 2, restiness: 0.55, architecture: .aaba),
+        // Running eighths: many notes, short ones, almost no air.
+        MelGenTemplate(brief: StyleBriefs.all[1],
+                       gestureRhythms: [.even, .runOfFour, .tresillo],
+                       gestureContours: [.ascend, .descend, .turn, .pendulum],
+                       density: 7, restiness: 0.1, architecture: .through),
+        // Syncopated: offbeat figures, middling density.
+        MelGenTemplate(brief: StyleBriefs.all[2],
+                       gestureRhythms: [.charleston, .pushedPair, .tresillo, .twoPlusThree],
+                       gestureContours: [.leapFall, .turn, .pendulum],
+                       density: 4, restiness: 0.35, architecture: .pairs),
+        // Sparse: the fewest notes of any of them, and the most silence.
+        MelGenTemplate(brief: StyleBriefs.all[3],
+                       gestureRhythms: [.longWithAir, .stab, .halfAndAir],
+                       gestureContours: [.held, .descend],
+                       density: 1.5, restiness: 0.65, architecture: .pairs),
+        // Call and response: two-bar units that answer each other.
+        MelGenTemplate(brief: StyleBriefs.all[4],
+                       gestureRhythms: [.dotted, .reverseDotted, .twoPlusThree],
+                       gestureContours: [.arch, .valley, .fallLeap],
+                       density: 3.5, restiness: 0.4, architecture: .callAnswer),
+        // Repeated motif: one cell, over and over, barely varied.
+        MelGenTemplate(brief: StyleBriefs.all[5],
+                       gestureRhythms: [.tresillo, .twoPlusThree, .tripletFeel],
+                       gestureContours: [.pendulum, .turn],
+                       density: 5, restiness: 0.25, architecture: .aaba),
+        // Rising arc: one long climb.
+        MelGenTemplate(brief: StyleBriefs.all[6],
+                       gestureRhythms: [.even, .steadyQuarters, .reverseDotted],
+                       gestureContours: [.ascend, .arch],
+                       density: 5, restiness: 0.2, architecture: .through),
+        // Anticipation: everything arrives early and holds.
+        MelGenTemplate(brief: StyleBriefs.all[7],
+                       gestureRhythms: [.pushedPair, .tiedOverTheBar, .charleston],
+                       gestureContours: [.leapFall, .enclose, .held],
+                       density: 3, restiness: 0.45, architecture: .pairs),
+        // Dotted swing: loping pairs.
+        MelGenTemplate(brief: StyleBriefs.all[8],
+                       gestureRhythms: [.dotted, .tripletFeel, .reverseDotted],
+                       gestureContours: [.valley, .turn, .descend],
+                       density: 4.5, restiness: 0.3, architecture: .callAnswer)
     ]
 
     static let chords: [MelGenTemplate] = CompingFigure.all.map(MelGenTemplate.init(figure:))

@@ -2373,6 +2373,10 @@ struct MelGenExtensionMainView: View {
                                             // A template shapes every source, not
                                             // only the one that talks to a model.
                                             preferring: template.gestureRhythms,
+                                            contours: template.gestureContours,
+                                            density: template.density,
+                                            restiness: template.restiness,
+                                            architecture: template.architecture,
                                             palette: current.durationPalette)
 
         let notes = MelodyPatterns.realize(pattern, over: progression)
