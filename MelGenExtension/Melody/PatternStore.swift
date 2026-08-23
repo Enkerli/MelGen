@@ -30,13 +30,17 @@ enum PatternStore {
         return patterns
     }
 
-    /// What the rotation draws from: the hand-written seeds, then yours.
+    /// What the rotation draws from: the hand-written seeds, the interval cells,
+    /// then yours.
     ///
     /// The seeds stay, deliberately. They're generic on purpose — the property
     /// that makes them fit anything is the same one that makes them plain — and a
-    /// library with nothing in it yet still has to play something.
+    /// library with nothing in it yet still has to play something. The interval
+    /// cells (Hanon's exercises and Samchillian-style streams) are there because
+    /// they're a different *kind* of generic: shapes defined by their moves
+    /// rather than their positions, which sequence themselves.
     static var library: [MelodyPattern] {
-        MelodyPatterns.seeds + userPatterns
+        MelodyPatterns.seeds + MelodyStepPatterns.library() + userPatterns
     }
 
     static var isEmpty: Bool { userPatterns.isEmpty }

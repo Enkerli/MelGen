@@ -21,6 +21,7 @@
 #   mutation — transforms, variant scoring, and the morph between two lines
 #   retrieval — finding a line rather than making one, and being surprised on purpose
 #   topics — grouping the library so the vocabulary can come from the material
+#   steps — interval cells: Hanon's self-sequencing figures and Samchillian streams
 #   analysis — take measurement (variety, harmonic roles) and the dead-air guard
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
@@ -186,6 +187,14 @@ run_topics() {
     "$BUILD/topics" || status=1
 }
 
+run_steps() {
+    echo "── steps ─────────────────────────────────────────"
+    cp "$REPO/Scripts/tests/steps-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/steps" || { status=1; return 0; }
+    "$BUILD/steps" || status=1
+}
+
 run_analysis() {
     echo "── analysis ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
@@ -209,7 +218,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_analysis; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_analysis; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -222,11 +231,12 @@ case "$which" in
     mutation) run_mutation ;;
     retrieval) run_retrieval ;;
     topics)   run_topics ;;
+    steps)    run_steps ;;
     analysis) run_analysis ;;
     contrast) run_contrast ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|analysis|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|analysis|contrast|kernel]"; exit 2 ;;
 esac
 
 echo
