@@ -392,17 +392,23 @@ extension MelodyChain {
 enum LearnedDraw: String, Codable, CaseIterable, Sendable {
     case slots, chain
 
+    /// Named for what they produce rather than for how they work.
+    ///
+    /// They were "Slots" and "Chain", which are the implementations. Nobody
+    /// choosing between them wants to know that a slot model is a set of
+    /// marginals; they want to know that one gives them the material's groove
+    /// and the other gives them its phrasing.
     var label: String {
         switch self {
-        case .slots: return "Slots"
-        case .chain: return "Chain"
+        case .slots: return "Groove"
+        case .chain: return "Phrasing"
         }
     }
 
     var explanation: String {
         switch self {
-        case .slots: return "Where your material puts notes. Groove, no memory."
-        case .chain: return "What follows what in it. Phrases, less groove."
+        case .slots: return "Where your material puts notes — its groove, note by note, with no memory of what came before."
+        case .chain: return "What tends to follow what in it — phrases that hold together, less of the groove."
         }
     }
 }

@@ -45,16 +45,32 @@ enum MelodyPhrases {
     ///   - style: what the musician's kept material measures like. Used to
     ///     weight which rhythms come up — a corpus that syncopates gets
     ///     syncopated figures — and ignored when there isn't one yet.
+    /// - Parameter preferring: rhythms the chosen template leans on. Not a
+    ///   restriction — the grammar still needs a pickup where a pickup belongs —
+    ///   but a heavy thumb on the scale, so "long tones" composes long tones
+    ///   rather than only telling the model about them.
+    /// - Parameter palette: the note-duration setting. It shaped generation and
+    ///   did nothing to composed lines, which made it look broken from the one
+    ///   source that answers instantly.
     static func compose(bars: Int = 4,
                         seed: UInt64,
                         style: LearnedStyle? = nil,
+                        preferring preferred: [GestureRhythm] = [],
+                        palette: DurationPalette = .mixed,
                         name: String? = nil) -> MelodyPattern {
         let phraseCount = max(1, Int(ceil(Double(max(1, bars)) / 2)))
         var rng = SplitMix64(seed: seed)
         var notes: [PatternNote] = []
 
+        // The line's own plan, drawn once. Without this, every composed line has
+        // the same architecture — state, answer, develop, land, centred on the
+        // third — and however varied the figures are the *lines* all sound like
+        // one another. Which they did, and which is the complaint this answers.
+        let plan = LinePlan(rng: &rng)
+
         // The figure the whole line is about. Everything else refers to it.
-        let callRhythm = pick(rhythms(for: .statement), style: style, using: &rng)
+        let callRhythm = pick(rhythms(for: .statement, preferring: preferred, palette: palette),
+                              style: style, using: &rng)
         let callContour = pick(contours(for: .statement), using: &rng)
         let call = MelodyGesture(rhythm: callRhythm, contour: callContour, role: .statement)
 
@@ -63,14 +79,15 @@ enum MelodyPhrases {
         for phrase in 0..<phraseCount {
             let origin = phrase * eighthsPerPhrase
             let isLast = phrase == phraseCount - 1
-            let plan = shape(at: phrase, of: phraseCount)
+            let shape = plan.shape(at: phrase, of: phraseCount)
 
             // A pickup lives in the air at the end of the previous phrase, which
             // is the only place it can live: it has to arrive *before* the
             // downbeat it leads to.
-            if phrase > 0, previousTailEighth <= origin - 2, rng.nextUnit() < 0.55 {
+            if phrase > 0, previousTailEighth <= origin - 2, rng.nextUnit() < plan.pickupChance {
                 let pickup = MelodyGesture(
-                    rhythm: pick(rhythms(for: .pickup), style: style, using: &rng),
+                    rhythm: pick(rhythms(for: .pickup, preferring: preferred, palette: palette),
+                                 style: style, using: &rng),
                     contour: .ascend,
                     role: .pickup,
                     anchor: -2
@@ -81,14 +98,16 @@ enum MelodyPhrases {
                 }
             }
 
-            let (first, second) = gestures(for: plan,
+            let (first, second) = gestures(for: shape,
                                            call: call,
                                            isLast: isLast,
                                            style: style,
+                                           preferring: preferred,
+                                           palette: palette,
                                            using: &rng)
 
             notes.append(contentsOf: first.notes(startingAt: origin,
-                                                 home: home(for: first.role, plan: plan),
+                                                 home: plan.home(for: first.role, shape: shape),
                                                  velocity: velocity(for: first.role)))
 
             // The second figure starts after the first has stopped sounding *and*
@@ -103,17 +122,22 @@ enum MelodyPhrases {
             // A phrase that is one figure and then silence is a phrase, and it's
             // the one shape a grammar of "always two figures" can never make.
             // Cadences always get their landing note.
-            let saysMore = plan == .cadence || rng.nextUnit() < 0.78
+            // A phrase may say one thing and stop — that's phrasing. A phrase
+            // that says one *short* thing and stops is a hole, and two of those
+            // in a row is a line that has forgotten what it was doing.
+            let leavesAHole = first.spanEighths < eighthsPerPhrase / 2
+            let saysMore = shape == .cadence || leavesAHole
+                || rng.nextUnit() < plan.saysMoreChance
             if saysMore, secondStart + second.spanEighths <= origin + eighthsPerPhrase + 2 {
                 notes.append(contentsOf: second.notes(startingAt: secondStart,
-                                                      home: home(for: second.role, plan: plan),
+                                                      home: plan.home(for: second.role, shape: shape),
                                                       velocity: velocity(for: second.role)))
                 previousTailEighth = secondStart + second.spanEighths
 
                 // Room left over, now and then, for a parting fragment — the
                 // thing a player adds because the bar isn't finished yet.
                 let tailStart = previousTailEighth + 1
-                if plan != .cadence, rng.nextUnit() < 0.3,
+                if shape != .cadence, rng.nextUnit() < plan.fragmentChance,
                    tailStart + 2 <= origin + eighthsPerPhrase {
                     let fragment = MelodyGesture(rhythm: .stab, contour: .held, role: .continuation,
                                                  anchor: rng.nextUnit() < 0.5 ? 2 : -2)
@@ -128,7 +152,7 @@ enum MelodyPhrases {
         return MelodyPattern(
             name: name ?? title(call: call, seed: seed),
             bars: phraseCount * 2,
-            summary: summary(of: composed, call: call, bars: phraseCount * 2),
+            summary: summary(of: composed, call: call, bars: phraseCount * 2, plan: plan),
             notes: composed
         )
     }
@@ -147,13 +171,85 @@ enum MelodyPhrases {
         case cadence
     }
 
-    static func shape(at index: Int, of count: Int) -> PhraseShape {
-        if index == count - 1, count > 1 { return .cadence }
-        switch index % 4 {
-        case 0: return .call
-        case 1: return .answer
-        case 2: return .develop
-        default: return .answer
+    /// How a whole line is laid out, drawn once per line.
+    ///
+    /// Four architectures, a register the line is centred on, and how talkative
+    /// it is. These are what actually differ between two lines that a listener
+    /// would call different pieces, as against two lines built from different
+    /// figures — which is the distinction the first version of this missed.
+    struct LinePlan {
+        enum Architecture: CaseIterable {
+            /// State it, answer it, develop it, land. The default, and the one
+            /// that reads most like a written phrase.
+            case callAnswer
+            /// AABA: say it twice, go somewhere else, come back.
+            case aaba
+            /// Question and answer in pairs, all the way down.
+            case pairs
+            /// Keep going somewhere new. Least architecture, most motion.
+            case through
+        }
+
+        var architecture: Architecture
+        /// Degrees added to every home, so one line sits on the third and
+        /// another on the root without the grammar changing.
+        var centre: Int
+        var pickupChance: Double
+        var saysMoreChance: Double
+        var fragmentChance: Double
+
+        init(rng: inout SplitMix64) {
+            architecture = Architecture.allCases[Int(rng.next() % UInt64(Architecture.allCases.count))]
+            centre = [0, 0, 2, -2, 4][Int(rng.next() % 5)]
+            pickupChance = 0.25 + rng.nextUnit() * 0.5
+            saysMoreChance = 0.6 + rng.nextUnit() * 0.35
+            fragmentChance = rng.nextUnit() * 0.45
+        }
+
+        func shape(at index: Int, of count: Int) -> PhraseShape {
+            if index == count - 1, count > 1 { return .cadence }
+            switch architecture {
+            case .callAnswer:
+                switch index % 4 {
+                case 0: return .call
+                case 1: return .answer
+                case 2: return .develop
+                default: return .answer
+                }
+            case .aaba:
+                switch index % 4 {
+                case 0, 1: return .call
+                case 2: return .develop
+                default: return .call
+                }
+            case .pairs:
+                return index.isMultiple(of: 2) ? .call : .answer
+            case .through:
+                return index.isMultiple(of: 3) ? .call : .develop
+            }
+        }
+
+        /// Which degree a figure is centred on, given its job and this line's
+        /// register.
+        ///
+        /// Degrees 0, 2, 4 and 6 are the chord tones of a seven-note scale, so
+        /// centring a statement on the third and a cadence on the root is what
+        /// makes the shape land right over whatever chord turns out to be
+        /// underneath. The cadence is exempt from the line's centre: a phrase
+        /// that lands somewhere other than home isn't a cadence.
+        func home(for role: GestureRole, shape: PhraseShape) -> Int {
+            if role == .cadence { return 0 }
+            let base: Int
+            switch (role, shape) {
+            case (.pickup, _): base = 6
+            case (.answer, _): base = 2
+            case (.statement, .develop): base = 4
+            case (.statement, _): base = 2
+            case (.continuation, .answer): base = 0
+            case (.continuation, _): base = 4
+            case (.cadence, _): base = 0
+            }
+            return base + centre
         }
     }
 
@@ -162,11 +258,14 @@ enum MelodyPhrases {
                                  call: MelodyGesture,
                                  isLast: Bool,
                                  style: LearnedStyle?,
+                                 preferring preferred: [GestureRhythm],
+                                 palette: DurationPalette,
                                  using rng: inout SplitMix64) -> (MelodyGesture, MelodyGesture) {
         switch plan {
         case .call:
             let second = MelodyGesture(
-                rhythm: pick(rhythms(for: .continuation), style: style, using: &rng),
+                rhythm: pick(rhythms(for: .continuation, preferring: preferred, palette: palette),
+                             style: style, using: &rng),
                 contour: pick(contours(for: .continuation), using: &rng),
                 role: .continuation,
                 anchor: 1
@@ -180,7 +279,8 @@ enum MelodyPhrases {
             answer.role = .answer
             answer.anchor = -1
             let tail = MelodyGesture(
-                rhythm: pick(rhythms(for: .continuation), style: style, using: &rng),
+                rhythm: pick(rhythms(for: .continuation, preferring: preferred, palette: palette),
+                             style: style, using: &rng),
                 contour: .descend,
                 role: .continuation,
                 anchor: -2
@@ -191,9 +291,10 @@ enum MelodyPhrases {
             // Contrast is the job of this phrase. A develop that reuses the
             // call's rhythm makes the whole line one figure, which is exactly
             // the complaint gestures exist to answer.
-            let contrasting = rhythms(for: .statement).filter { $0 != call.rhythm }
+            let available = rhythms(for: .statement, preferring: preferred, palette: palette)
+            let contrasting = available.filter { $0 != call.rhythm }
             let fresh = MelodyGesture(
-                rhythm: pick(contrasting.isEmpty ? rhythms(for: .statement) : contrasting,
+                rhythm: pick(contrasting.isEmpty ? available : contrasting,
                              style: style, using: &rng),
                 contour: call.contour,
                 role: .statement,
@@ -212,29 +313,13 @@ enum MelodyPhrases {
             closing.role = .answer
             closing.anchor = -1
             let landing = MelodyGesture(
-                rhythm: pick(rhythms(for: .cadence), style: style, using: &rng),
+                rhythm: pick(rhythms(for: .cadence, preferring: preferred, palette: palette),
+                             style: style, using: &rng),
                 contour: .held,
                 role: .cadence,
                 anchor: 0
             )
             return (closing, landing)
-        }
-    }
-
-    /// Which degree a figure is centred on, given its job.
-    ///
-    /// Degrees 0, 2, 4 and 6 are the chord tones of a seven-note scale, so
-    /// centring a statement on the third and a cadence on the root is what makes
-    /// the shape land right over whatever chord turns out to be underneath.
-    private static func home(for role: GestureRole, plan: PhraseShape) -> Int {
-        switch (role, plan) {
-        case (.cadence, _): return 0
-        case (.pickup, _): return 6
-        case (.answer, _): return 2
-        case (.statement, .develop): return 4
-        case (.statement, _): return 2
-        case (.continuation, .answer): return 0
-        case (.continuation, _): return 4
         }
     }
 
@@ -250,18 +335,79 @@ enum MelodyPhrases {
 
     // MARK: - Vocabulary by role
 
+    /// The rhythms a role may use, narrowed by what the template leans on and by
+    /// the note-duration setting.
+    ///
+    /// Narrowed, never emptied: a template that prefers long tones still needs
+    /// *something* for a pickup, and a grammar that can't find a figure for a
+    /// role stops being a grammar. Where the preference and the role don't
+    /// overlap, the role wins and the preference is simply not expressible there.
+    static func rhythms(for role: GestureRole,
+                        preferring preferred: [GestureRhythm],
+                        palette: DurationPalette) -> [GestureRhythm] {
+        let base = rhythms(for: role)
+        var pool = base
+
+        if !preferred.isEmpty {
+            let overlap = base.filter { preferred.contains($0) }
+            if !overlap.isEmpty {
+                // Weighted rather than exclusive: the preferred figures appear
+                // twice in the pool, so they come up about two thirds of the time
+                // and the rest of the vocabulary is still reachable.
+                pool = overlap + overlap + base
+            }
+        }
+
+        let byPalette = pool.filter { fits($0, palette) }
+        return byPalette.isEmpty ? pool : byPalette
+    }
+
+    /// Whether a figure belongs to a note-duration setting.
+    ///
+    /// This is what makes the Note duration control mean something on every
+    /// source rather than only on the model's prompt — it was one of four
+    /// settings that silently did nothing to a composed line.
+    static func fits(_ rhythm: GestureRhythm, _ palette: DurationPalette) -> Bool {
+        let lengths = rhythm.lengths
+        switch palette {
+        case .even:
+            // Uniform *and* short. A figure of one six-eighth note is uniform and
+            // is not what anyone means by "even" — the brief says steady eighths
+            // or steady quarters, so that's what this admits. Without the length
+            // bound, Even and Mixed produced the same spread of note lengths
+            // across a line, which is a setting that does nothing.
+            return Set(lengths).count == 1 && (lengths.first ?? 9) <= 2
+        case .longShort:
+            // The figure's *own* shape, not merely a descent somewhere in it:
+            // nearly every figure contains a longer note followed by a shorter
+            // one somewhere, so that test admitted everything.
+            guard let first = lengths.first, lengths.count > 1 else { return false }
+            return first > lengths[1]
+        case .shortLong:
+            guard let first = lengths.first, lengths.count > 1 else { return false }
+            return first < lengths[1]
+        case .mixed:
+            // Everything except a *multi-note* figure whose notes are all the
+            // same length. A single-note figure — a held tone, a stab — has no
+            // mix to have and excluding it took every long note out of the
+            // default palette, which is the opposite of mixed.
+            return lengths.count == 1 || Set(lengths).count > 1
+        }
+    }
+
     static func rhythms(for role: GestureRole) -> [GestureRhythm] {
         switch role {
         case .pickup:
             return [.stab, .reverseDotted, .even]
         case .statement:
-            return [.dotted, .tresillo, .charleston, .twoPlusThree, .pushedPair, .tiedOverTheBar]
+            return [.dotted, .tresillo, .charleston, .twoPlusThree, .pushedPair,
+                    .tiedOverTheBar, .even, .steadyQuarters, .halfAndAir]
         case .continuation:
-            return [.even, .runOfFour, .tripletFeel, .tresillo, .twoPlusThree]
+            return [.even, .steadyQuarters, .runOfFour, .tripletFeel, .tresillo, .twoPlusThree]
         case .answer:
             return [.dotted, .reverseDotted, .tresillo, .pushedPair]
         case .cadence:
-            return [.longWithAir, .tiedOverTheBar, .stab]
+            return [.longWithAir, .tiedOverTheBar, .stab, .halfAndAir]
         }
     }
 
@@ -356,10 +502,12 @@ enum MelodyPhrases {
         "\(call.rhythm.name) \(call.contour.label.lowercased()) \(seed % 1000)"
     }
 
-    private static func summary(of notes: [PatternNote], call: MelodyGesture, bars: Int) -> String {
+    private static func summary(of notes: [PatternNote], call: MelodyGesture,
+                                bars: Int, plan: LinePlan) -> String {
         let offbeats = notes.filter { !$0.startEighth.isMultiple(of: 2) }.count
         let lengths = Set(notes.map(\.lengthEighths)).sorted()
-        var parts = ["\(notes.count) notes over \(bars) bars, built on a \(call.rhythm.name.lowercased()) figure"]
+        var parts = ["\(notes.count) notes over \(bars) bars, "
+                     + "\(String(describing: plan.architecture)) on a \(call.rhythm.name.lowercased()) figure"]
         if offbeats * 3 > notes.count { parts.append("syncopated") }
         parts.append("lengths " + lengths.map(String.init).joined(separator: "/"))
         return parts.joined(separator: ", ")

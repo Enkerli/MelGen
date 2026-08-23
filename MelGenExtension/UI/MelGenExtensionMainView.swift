@@ -115,10 +115,11 @@ struct MelGenExtensionMainView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                progressionMakerSection
+                nextTakeSection
+                instantSection
                 transportSection
                 shapeSection
-                rotationSection
+                lineLibrarySection
                 feelSection
 
                 if state.currentTake != nil {
@@ -216,156 +217,218 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Progression
 
+    /// The changes, and where they come from.
+    ///
+    /// Generating a progression sits directly under the field it fills in,
+    /// because that is what it does. It used to be a collapsed section called
+    /// "Make changes" three screens further down, which is both the wrong place
+    /// and a name that reads as "edit something".
     private var progressionSection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             Eyebrow(text: "Progression", theme: theme)
 
+            TextField("E♭7 Gm9|D∆|A♭6", text: binding(\.progressionText, reloadKernel: false))
+                .font(.system(size: 15, design: .monospaced))
+                .foregroundStyle(theme.text)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, MelGenMetrics.space3)
+                .frame(height: MelGenMetrics.controlHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .fill(theme.sunken)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                        .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+                )
+                .onSubmit { nextTake() }
+                .accessibilityLabel("Chord progression")
+
             HStack(spacing: MelGenMetrics.space2) {
-                TextField("E♭7 Gm9|D∆|A♭6", text: binding(\.progressionText, reloadKernel: false))
-                    .font(.system(size: 15, design: .monospaced))
-                    .foregroundStyle(theme.text)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, MelGenMetrics.space3)
-                    .frame(height: MelGenMetrics.controlHeight)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(theme.sunken)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .strokeBorder(theme.borderStrong, lineWidth: 1.5)
-                    )
-                    .onSubmit { generate() }
-                    .accessibilityLabel("Chord progression")
+                Button {
+                    makeChanges()
+                } label: {
+                    findLabel("New changes", systemImage: "arrow.triangle.branch")
+                }
+                .buttonStyle(.plain)
 
                 Button {
-                    generate()
+                    showProgressionMaker.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showProgressionMaker ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("\(ChordProgression.flatNoteNames[state.progressionKey]) "
+                             + "\(state.progressionMode.rawValue) · \(state.progressionBars) bars")
+                            .font(.system(size: 12, design: .monospaced))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, MelGenMetrics.space2)
+                    .frame(height: MelGenMetrics.controlHeight)
+                    .foregroundStyle(theme.textSecondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Progression settings")
+            }
+
+            if showProgressionMaker {
+                progressionSettings
+            }
+
+            if let generatedNumerals {
+                Text(generatedNumerals)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var progressionSettings: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack(spacing: MelGenMetrics.space2) {
+                ChipPicker(options: ProgressionMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.progressionMode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 160)
+                ChipPicker(options: [(4, "4"), (8, "8"), (12, "12"), (16, "16")],
+                           selection: binding(\.progressionBars, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 180)
+            }
+
+            FlowChips(items: ChordProgression.flatNoteNames,
+                      isSelected: { $0 == ChordProgression.flatNoteNames[state.progressionKey] },
+                      theme: theme) { name in
+                guard let index = ChordProgression.flatNoteNames.firstIndex(of: name) else { return }
+                commit(reloadKernel: false) { $0.progressionKey = index }
+            }
+
+            LabelledSlider(title: "Adventurousness",
+                           lowLabel: "the usual",
+                           highLabel: "the unlikely",
+                           value: binding(\.progressionAdventure, reloadKernel: false),
+                           theme: theme)
+
+            LabelledSlider(title: "Substitutions",
+                           lowLabel: "none",
+                           highLabel: "everywhere",
+                           value: binding(\.progressionSubstitution, reloadKernel: false),
+                           theme: theme)
+
+            Text("Corpus transition counts from ProgGenie, walked at order two. "
+                 + "Adventurousness flattens the counts; substitutions rewrite chords "
+                 + "afterwards — tritone subs, secondary dominants, relative swaps, "
+                 + "borrowed minor.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - The next take
+
+    /// One control for "what comes next", whichever kind of thing that is.
+    ///
+    /// Line or chords is the first decision because it changes every one below
+    /// it, so it comes first. The templates under it are whichever set matches —
+    /// style briefs for a line, comping figures for chords — through one
+    /// rotation rather than two.
+    private var nextTakeSection: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            Eyebrow(text: "Next take", theme: theme)
+
+            HStack(spacing: MelGenMetrics.space2) {
+                ChipPicker(options: PlayMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.mode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 200)
+                Text(state.mode.explanation)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: MelGenMetrics.space2) {
+                Button {
+                    nextTake()
                 } label: {
                     HStack(spacing: 6) {
                         if isGenerating {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(theme.accentText)
+                            ProgressView().controlSize(.small).tint(theme.accentText)
                         } else {
-                            Image(systemName: "wand.and.stars")
+                            Image(systemName: state.mode == .line ? "wand.and.stars" : "pianokeys")
                                 .font(.system(size: 14, weight: .semibold))
                         }
-                        Text(isGenerating ? "Working" : "Generate")
+                        Text(isGenerating ? "Working" : (state.mode == .line ? "Generate" : "Comp"))
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .padding(.horizontal, MelGenMetrics.space3)
                     .frame(height: MelGenMetrics.controlHeight)
-                    .foregroundStyle(generateEnabled ? theme.accentText : theme.textDisabled)
+                    .foregroundStyle(nextTakeEnabled ? theme.accentText : theme.textDisabled)
                     .background(
                         RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(generateEnabled ? theme.accent : theme.sunken)
+                            .fill(nextTakeEnabled ? theme.accent : theme.sunken)
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(!generateEnabled)
+                .disabled(!nextTakeEnabled)
+
+                Text(state.nextTemplate.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.briefMode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 200)
             }
 
-            // Instant, no model. Generation runs about four times slower than
-            // real time, so this is the difference between playing now and
-            // waiting half a minute.
-            Button {
-                adaptStoredLine()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("Fit a stored line")
-                        .font(.system(size: 13, weight: .medium))
-                    Text(state.nextLine(from: PatternStore.library).name)
-                        .font(.system(size: 13))
-                        .foregroundStyle(theme.textMuted)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, MelGenMetrics.space3)
-                .frame(height: MelGenMetrics.controlHeight)
-                .foregroundStyle(theme.text)
-                .background(
-                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                        .fill(theme.raised)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                        .strokeBorder(theme.borderStrong, lineWidth: 1.5)
-                )
+            FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
+                      isSelected: { name in
+                          state.selectedBriefNames.isEmpty || state.selectedBriefNames.contains(name)
+                      },
+                      isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
+                      theme: theme) { name in
+                toggleTemplate(name)
             }
-            .buttonStyle(.plain)
-            .disabled(state.progressionText.isEmpty)
 
-            // Not a stored line: a new one, built out of gestures. The library
-            // was six hand-written cells, which is why a run of takes kept
-            // sounding like the same run of takes.
-            Button {
-                composeLine()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("Compose a phrase")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("new every time, no model")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, MelGenMetrics.space3)
-                .frame(height: MelGenMetrics.controlHeight)
-                .foregroundStyle(theme.text)
-                .background(
-                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                        .fill(theme.raised)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                        .strokeBorder(theme.borderStrong, lineWidth: 1.5)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(state.progressionText.isEmpty)
-
-            // The fourth source, and the only one that sounds like this
-            // musician: slot statistics over the takes they kept, sampled.
-            sampleStyleButton
-
-            modeRow
+            Text(state.nextTemplate.summary)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// Line or chords, and — when it's chords — which figure.
-    private var modeRow: some View {
+    /// A draw from the musician's own material, with the choice of which model.
+    @ViewBuilder
+    private var sampleStyleButton: some View {
+        let kept = state.curatedTakes.count
+        let ready = kept >= 3
         VStack(alignment: .leading, spacing: 4) {
-            ChipPicker(options: PlayMode.allCases.map { ($0, $0.label) },
-                       selection: binding(\.mode, reloadKernel: false),
-                       theme: theme)
-                .frame(maxWidth: 240)
-
-            Text(state.mode.explanation)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
-
-            if state.mode == .comping {
-                FlowChips(items: CompingFigure.all.map(\.name),
-                          isSelected: { $0 == state.compingFigureName },
-                          theme: theme) { name in
-                    commit(reloadKernel: false) { $0.compingFigureName = name }
-                }
-                Text(CompingFigure.named(state.compingFigureName).summary)
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
+            HStack(spacing: MelGenMetrics.space2) {
                 Button {
-                    compChanges()
+                    sampleLearnedStyle()
                 } label: {
-                    findLabel("Comp the changes", systemImage: "pianokeys")
+                    findLabel("Draw from your style", systemImage: "waveform.path.ecg",
+                              detail: ready ? "from \(kept) kept" : "keep three takes first")
                 }
                 .buttonStyle(.plain)
-                .disabled(state.progressionText.isEmpty)
+                .disabled(!ready || state.progressionText.isEmpty)
+
+                ChipPicker(options: LearnedDraw.allCases.map { ($0, $0.label) },
+                           selection: binding(\.learnedDraw, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 200)
             }
+            Text(state.learnedDraw.explanation)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -379,10 +442,11 @@ struct MelGenExtensionMainView: View {
             statusMessage = "That progression doesn't parse."
             return
         }
-        let figure = CompingFigure.named(current.compingFigureName)
+        let template = current.nextTemplate
+        let figure = template.figure ?? CompingFigure.charleston
         let notes = MelodyComping.comp(progression,
                                        figure: figure,
-                                       seed: UInt64(bitPattern: Int64(current.patternCursor &* 2_246_822_519)))
+                                       seed: UInt64(bitPattern: Int64(current.briefCursor &* 2_246_822_519)))
         guard !notes.isEmpty else {
             statusMessage = "Nothing to comp — check the progression."
             return
@@ -401,55 +465,89 @@ struct MelGenExtensionMainView: View {
         )
         commit {
             $0.add(record)
-            $0.patternCursor += 1
+            $0.briefCursor += 1
         }
         statusMessage = "\(figure.name): \(notes.count) notes, up to "
             + "\(MelodyComping.maximumPolyphony(of: notes)) voices. \(figure.summary)."
     }
 
-    @ViewBuilder
-    private var sampleStyleButton: some View {
-        let kept = state.curatedTakes.count
-        let ready = kept >= 3
-        VStack(alignment: .leading, spacing: 4) {
+    private var nextTakeEnabled: Bool {
+        guard !state.progressionText.isEmpty, !isGenerating else { return false }
+        // Comping needs no model, so it's available whatever the model is doing.
+        return state.mode == .comping || generateEnabled
+    }
+
+    private func toggleTemplate(_ name: String) {
+        let available = MelGenTemplates.all(for: liveState.mode).map(\.name)
+        commit(reloadKernel: false) { state in
+            if state.briefMode == .lock {
+                state.lockedBriefName = state.lockedBriefName == name ? nil : name
+                return
+            }
+            var selection = state.selectedBriefNames.isEmpty
+                ? available
+                : state.selectedBriefNames.filter { available.contains($0) }
+            if selection.isEmpty { selection = available }
+            if let index = selection.firstIndex(of: name) {
+                // Never empty the set: an empty rotation has nothing to play.
+                if selection.count > 1 { selection.remove(at: index) }
+            } else {
+                selection.append(name)
+            }
+            state.selectedBriefNames = selection.count == available.count ? [] : selection
+        }
+    }
+
+    /// The one "what comes next" action, which does whichever thing the mode says.
+    private func nextTake() {
+        if liveState.mode == .comping {
+            compChanges()
+        } else {
+            generate()
+        }
+    }
+
+    // MARK: - Instant sources
+
+    /// Everything that answers immediately, gathered and labelled as such.
+    ///
+    /// They were spread down the view as differently-shaped buttons with no
+    /// indication that they had anything in common. What they have in common is
+    /// the only thing worth knowing about them: none of them waits for a model.
+    private var instantSection: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            Eyebrow(text: "Instant · no model", theme: theme)
+
             HStack(spacing: MelGenMetrics.space2) {
-                Button {
-                    sampleLearnedStyle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "waveform.path.ecg")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Draw from your style")
-                            .font(.system(size: 13, weight: .medium))
-                        Text(ready ? "from \(kept) kept takes" : "keep three takes first")
-                            .font(.system(size: 11))
-                            .foregroundStyle(theme.textMuted)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, MelGenMetrics.space3)
-                    .frame(height: MelGenMetrics.controlHeight)
-                    .foregroundStyle(ready ? theme.text : theme.textMuted)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(theme.raised)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .strokeBorder(ready ? theme.borderStrong : theme.border,
-                                          lineWidth: ready ? 1.5 : 1)
-                    )
+                Button { adaptStoredLine() } label: {
+                    findLabel("Stored line", systemImage: "bolt.fill",
+                              detail: state.nextLine(from: PatternStore.library).name)
                 }
                 .buttonStyle(.plain)
-                .disabled(!ready || state.progressionText.isEmpty)
+                .disabled(state.progressionText.isEmpty)
 
-                ChipPicker(options: LearnedDraw.allCases.map { ($0, $0.label) },
-                           selection: binding(\.learnedDraw, reloadKernel: false),
-                           theme: theme)
-                    .frame(maxWidth: 160)
+                Button { composeLine() } label: {
+                    findLabel("Compose", systemImage: "wand.and.stars", detail: "new every time")
+                }
+                .buttonStyle(.plain)
+                .disabled(state.progressionText.isEmpty)
             }
-            Text(state.learnedDraw.explanation)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
+
+            HStack(spacing: MelGenMetrics.space2) {
+                Button { playBestFittingLine() } label: {
+                    findLabel("Fits these changes", systemImage: "target")
+                }
+                .buttonStyle(.plain)
+                .disabled(state.progressionText.isEmpty)
+
+                Button { surpriseMe() } label: {
+                    findLabel("Surprise me", systemImage: "dice")
+                }
+                .buttonStyle(.plain)
+                .disabled(state.progressionText.isEmpty)
+            }
+
+            sampleStyleButton
         }
     }
 
@@ -459,61 +557,6 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Generating the changes
 
-    /// Where the progression comes from, when it doesn't come from typing.
-    ///
-    /// A walk over ProgGenie's corpus transition counts — what follows "IIm7",
-    /// blended with what follows "IIm7 → V7". The same machinery as the melodic
-    /// chain, one level up, which is the point of having built it here rather
-    /// than reaching for another application: generate the changes, adapt
-    /// patterns to them, curate the results, in one place.
-    private var progressionMakerSection: some View {
-        CollapsibleSection(title: "Make changes",
-                           summary: "\(ChordProgression.flatNoteNames[state.progressionKey]) "
-                                  + "\(state.progressionMode.rawValue) · \(state.progressionBars) bars",
-                           isExpanded: $showProgressionMaker,
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-                HStack(spacing: MelGenMetrics.space2) {
-                    ChipPicker(options: ProgressionMode.allCases.map { ($0, $0.label) },
-                               selection: binding(\.progressionMode, reloadKernel: false),
-                               theme: theme)
-                        .frame(maxWidth: 160)
-                    ChipPicker(options: [(4, "4"), (8, "8"), (12, "12"), (16, "16")],
-                               selection: binding(\.progressionBars, reloadKernel: false),
-                               theme: theme)
-                        .frame(maxWidth: 180)
-                }
-
-                FlowChips(items: ChordProgression.flatNoteNames,
-                          isSelected: { $0 == ChordProgression.flatNoteNames[state.progressionKey] },
-                          theme: theme) { name in
-                    guard let index = ChordProgression.flatNoteNames.firstIndex(of: name) else { return }
-                    commit(reloadKernel: false) { $0.progressionKey = index }
-                }
-
-                Button {
-                    makeChanges()
-                } label: {
-                    findLabel("Generate a progression", systemImage: "arrow.triangle.branch")
-                }
-                .buttonStyle(.plain)
-
-                if let generatedNumerals {
-                    Text(generatedNumerals)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(theme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Text("Corpus transition counts from ProgGenie, walked at order two "
-                     + "and backed off to order one where the corpus is thin.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private func makeChanges() {
         let current = liveState
         let seed = UInt64(bitPattern: Int64(current.progressionCursor &* 6_364_136_223 &+ 17))
@@ -521,7 +564,11 @@ struct MelGenExtensionMainView: View {
             bars: current.progressionBars,
             key: current.progressionKey,
             mode: current.progressionMode,
-            temperature: 0.6 + current.temperature,
+            // Its own control. Borrowing the melodic temperature meant the
+            // progression got more adventurous only when the *line* was asked to
+            // be, which is two unrelated decisions wired together.
+            temperature: 0.4 + current.progressionAdventure * 2,
+            substitution: current.progressionSubstitution,
             seed: seed
         ) else {
             statusMessage = "Couldn't generate changes — the corpus tables are missing."
@@ -1179,62 +1226,21 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Rotation
 
-    /// What the next take gets to draw from.
-    ///
-    /// Half the variety problem was never temperature: it was that the rotation
-    /// included things you didn't want and visited them in the same order every
-    /// time.
-    private var rotationSection: some View {
-        CollapsibleSection(title: "Rotation · next take",
-                           summary: rotationSummary,
-                           isExpanded: $showRotation,
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                findRow
-                briefSelection
-                lineSelection
-            }
-            .id(libraryRevision)
-        }
-    }
-
-    private var rotationSummary: String {
-        let briefs = state.selectedBriefNames.isEmpty ? StyleBriefs.all.count : state.selectedBriefNames.count
-        return "\(briefs) briefs · \(PatternStore.library.count) lines · \(state.briefMode.label.lowercased())"
-    }
-
-    /// The two ways of reaching into a library: on purpose, and not.
-    ///
-    /// Kept side by side and labelled differently because they answer different
-    /// needs. One is "give me the thing that fits"; the other is "show me
-    /// something I've been ignoring, or have changed my mind about".
-    private var findRow: some View {
-        HStack(spacing: MelGenMetrics.space2) {
-            Button {
-                playBestFittingLine()
-            } label: {
-                findLabel("Fits these changes", systemImage: "target")
-            }
-            .buttonStyle(.plain)
-            .disabled(state.progressionText.isEmpty)
-
-            Button {
-                surpriseMe()
-            } label: {
-                findLabel("Surprise me", systemImage: "dice")
-            }
-            .buttonStyle(.plain)
-            .disabled(state.progressionText.isEmpty)
-        }
-    }
-
-    private func findLabel(_ title: String, systemImage: String) -> some View {
+    private func findLabel(_ title: String,
+                          systemImage: String,
+                          detail: String? = nil) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
             Text(title)
                 .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, MelGenMetrics.space3)
         .frame(maxWidth: .infinity)
@@ -1306,57 +1312,6 @@ struct MelGenExtensionMainView: View {
         play(surprise.pattern, describedAs: "\(surprise.pattern.name) — \(surprise.reason)")
     }
 
-    private var briefSelection: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            HStack {
-                Text("Style briefs")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.text)
-                Spacer(minLength: MelGenMetrics.space2)
-                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
-                           selection: binding(\.briefMode, reloadKernel: false),
-                           theme: theme)
-                    .frame(maxWidth: 220)
-            }
-
-            // Multi-select: an empty selection means all of them, so this starts
-            // out behaving exactly as it did before it existed.
-            FlowChips(items: StyleBriefs.all.map(\.name),
-                      isSelected: { name in
-                          state.selectedBriefNames.isEmpty || state.selectedBriefNames.contains(name)
-                      },
-                      isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
-                      theme: theme) { name in
-                toggleBrief(name)
-            }
-
-            Text(state.briefMode == .lock
-                 ? "Locked to one brief — vary temperature and density around it."
-                 : "Tap to include or exclude. All of them, if none are chosen.")
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
-        }
-    }
-
-    private func toggleBrief(_ name: String) {
-        commit(reloadKernel: false) { state in
-            if state.briefMode == .lock {
-                state.lockedBriefName = state.lockedBriefName == name ? nil : name
-                return
-            }
-            var selection = state.selectedBriefNames.isEmpty
-                ? StyleBriefs.all.map(\.name)
-                : state.selectedBriefNames
-            if let index = selection.firstIndex(of: name) {
-                // Never empty the set: an empty rotation has nothing to play.
-                if selection.count > 1 { selection.remove(at: index) }
-            } else {
-                selection.append(name)
-            }
-            state.selectedBriefNames = selection.count == StyleBriefs.all.count ? [] : selection
-        }
-    }
-
     private var lineSelection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             HStack {
@@ -1384,6 +1339,42 @@ struct MelGenExtensionMainView: View {
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// The stored lines, with their own rotation mode.
+    ///
+    /// Separate from the template rotation on purpose: a template is what the
+    /// *next take* is like, and a stored line is a specific piece of material.
+    /// Merging those two was the thing that made the old Rotation section
+    /// unreadable — two lists, two modes, one heading.
+    private var lineLibrarySection: some View {
+        CollapsibleSection(title: "Stored lines",
+                           summary: "\(PatternStore.library.count) · \(state.lineMode.label.lowercased())",
+                           isExpanded: $showRotation,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.lineMode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 240)
+
+                VStack(spacing: 4) {
+                    ForEach(PatternStore.library) { pattern in
+                        lineRow(pattern)
+                    }
+                }
+
+                if PatternStore.isEmpty {
+                    Text("The built-in lines are generic on purpose — the property that "
+                         + "makes them fit anything is the one that makes them plain. Keep a take "
+                         + "you liked as a line and it joins them here.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .id(libraryRevision)
         }
     }
 
@@ -1879,9 +1870,14 @@ struct MelGenExtensionMainView: View {
             ^ UInt64(truncatingIfNeeded: abs(current.progressionText.hashValue))
         let style = StyleLearner.learn(from: current.curatedTakes)
         let bars = max(2, Int(ceil(progression.totalBeats / 4)))
+        let template = current.nextTemplate
         let pattern = MelodyPhrases.compose(bars: min(bars, 8),
                                             seed: seed,
-                                            style: style.isEmpty ? nil : style)
+                                            style: style.isEmpty ? nil : style,
+                                            // A template shapes every source, not
+                                            // only the one that talks to a model.
+                                            preferring: template.gestureRhythms,
+                                            palette: current.durationPalette)
 
         let notes = MelodyPatterns.realize(pattern, over: progression)
         guard !notes.isEmpty else {
@@ -1906,7 +1902,7 @@ struct MelGenExtensionMainView: View {
                 $0.add(record)
                 $0.patternCursor += 1
             }
-            statusMessage = "\(pattern.name) — \(pattern.summary)."
+            statusMessage = "\(template.name): \(pattern.summary)."
         } else {
             commit(reloadKernel: false) { $0.patternCursor += 1 }
         }
@@ -2103,7 +2099,8 @@ struct MelGenExtensionMainView: View {
             return
         }
 
-        let brief = current.nextBrief
+        let template = current.nextTemplate
+        let brief = template.brief ?? StyleBriefs.brief(at: current.briefCursor)
         let temperature = current.temperature
         let density = current.expression.density
         let durationPalette = current.durationPalette
@@ -2168,7 +2165,60 @@ struct MelGenExtensionMainView: View {
                     }
                 }
             } catch {
-                statusMessage = "Generation failed: \(error.localizedDescription)"
+                let failure = MelodyGenerator.describe(error)
+
+                // One quiet retry when the failure was in the machinery rather
+                // than in what was asked for. The model's safety layer fails
+                // spuriously often enough that making a person press the button
+                // twice is just making them do the retry by hand.
+                if failure.isTransient, !auto {
+                    do {
+                        let notes = try await MelodyGenerator.generate(
+                            for: progression,
+                            temperature: temperature,
+                            brief: brief,
+                            density: density,
+                            durationPalette: durationPalette,
+                            style: style.isEmpty ? nil : style,
+                            examples: examples
+                        )
+                        if !notes.isEmpty {
+                            let record = GenerationRecord(
+                                progressionText: progressionText,
+                                temperature: temperature,
+                                briefName: brief.name,
+                                density: density,
+                                durationPalette: durationPalette,
+                                generationSeconds: Date().timeIntervalSince(startedAt),
+                                requestCount: phrases,
+                                source: .model,
+                                analysis: MelodyAnalyser.analyse(notes, over: progression),
+                                lengthBeats: progression.totalBeats,
+                                notes: notes
+                            )
+                            commit {
+                                $0.add(record)
+                                $0.briefCursor += 1
+                            }
+                            statusMessage = "\(brief.name): \(notes.count) notes "
+                                + "(the first attempt hit \(failure.message.prefix(40))…)"
+                            isGenerating = false
+                            return
+                        }
+                    } catch {
+                        // Fall through to the fallback below.
+                    }
+                }
+
+                // Still nothing from the model. Rather than leaving silence,
+                // compose a phrase: the whole point of having sources that need
+                // no model is that the model failing is an inconvenience rather
+                // than a dead end.
+                if composeLine() != nil {
+                    statusMessage = failure.message + " Composed a phrase instead."
+                } else {
+                    statusMessage = failure.message
+                }
             }
             isGenerating = false
         }

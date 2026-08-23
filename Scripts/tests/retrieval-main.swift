@@ -13,7 +13,19 @@ func check(_ label: String, _ condition: Bool, _ detail: String = "") {
 }
 
 let progression = try ChordProgression.parse("Dm7 | G7 | Cmaj7 | A7♭9")
-let library = (1...20).map { MelodyPhrases.compose(bars: 4, seed: UInt64($0)) }
+// A library the way one actually looks: composed phrases, interval cells, and
+// lines rewritten onto borrowed rhythms. Twenty composed phrases alone is not a
+// library, it's one generator's output, and a retrieval test over it can't tell
+// whether retrieval works or whether the generator is narrow.
+let library: [MelodyPattern] = {
+    var lines = (1...10).map { MelodyPhrases.compose(bars: 8, seed: UInt64($0)) }
+    lines += MelodyStepPatterns.library(bars: 8)
+    lines += (1...4).map { seed in
+        MelodyTransforms.applyRhythm(MelodyPhrases.compose(bars: 8, seed: UInt64(50 + seed)),
+                                     .euclidean(pulses: 5, steps: 8))
+    }
+    return lines
+}()
 
 // MARK: - Buckets
 
@@ -27,7 +39,7 @@ check("a sparse on-beat line and a busy offbeat one bucket differently",
 check("bucketing is deterministic", RetrievalBucket.of(sparse) == RetrievalBucket.of(sparse))
 check("a real library spreads over several buckets",
       MelodyRetrieval.buckets(of: library).count >= 3,
-      "\(MelodyRetrieval.buckets(of: library).count) buckets over 20 lines")
+      "\(MelodyRetrieval.buckets(of: library).count) buckets over \(library.count) lines")
 
 // MARK: - Direct retrieval
 
@@ -64,6 +76,7 @@ print()
 print("── serendipity ────────────────────────────────────")
 
 let recent = library.prefix(6).map(\.name)
+check("the library has distinct names", Set(library.map(\.name)).count == library.count)
 var picks: [String: Int] = [:]
 for seed in (1...400).map(UInt64.init) {
     if let result = MelodyRetrieval.surprise(library, heardRecently: Array(recent), seed: seed) {

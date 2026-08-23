@@ -184,10 +184,21 @@ enum ProgressionGenerator {
     ///     what the corpus does most, above 1 flattens toward what it did rarely.
     ///   - cadence: end on the tonic. On by default — a generated progression
     ///     that stops mid-phrase is a fragment, and this is meant to be looped.
+    /// - Parameter substitution: how often a chord in the walk is rewritten by a
+    ///   substitution. 0 leaves the corpus walk alone.
+    ///
+    ///   The walk on its own produces what the corpus does *most*, which is what
+    ///   a transition count is for and also why it comes out sounding like the
+    ///   most ordinary version of itself. Substitutions are the other half of
+    ///   how anybody writes changes: the moves are conventional and then you
+    ///   replace some of them. Applying them afterwards rather than folding them
+    ///   into the walk keeps both legible — the numerals say what the corpus
+    ///   proposed and the reharmonization says what was done to it.
     static func generate(bars: Int = 8,
                          key: Int = 0,
                          mode: ProgressionMode = .major,
                          temperature: Double = 1,
+                         substitution: Double = 0,
                          cadence: Bool = true,
                          seed: UInt64) -> GeneratedProgression? {
         let first = bigrams(mode)
@@ -234,6 +245,10 @@ enum ProgressionGenerator {
             labels.append(next)
         }
 
+        if substitution > 0 {
+            labels = substitute(labels, amount: substitution, mode: mode, rng: &rng)
+        }
+
         // Drop anything the dictionary can't spell rather than emitting it.
         let playable = labels.compactMap { label -> (String, String)? in
             chordText(for: label, key: key).map { (label, $0) }
@@ -245,6 +260,131 @@ enum ProgressionGenerator {
                                     key: key,
                                     mode: mode,
                                     seed: seed)
+    }
+
+    // MARK: - Substitutions
+
+    /// One way of rewriting a chord, and when it applies.
+    enum Substitution: String, CaseIterable, Sendable {
+        /// A dominant replaced by the dominant a tritone away: V7 becomes ♭II7.
+        /// The most recognisable reharmonization there is, and it works because
+        /// the two chords share their third and seventh.
+        case tritone
+        /// The dominant of whatever comes next, inserted in place of what was
+        /// there. Turns a walk into a chain of resolutions.
+        case secondaryDominant
+        /// A major chord for its relative minor or the reverse — same key, a
+        /// different colour under the same melody.
+        case relative
+        /// The chord borrowed from the parallel mode: IV becomes IVm, or a minor
+        /// chord brightens. The move that makes an ordinary progression sound
+        /// like it was written by someone.
+        case borrowed
+        /// A seventh chord gains its extensions.
+        case extended
+
+        var label: String {
+            switch self {
+            case .tritone: return "tritone sub"
+            case .secondaryDominant: return "secondary dominant"
+            case .relative: return "relative swap"
+            case .borrowed: return "borrowed"
+            case .extended: return "extended"
+            }
+        }
+    }
+
+    /// Rewrites some of the walk.
+    ///
+    /// Never the first or last chord: those are the tonic, and a progression
+    /// whose home has been substituted has lost the thing the substitutions are
+    /// heard against.
+    static func substitute(_ labels: [String],
+                           amount: Double,
+                           mode: ProgressionMode,
+                           rng: inout SplitMix64) -> [String] {
+        guard labels.count > 2 else { return labels }
+        var result = labels
+
+        for index in 1..<(labels.count - 1) {
+            guard rng.nextUnit() < amount else { continue }
+            guard let parts = split(result[index]) else { continue }
+            let next = split(result[index + 1])
+
+            var options: [Substitution] = [.extended]
+            if parts.suffix.hasPrefix("7") || parts.suffix.isEmpty {
+                options.append(.borrowed)
+            }
+            if isDominant(parts.suffix) { options.append(.tritone) }
+            if let next, semitones(for: next.numeral) != nil { options.append(.secondaryDominant) }
+            if parts.suffix.isEmpty || parts.suffix.hasPrefix("maj") || parts.suffix.hasPrefix("m") {
+                options.append(.relative)
+            }
+
+            let choice = options[Int(rng.next() % UInt64(options.count))]
+            if let rewritten = apply(choice, to: parts, before: next, mode: mode),
+               chordText(for: rewritten, key: 0) != nil {
+                result[index] = rewritten
+            }
+        }
+        return result
+    }
+
+    static func isDominant(_ suffix: String) -> Bool {
+        guard suffix.hasPrefix("7") || suffix.hasPrefix("9") || suffix.hasPrefix("13") else { return false }
+        return !suffix.hasPrefix("7sus") || suffix.hasPrefix("7sus4")
+    }
+
+    /// Applies one substitution to one chord, or gives up.
+    static func apply(_ substitution: Substitution,
+                      to parts: (numeral: String, suffix: String),
+                      before next: (numeral: String, suffix: String)?,
+                      mode: ProgressionMode) -> String? {
+        guard let degree = semitones(for: parts.numeral) else { return nil }
+
+        switch substitution {
+        case .tritone:
+            return numeral(for: (degree + 6) % 12) + (parts.suffix.isEmpty ? "7" : parts.suffix)
+
+        case .secondaryDominant:
+            // The dominant *of* what comes next, so the substitution earns its
+            // place by resolving rather than by being unexpected.
+            guard let next, let target = semitones(for: next.numeral) else { return nil }
+            let fifth = (target + 7) % 12
+            guard fifth != degree else { return nil }
+            return numeral(for: fifth) + "7"
+
+        case .relative:
+            let isMinor = parts.suffix.hasPrefix("m") && !parts.suffix.hasPrefix("maj")
+            let moved = isMinor ? (degree + 3) % 12 : (degree + 9) % 12
+            let suffix = isMinor
+                ? (parts.suffix.hasPrefix("m7") ? "maj7" : "")
+                : (parts.suffix.contains("7") ? "m7" : "m")
+            return numeral(for: moved) + suffix
+
+        case .borrowed:
+            // Toward the parallel mode: a major chord darkens, a minor one
+            // brightens.
+            if parts.suffix.hasPrefix("m") && !parts.suffix.hasPrefix("maj") {
+                return parts.numeral + (parts.suffix.hasPrefix("m7") ? "7" : "")
+            }
+            return parts.numeral + (parts.suffix.contains("7") ? "m7" : "m")
+
+        case .extended:
+            let extensions = mode == .major
+                ? ["maj9", "6", "9", "13", "maj7"]
+                : ["m9", "m11", "m6", "7b9", "7alt"]
+            let base = parts.suffix.isEmpty ? "" : parts.suffix
+            _ = base
+            return parts.numeral + extensions[abs(degree) % extensions.count]
+        }
+    }
+
+    /// The numeral for a number of semitones above the tonic, spelled the way the
+    /// corpus spells it.
+    static func numeral(for semitones: Int) -> String {
+        let table = ["I", "♭II", "II", "♭III", "III", "IV", "♯IV", "V", "♭VI", "VI", "♭VII", "VII"]
+        return table[((semitones % 12) + 12) % 12]
     }
 
     /// Which tonic a mode opens on, preferring what the corpus actually contains.

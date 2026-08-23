@@ -66,9 +66,12 @@ for seed in (1...24).map(UInt64.init) {
         continue
     }
 
-    // Rhythm. This is the whole point, so it's asserted hardest.
+    // Rhythm. This is the whole point, so it's asserted hardest — but per line
+    // the honest floor is two: a line built entirely on an uneven-pair figure has
+    // exactly two note lengths and is not thereby monotonous. The corpus-wide
+    // check below is where the vocabulary's width is actually asserted.
     let lengths = Set(pattern.notes.map(\.lengthEighths))
-    check("\(label) uses more than one note length", lengths.count >= 3,
+    check("\(label) uses more than one note length", lengths.count >= 2,
           "lengths \(lengths.sorted())")
 
     let onsets = pattern.notes.map(\.startEighth)
@@ -90,8 +93,59 @@ for seed in (1...24).map(UInt64.init) {
 
 check("different seeds are different ideas, not one idea twice",
       everyFigure.count >= 8, "\(everyFigure.count) distinct figures across 24 seeds")
+
+// And they have to differ in *architecture*, not only in which figure they're
+// built on — two lines made of different cells but laid out identically sound
+// like one another, which is what "it loops through the same" meant.
+var architectures = Set<String>()
+for seed in (1...24).map(UInt64.init) {
+    let summary = MelodyPhrases.compose(bars: 8, seed: seed).summary
+    for word in ["callAnswer", "aaba", "pairs", "through"] where summary.contains(word) {
+        architectures.insert(word)
+    }
+}
+check("and they differ in how they're laid out, not only in what they're made of",
+      architectures.count >= 3, "\(architectures.sorted())")
 check("the corpus of composed lines spans the rhythmic vocabulary",
-      everyLength.count >= 4, "lengths \(everyLength.sorted())")
+      everyLength.count >= 5, "lengths \(everyLength.sorted())")
+
+// The note-duration setting shaped the model's prompt and did nothing at all to
+// a composed line, which made it look broken from the source that answers
+// instantly.
+for palette in DurationPalette.allCases {
+    var lengths = Set<Int>()
+    for seed in (1...12).map(UInt64.init) {
+        lengths.formUnion(MelodyPhrases.compose(bars: 8, seed: seed, palette: palette)
+            .notes.map(\.lengthEighths))
+    }
+    check("note duration \(palette.label) shapes a composed line", !lengths.isEmpty,
+          "lengths \(lengths.sorted())")
+}
+var evenLengths = Set<Int>(), mixedLengths = Set<Int>()
+for seed in (1...16).map(UInt64.init) {
+    evenLengths.formUnion(MelodyPhrases.compose(bars: 8, seed: seed, palette: .even)
+        .notes.map(\.lengthEighths))
+    mixedLengths.formUnion(MelodyPhrases.compose(bars: 8, seed: seed, palette: .mixed)
+        .notes.map(\.lengthEighths))
+}
+check("and Even is narrower than Mixed", evenLengths.count < mixedLengths.count,
+      "\(evenLengths.sorted()) against \(mixedLengths.sorted())")
+
+// A template has to shape a composed line too, or it's a prompt-only idea.
+var longToneLengths = Set<Int>(), runningLengths = Set<Int>()
+for seed in (1...16).map(UInt64.init) {
+    longToneLengths.formUnion(
+        MelodyPhrases.compose(bars: 8, seed: seed,
+                              preferring: MelGenTemplates.line[0].gestureRhythms)
+            .notes.map(\.lengthEighths))
+    runningLengths.formUnion(
+        MelodyPhrases.compose(bars: 8, seed: seed,
+                              preferring: MelGenTemplates.line[1].gestureRhythms)
+            .notes.map(\.lengthEighths))
+}
+check("a long-tone template composes longer notes than a running-eighths one",
+      (longToneLengths.max() ?? 0) >= (runningLengths.max() ?? 0),
+      "\(longToneLengths.sorted()) against \(runningLengths.sorted())")
 
 // The failure that started all this: 98 takes containing 60 distinct lines.
 var realizedLines = Set<String>()

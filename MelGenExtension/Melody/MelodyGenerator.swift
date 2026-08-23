@@ -112,6 +112,76 @@ enum MelodyGenerator {
         return sequence(from: collected, progression: progression)
     }
 
+    // MARK: - When it goes wrong
+
+    /// What a generation failure actually was, and what to do about it.
+    ///
+    /// Every failure used to arrive as "Generation failed: The operation couldn't
+    /// be completed", which is true and useless — it doesn't say whether the
+    /// progression was too long, whether the model is busy, or whether something
+    /// in the system fell over. Three of these need different actions from the
+    /// person and one needs no action at all, so they're told apart (ROADMAP F11).
+    struct Failure {
+        var message: String
+        /// Worth trying again unchanged — the failure was in the machinery, not
+        /// in what was asked for.
+        var isTransient: Bool
+    }
+
+    static func describe(_ error: any Error) -> Failure {
+        if #available(iOS 26.0, macOS 26.0, *),
+           let generation = error as? LanguageModelSession.GenerationError {
+            switch generation {
+            case .exceededContextWindowSize:
+                return Failure(
+                    message: "That progression is too long for one request. "
+                           + "Try eight bars, or fewer notes per bar.",
+                    isTransient: false)
+            case .guardrailViolation:
+                return Failure(
+                    message: "The model's safety check refused this one. "
+                           + "Nothing is wrong with the progression — try again.",
+                    isTransient: true)
+            case .rateLimited:
+                return Failure(message: "The model is busy. Try again in a moment.",
+                               isTransient: true)
+            case .unsupportedLanguageOrLocale:
+                return Failure(
+                    message: "The on-device model doesn't support this device's language. "
+                           + "Switch to a supported one, such as English (United States).",
+                    isTransient: false)
+            case .assetsUnavailable:
+                return Failure(message: "The model's assets aren't on the device yet.",
+                               isTransient: true)
+            case .concurrentRequests:
+                return Failure(message: "Another generation is already running.",
+                               isTransient: true)
+            case .decodingFailure:
+                return Failure(
+                    message: "The model returned something that wasn't a melody. Try again.",
+                    isTransient: true)
+            default:
+                break
+            }
+        }
+
+        // Apple's content scanner surfaces as a plain NSError rather than as a
+        // generation error, and error 15 in particular is the scanner itself
+        // failing rather than anything being refused. Saying "generation failed"
+        // to that reads as "your progression is a problem", which it isn't.
+        let nsError = error as NSError
+        if nsError.domain.contains("SensitiveContentAnalysis") {
+            return Failure(
+                message: "The system's content scanner failed (\(nsError.domain) \(nsError.code)). "
+                       + "That's a fault in the OS layer under the model, not in the music — "
+                       + "retrying usually clears it.",
+                isTransient: true)
+        }
+
+        return Failure(message: "Generation failed: \(error.localizedDescription)",
+                       isTransient: true)
+    }
+
     // MARK: - Prompt construction
 
     static func instructions(examples: [PatternExample], style: LearnedStyle? = nil) -> String {

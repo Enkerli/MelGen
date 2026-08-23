@@ -178,7 +178,12 @@ enum MelodyVariants {
             .filter { $0.novelty > 0.05 }
             .sorted { left, right in
                 if abs(left.novelty - right.novelty) > 0.02 { return left.novelty > right.novelty }
-                return left.variety > right.variety
+                if abs(left.variety - right.variety) > 0.001 { return left.variety > right.variety }
+                // A total order, or the list a person is choosing from can come
+                // back in a different sequence each time they look at it. Swift's
+                // sort isn't stable, so ties have to be broken explicitly rather
+                // than left to whatever the algorithm does.
+                return left.transform < right.transform
             }
             .prefix(limit)
             .map { $0 }

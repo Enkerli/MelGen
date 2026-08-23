@@ -95,12 +95,24 @@ extension GestureRhythm {
     /// played at a different speed — which is the trap a list of "one note, two
     /// notes, three notes" falls into.
     static let all: [GestureRhythm] = [
-        even, dotted, reverseDotted, tresillo, charleston, longWithAir,
-        pushedPair, runOfFour, tiedOverTheBar, twoPlusThree, tripletFeel, stab
+        even, steadyQuarters, dotted, reverseDotted, tresillo, charleston, longWithAir,
+        halfAndAir, pushedPair, runOfFour, tiedOverTheBar, twoPlusThree, tripletFeel, stab
     ]
 
     /// Steady eighths. The baseline, and the one everything else is *not*.
     static let even = GestureRhythm("Even", lengths: [1, 1, 1, 1], trailingRest: 2, accents: [0, 2])
+
+    /// Steady quarters. Even at a different rate, and the figure that was
+    /// missing: with only steady *eighths* in the vocabulary, asking for an even
+    /// rhythm had exactly one figure to offer and the grammar fell back to the
+    /// whole pool, which is how the Note duration control came to do nothing.
+    static let steadyQuarters = GestureRhythm("Steady quarters", lengths: [2, 2, 2],
+                                              trailingRest: 2, accents: [0])
+
+    /// A half note and the rest of the bar. Between the long tone and the stab,
+    /// and the reason a composed line can now write a 4 as well as a 1, 2, 3, 5
+    /// and 6.
+    static let halfAndAir = GestureRhythm("Half and air", lengths: [4], trailingRest: 4, accents: [0])
 
     /// Dotted quarter then eighth. The loping figure, and the single cheapest
     /// way to stop a line sounding metronomic.

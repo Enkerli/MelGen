@@ -304,6 +304,14 @@ struct MelGenState: Codable, Sendable {
     var progressionBars: Int = 8
     /// Bumped per generation so the same settings give a new progression.
     var progressionCursor: Int = 0
+    /// How far from the corpus's favourite moves to wander. 0.5 samples the
+    /// counts as they are; higher flattens them toward what the corpus did
+    /// rarely, which is where the interesting changes live.
+    var progressionAdventure: Double = 0.5
+    /// How often a generated chord is rewritten by a substitution — tritone,
+    /// secondary dominant, relative swap, borrowed minor. 0 leaves the walk
+    /// alone.
+    var progressionSubstitution: Double = 0.25
 
     /// Which groups of the interface are unfolded.
     var showShape: Bool = true
@@ -368,6 +376,8 @@ struct MelGenState: Codable, Sendable {
         progressionMode = try container.decodeIfPresent(ProgressionMode.self, forKey: .progressionMode) ?? .major
         progressionBars = try container.decodeIfPresent(Int.self, forKey: .progressionBars) ?? 8
         progressionCursor = try container.decodeIfPresent(Int.self, forKey: .progressionCursor) ?? 0
+        progressionAdventure = try container.decodeIfPresent(Double.self, forKey: .progressionAdventure) ?? 0.5
+        progressionSubstitution = try container.decodeIfPresent(Double.self, forKey: .progressionSubstitution) ?? 0.25
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true
