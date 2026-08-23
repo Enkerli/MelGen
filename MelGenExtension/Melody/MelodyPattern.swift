@@ -38,6 +38,103 @@ struct PatternNote: Codable, Hashable, Sendable {
     var velocity: Int = 90
     /// Eighths of silence after this note, as in the model's schema.
     var restAfterEighths: Int = 0
+    /// How this note sat against the chord it was *derived* from, when it was
+    /// derived from anything. Kept because it records what the note was for —
+    /// a chromatic approach and a mis-snapped pitch look identical as numbers,
+    /// and only the original harmony can tell them apart. Nil on a hand-written
+    /// pattern, which has no original harmony to be relative to.
+    var role: HarmonicRole?
+
+    init(startEighth: Int,
+         lengthEighths: Int,
+         degree: Int,
+         octave: Int = 0,
+         alteration: Int = 0,
+         velocity: Int = 90,
+         restAfterEighths: Int = 0,
+         role: HarmonicRole? = nil) {
+        self.startEighth = startEighth
+        self.lengthEighths = lengthEighths
+        self.degree = degree
+        self.octave = octave
+        self.alteration = alteration
+        self.velocity = velocity
+        self.restAfterEighths = restAfterEighths
+        self.role = role
+    }
+
+    // Field by field, so a pattern stored by an older build still loads: the
+    // synthesized decoder throws on a missing key even where a default exists,
+    // and these are persisted now that patterns come from curation.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        startEighth = try container.decodeIfPresent(Int.self, forKey: .startEighth) ?? 0
+        lengthEighths = try container.decodeIfPresent(Int.self, forKey: .lengthEighths) ?? 1
+        degree = try container.decodeIfPresent(Int.self, forKey: .degree) ?? 0
+        octave = try container.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        alteration = try container.decodeIfPresent(Int.self, forKey: .alteration) ?? 0
+        velocity = try container.decodeIfPresent(Int.self, forKey: .velocity) ?? 90
+        restAfterEighths = try container.decodeIfPresent(Int.self, forKey: .restAfterEighths) ?? 0
+        role = try container.decodeIfPresent(HarmonicRole.self, forKey: .role)
+    }
+}
+
+/// Where a pattern came from, when it came from somewhere.
+///
+/// A hand-written seed has no provenance; one derived from a take has all of it,
+/// and losing that is how a library becomes a pile of anonymous lines.
+struct PatternOrigin: Codable, Hashable, Sendable {
+    /// The take this was derived from.
+    var takeID: UUID?
+    /// The progression it was played over, in leadsheet text.
+    var progressionText: String
+    /// The style brief or stored line that produced the take.
+    var briefName: String
+    /// Whether the take was composed by the model or fitted from a stored line.
+    var source: TakeSource
+    var derivedAt: Date
+
+    init(takeID: UUID? = nil,
+         progressionText: String,
+         briefName: String = "",
+         source: TakeSource = .model,
+         derivedAt: Date = Date()) {
+        self.takeID = takeID
+        self.progressionText = progressionText
+        self.briefName = briefName
+        self.source = source
+        self.derivedAt = derivedAt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        takeID = try container.decodeIfPresent(UUID.self, forKey: .takeID)
+        progressionText = try container.decodeIfPresent(String.self, forKey: .progressionText) ?? ""
+        briefName = try container.decodeIfPresent(String.self, forKey: .briefName) ?? ""
+        source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
+        derivedAt = try container.decodeIfPresent(Date.self, forKey: .derivedAt) ?? Date()
+    }
+}
+
+/// How a pattern's degrees become pitches.
+///
+/// Two modes, because the pattern format turned out to describe two different
+/// kinds of thing.
+enum PatternRealization: String, Codable, Hashable, Sendable {
+    /// Each note is placed at its degree's own pitch, then folded by octaves to
+    /// sit next to its predecessor. Right for almost everything: folding is what
+    /// keeps a line singable and what stops the model's register jumps.
+    case folded
+    /// Each note is placed by *moving* from the previous one by the number of
+    /// scale steps between their degrees, through whatever scale is sounding.
+    ///
+    /// This is the Samchillian's model, and the only correct way to realize a
+    /// figure whose content is its intervals. Folding would destroy it twice
+    /// over: a deliberate octave leap is exactly what folding removes, and a
+    /// degree re-anchored against a new chord's root loses the *move* that the
+    /// figure was made of. Stepping through the sounding scale keeps both — a
+    /// leap stays a leap, and it lands on a note that belongs to the new chord.
+    case stepwise
 }
 
 /// A generic line: rhythm and contour, with no harmony of its own.
@@ -49,6 +146,34 @@ struct MelodyPattern: Codable, Hashable, Sendable, Identifiable {
     /// What it's for, shown in the interface.
     var summary: String
     var notes: [PatternNote]
+    /// The take this was lifted from, if it was lifted from one.
+    var origin: PatternOrigin?
+    /// How this pattern becomes pitches.
+    var realization: PatternRealization = .folded
+
+    init(name: String,
+         bars: Int,
+         summary: String,
+         notes: [PatternNote],
+         origin: PatternOrigin? = nil,
+         realization: PatternRealization = .folded) {
+        self.name = name
+        self.bars = bars
+        self.summary = summary
+        self.notes = notes
+        self.origin = origin
+        self.realization = realization
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
+        bars = try container.decodeIfPresent(Int.self, forKey: .bars) ?? 2
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        notes = try container.decodeIfPresent([PatternNote].self, forKey: .notes) ?? []
+        origin = try container.decodeIfPresent(PatternOrigin.self, forKey: .origin)
+        realization = try container.decodeIfPresent(PatternRealization.self, forKey: .realization) ?? .folded
+    }
 }
 
 enum MelodyPatterns {
@@ -56,6 +181,10 @@ enum MelodyPatterns {
     static let beatsPerBar: Double = 4
     /// Where the line sits when nothing else constrains it — around G4.
     static let registerCentre = 67
+    /// Where a stepwise line is kept. Three octaves: wide enough that a
+    /// deliberate octave leap has headroom on both sides of it, narrow enough
+    /// that an accumulating drift is caught before it leaves the instrument.
+    static let registerBand = 48...84
 
     /// Fits a pattern to a progression, repeating it as needed.
     ///
@@ -74,6 +203,7 @@ enum MelodyPatterns {
 
         var placed: [SequencedNote] = []
         var previousPitch: Int?
+        var previousNote: PatternNote?
 
         for repetition in 0..<repetitions {
             let offset = Double(repetition) * patternBeats
@@ -81,10 +211,22 @@ enum MelodyPatterns {
                 let startBeat = offset + Double(note.startEighth) / 2
                 guard startBeat < progression.totalBeats - 0.001 else { continue }
 
-                guard let pitch = pitch(for: note,
-                                        at: startBeat,
-                                        in: progression,
-                                        near: previousPitch ?? centre) else { continue }
+                let resolved: Int?
+                switch pattern.realization {
+                case .folded:
+                    resolved = pitch(for: note,
+                                     at: startBeat,
+                                     in: progression,
+                                     near: previousPitch ?? centre)
+                case .stepwise:
+                    resolved = steppedPitch(to: note,
+                                            from: previousNote,
+                                            at: previousPitch ?? centre,
+                                            beat: startBeat,
+                                            in: progression)
+                }
+                guard let pitch = resolved else { continue }
+                previousNote = note
                 previousPitch = pitch
 
                 let maxLength = (progression.totalBeats - startBeat) * 2
@@ -174,6 +316,57 @@ enum MelodyPatterns {
         let base = 60 + root + intervals[index] + 12 * (octaveCarry + note.octave) + note.alteration
         let folded = MelodyGeneratorSupport.fold(pitch: base, near: previous)
         return (0...127).contains(folded) ? folded : base.clamped(to: 0...127)
+    }
+
+    /// Moves `steps` scale degrees from a pitch, through the scale sounding at
+    /// this beat.
+    ///
+    /// The Samchillian's arithmetic: you don't say which note, you say how far,
+    /// and the scale decides what that lands on. Which means the same figure over
+    /// a different chord is the same *shape*, played on that chord's notes — and
+    /// an octave leap survives, because seven steps of a seven-note scale is an
+    /// octave by construction rather than by luck.
+    static func steppedPitch(to note: PatternNote,
+                             from previous: PatternNote?,
+                             at previousPitch: Int,
+                             beat: Double,
+                             in progression: ChordProgression) -> Int? {
+        guard let placed = progression.chord(at: beat) else { return nil }
+        let scale = placed.symbol.scalePitchClasses.map { (($0 % 12) + 12) % 12 }.sorted()
+        guard !scale.isEmpty else { return nil }
+
+        // No predecessor: place the first note the ordinary way.
+        guard let previous else {
+            return pitch(for: note, at: beat, in: progression, near: previousPitch)
+        }
+        let steps = note.degree - previous.degree
+        let size = scale.count
+
+        // Where the previous pitch sits in this scale — nearest member, since the
+        // last note may have been placed against a different chord entirely.
+        let previousClass = ((previousPitch % 12) + 12) % 12
+        let nearest = scale.enumerated().min {
+            let left = min(abs($0.element - previousClass), 12 - abs($0.element - previousClass))
+            let right = min(abs($1.element - previousClass), 12 - abs($1.element - previousClass))
+            return left < right
+        }?.offset ?? 0
+
+        let target = nearest + steps
+        let index = ((target % size) + size) % size
+        let octaves = Int(floor(Double(target) / Double(size)))
+        let anchorOctave = (previousPitch - scale[nearest]) / 12
+
+        var pitch = scale[index] + 12 * (anchorOctave + octaves + note.octave) + note.alteration
+
+        // Stepping from the last note means pitch accumulates: a cell that drifts
+        // upward drifts upward *forever*, and the degree-space turnaround can't
+        // see it because the degrees stayed put. So the register is corrected in
+        // whole octaves, which is the one correction that keeps both the scale
+        // degree and the interval class — and is what a player does when a
+        // sequence runs off the end of the instrument.
+        while pitch > registerBand.upperBound { pitch -= 12 }
+        while pitch < registerBand.lowerBound { pitch += 12 }
+        return pitch.clamped(to: 36...96)
     }
 
     /// Keeps the line strictly monophonic and honours each pattern note's rest.

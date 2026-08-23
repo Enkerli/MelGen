@@ -1,11 +1,21 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-22*
+*Last updated: 2026-08-23 (branch `curation-and-training`), after the second device session*
 
 A consolidated inventory of planned work, backlog items and exploratory ideas.
 Items are split between **this plug-in**, **shared suite infrastructure** (things
 MelGen needs that belong in `music-suite` or a sibling), and **sibling projects**
 that would share this codebase but have a distinct plug-in identity.
+
+**On curation** (settled 2026-08-22): curation here is modelled on library
+science rather than on rating. Two vocabularies, not one — facets that are
+derived, fixed and structural, and tags that are typed, free and emergent, with
+an explicit ratchet from the second to the first. Judgement is provisional and
+happens in passes; nothing is ever removed from consideration, because a take
+that was dull after one thing is the thing you needed after another. Direct
+retrieval when you know what you want, serendipity when you don't. See
+`MelodyCuration.swift` for the model and [TRAINING.md](TRAINING.md) for what gets
+learned from the result.
 
 **On overlap with the suite** (settled 2026-08-22): the fact that ProgGenie
 generates progressions and MIDIcurator curates patterns is *not* a reason to
@@ -15,6 +25,35 @@ processes, with generation, adaptation and curation in one environment — is th
 point. Duplicated capability is an acceptable cost of that; "a sibling already
 does this" is not an argument against planning a feature here. None of this is
 meant to be a product.
+
+---
+
+## What landed on `curation-and-training`
+
+Eighteen commits, 2026-08-22 to 2026-08-23. Everything below is verified outside
+Xcode by `Scripts/verify.sh` and compiles in the extension target; **none of it
+has been heard on a device**, which remains the single largest open risk.
+
+| Area | Items |
+|---|---|
+| Curation | L1 (as dispositions and passes), L2, G5 |
+| Re-harmonization | R1, R2, R3 |
+| Templates | T1, T2, T5 (gestures as motif seeds) |
+| Generation without the model | G10 (gesture phrases), G11 (mutate/score/morph), D2 |
+| Learned material | S1, S2 (via capture), S3, and the two models the analysis staged |
+| Polyphony | P1, P2, P3, P4 |
+| Input | N5 (capture), and the melodic half of what N1 wanted |
+| Progressions | B1, generated here rather than pasted |
+| Shared formats | I3 (degree-relative, aligned with `@enkerli/accompaniment`), I1 (voicing layer, built here, not yet extracted) |
+
+There are now **six sources of material**, and the interface labels every take
+with which one produced it: the model, a stored line, a composed phrase, a draw
+from your own slot statistics, a walk through your own chain, and a variant or
+morph of something else — plus captured playing and comping, which are takes too.
+
+The through-line is that all of them produce `MelodyPattern`s, so all of them are
+realized, curated, learned from and mutated by the same machinery. Adding a
+seventh source is a file, not a subsystem.
 
 ---
 
@@ -86,28 +125,25 @@ So Wave 1 is "make what exists trustworthy", and it comes before everything else
 | G1 | Chunked generation (long progressions) | **Critical** | M–L | — | ✅ **done 2026-08-22** — 16 bars now generates as four phrases, and ProgGenie output works |
 | G2 | Rests | **High** | S–M | — | ✅ **done 2026-08-22** — schema field, prompt requirement, and a guaranteed breath every two bars |
 | G3 | Per-note gate | **High** | M | — | ✅ **done 2026-08-22** — derived per note from the next interval; the slider is now an amount over that shape |
-| G5 | Variety scoring (pre-curation) | **High** | M | — | Last Wave 1 item. Matters more now that takes arrive from two sources — a scored library is how you tell a good stored line from a dull one |
+| G5 | Variety scoring (pre-curation) | **High** | M | — | ✅ **done 2026-08-22** — `MelodyAnalysis` measures every take (interval and rhythmic variety, self-similarity, harmonic roles) and the score shows in the history. Annotate-only, per Open Question 6; reject-and-retry is deliberately not built |
 | G4 | Measure generation time | Medium | S | — | ✅ **done 2026-08-22** — recorded per take, and compared against the actual loop duration |
 | G6 | Buffer takes ahead | **High** | M | G1, G4 | ✅ **done 2026-08-22** — generates a loop ahead and swaps on the boundary |
 
-**Wave 1 is complete, and G8 landed on top of it** — the plug-in now plays
-instantly from stored lines and uses the model to add new material rather than to
-keep up. G5 (variety scoring) is the last Wave 1 item, and it matters more now
-that takes arrive from two sources.
+**Wave 1 is complete**, and so is R1/R2 — the loop closes: a take you liked is
+read back as scale degrees and joins the library, and the library conditions the
+next generation. See [TRAINING.md](TRAINING.md) for what "conditions" can and
+can't mean.
 
-The natural follow-on to G8 is **R1/R2**: the machinery to turn a *generated*
-take into a degree-relative pattern, which is what closes the loop — the model
-grows the library instead of producing one-offs.
+**Nothing on the `curation-and-training` branch has run on a device.** It
+compiles and every deterministic claim is checked outside Xcode, but the whole
+curate → keep → learn loop is unheard. That's the next session's job, and
+`Scripts/analyse-history.sh` is how it gets measured rather than impressioned.
 
 After that, Wave 2 opens with **U1 (piano roll)**. Its case keeps getting
 stronger: G2's rests, G3's gate shaping and D4's feels are all things you
 currently have to take on trust, and the text grid only shows them to the nearest
-eighth.
-
-Worth a listen before G5, though — the density fix (F18) is the first change that
-should be plainly audible, and if the line still doesn't breathe then the model is
-ignoring the notes-per-bar target and `ensureBreathing` needs to do more of the
-work than it currently does.
+eighth. Curation makes it stronger again — judging a take by ear alone is the
+job, but judging *why* wants seeing it.
 
 ### Wave 2 — make it interactive
 
@@ -115,22 +151,29 @@ work than it currently does.
 |---|------|--------|--------|-----------|-----|
 | U1 | Piano-roll display | **High** | L | — | Now the top of Wave 2. The text grid (F19) made rests and note lengths readable, but sub-eighth gate shaping still isn't visible, and D4 (feels) can't be chosen without seeing what it does |
 | N1 | Probe multi-cable input | Medium | S | — | An afternoon that decides the shape of all input routing |
-| T1/T2 | Template selection, cycle vs randomize | Medium | S | — | Cheap, and pairs with G5: choosing templates is manual variety control where scoring is automatic |
+| T1/T2 | Template selection, cycle vs randomize | Medium | S | — | ✅ **done 2026-08-22** — multi-select over the briefs, plus cycle / shuffle / lock for both briefs and stored lines. Shuffle is a shuffled cycle, so everything is heard once per round and no round opens with what the last one closed on |
 | X1/X2 | MIDI export and drag-out | **High** | M | — | Nothing leaves the plug-in today except live MIDI. Independent of everything else |
 | N4 | Chords in as harmonic context | **High** | L | N1 or N2, I6 | The richer ProgGenie link, and how MelGen stops being a text box |
 
 ### Wave 3 — make it a library and an instrument
 
-Pattern library curation (L1–L3), polyphonic comping (P1–P3), re-harmonization
-(R1–R2, needing the degree-relative format), chord information in exported MIDI
-(X3). Comping is the largest single addition and wants the voicing layer (I1)
-under it.
+Curation (L1–L3) and re-harmonization (R1–R2) **landed early**, on the
+`curation-and-training` branch, because the loop they close is the thing the
+project is for. What's left in this wave: library search and filtering at scale
+(L3), the session/library split done properly (L4, needing I5), polyphonic
+comping (P1–P3), and chord information in exported MIDI (X3). Comping is the
+largest single addition and wants the voicing layer (I1) under it.
 
 ### Wave 4 — research
 
-Learned styles (S1–S5) and trade fours (N6). Both are XL because of design
-uncertainty rather than volume of code, and both need the capture path. Worth
-prototyping only once Wave 1 means a single take is reliably good.
+Learned styles (S1–S5) and trade fours (N6). The analysis of what's actually
+reachable is in **[TRAINING.md](TRAINING.md)**, and it changes the shape of this
+wave: Foundation Models cannot be trained on device at all, its adapter path is a
+developer artifact rather than a personal one, and everything worth having in the
+near term is transparent statistics over the curated corpus. S3 (style
+extraction) has a first cut already. The next item isn't S1 or S2 — it's
+**generating from the learned distributions**, which needs no model and no
+capture path.
 
 ### Deliberately deferred
 
@@ -157,7 +200,8 @@ prototyping only once Wave 1 means a single take is reliably good.
 | F17 | **Host app uses a deprecated AU accessor** | Trivial | Open — `AudioUnitHostModel.swift:108` uses `auAudioUnit`, deprecated in iOS 27 in favour of `withAUAudioUnit`. Template code, host app only, doesn't affect the plug-in |
 | F18 | **Density asked for more notes than the bar has slots** — so rests were impossible no matter what the prompt said | Trivial | ✅ fixed 2026-08-22. A 4/4 bar has 8 eighth slots; the mapping ran 3→14 notes/bar, so the *default* of 0.5 asked for 8 (every slot) and anything above it asked for the impossible. Now 2→8, default 5. This, not the rest logic, is why G2 wasn't audible |
 | F19 | **A take's notation showed neither rests nor note lengths** — "note@beat" pairs made a line with rests look identical to one without | S | ✅ fixed 2026-08-22 — `MelodyNotation` renders a bar-per-row grid, one column per eighth, with a symbol for a rest and one for a sustained note, plus a summary line carrying the rest count and the actual gate range |
-| F11 | **Generation errors are all reported the same way** | S | Open — `exceededContextWindowSize`, `rateLimited` and `guardrailViolation` all surface as "Generation failed: …". The context one especially deserves "that progression is too long, try 8 bars" |
+| F12b | **A third-party model extension breaks generation** | — | ✅ **understood 2026-08-23, and the first diagnosis of it was wrong.** `SensitiveContentAnalysisML` error 15 was read as "the safety model's assets are missing" — an explanation taken from a search result and stated on a device that had been generating for several builds. Assets don't vanish. The actual cause was a third-party model extension enabled under Settings ▸ Apple Intelligence & Siri, redirecting requests away from the on-device model; disabling it restored generation. **The lesson is the useful part**: the plug-in already recorded the source of every take, so "has the model ever worked here" was a fact available to the diagnosis and wasn't used. It is now (`MelGenState.modelHasWorkedHere`), and the verdict branches on it. A diagnosis that contradicts the evidence is wrong however plausible it sounds. |
+| F11 | **Generation errors are all reported the same way** | S | ✅ fixed 2026-08-23, after a device session where the model failed with `SensitiveContentAnalysisML error 15` and the interface said "Generation failed: the operation couldn't be completed". That error is Apple's content scanner falling over *underneath* the model — not a refusal and nothing to do with the progression, which is the opposite of what the message implied. Failures are now told apart, transient ones retry once quietly, and if it still fails a phrase is composed instead |
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
 | F3 | **Note duration and gate length were conflated** under one "Note length" control | S | ✅ fixed 2026-08-22 — "Note duration" (written rhythm, generation-time) vs "Gate length" (staccato–legato, live) |
@@ -183,7 +227,7 @@ reading the code.
 | G2 | **Rests** | S–M | ✅ done 2026-08-22. Three layers, because prompting alone had already failed: `restAfterEighths` is now a **schema field** (a value the schema doesn't ask for is a value the model doesn't consider); the instructions state rests as a requirement with a target rather than a preference; and `MelodyExpression.ensureBreathing` guarantees it — any two-bar window with no gap of half a beat or more loses its least structurally important note, reusing the ranking density thinning already uses. Honouring a requested rest never costs more than half the note, so "four eighths of silence after this eighth note" reads as "end the phrase", not "delete the note" |
 | G3 | **Per-note gate** | M | ✅ done 2026-08-22. Gate is derived per note from the move to the next one — a step connects (0.95 of the slot), a wide leap detaches (0.65), a repeated pitch breaks (0.55) — and the slider became an *amount* over that shape: 0.5 as derived, 0 clips, 1 pushes toward legato. Same structure as Expression. Two rules that make it musical rather than mechanical: a gap of half a beat or more is a **rest** and legato won't extend into it, and a repeated pitch never fills its slot whatever the setting — without a gap the second note-on lands as the first note-off does and most synths render one held note. Expression no longer touches duration at all; Gate owns it |
 | G4 | **Measure generation time** | S | ✅ done 2026-08-22, **and the numbers change the plan — see G8**. Measured on an M1 iPad Pro at 5 notes/bar: **11.5s for 6 notes** (3 bars, one request) and **138.3s for 57 notes** (16 bars, four requests). That's ~1.9–2.4s *per note*, scaling with note count rather than request count. At 120bpm a 16-bar loop lasts 32s, so generation runs roughly 4× slower than real time — "a new take every loop" is arithmetically impossible for anything the model writes from scratch. Each take records wall-clock seconds and how many requests it needed, shown in the history row and in the status line. The kernel now publishes tempo and loop length too, so the status can compare the two directly — "took 4.2s over 4 phrases, loop is 8.0s", or "longer than the 8.0s loop, so takes arrive late" when it doesn't fit. That comparison is the whole point: "new take every loop" is only a promise we can keep if generation finishes inside a loop |
-| G5 | **Variety scoring** | M | Takes come out ostinato-like even at temperature 0.89, so temperature is not the variety lever we assumed. Score a take before it reaches the history: pitch-class and interval-class entropy, rhythmic distinctness, and self-similarity across bars (an autocorrelation over the note sequence catches literal repetition). Two uses — reject-and-retry below a floor, and show the score in the history so curation has something to sort by. Cheap to compute, deterministic, testable, and it belongs in `verify.sh` with hand-picked repetitive and varied fixtures. Note this is *pre*-curation and distinct from L1's keep/discard: the machine filters, then the human chooses. |
+| G5 | **Variety scoring** | M | ✅ done 2026-08-22. `MelodyAnalysis` measures every take and the number reaches the history row and the take summary; `TakeFacets` turns the same measurements into filterable bands. Reject-and-retry deliberately not built — Open Question 6 resolved as "annotate always, never reject", because an ostinato is sometimes exactly what's wanted and the machine shouldn't be the one deciding. Original note: takes come out ostinato-like even at temperature 0.89, so temperature is not the variety lever we assumed. Score a take before it reaches the history: pitch-class and interval-class entropy, rhythmic distinctness, and self-similarity across bars (an autocorrelation over the note sequence catches literal repetition). Two uses — reject-and-retry below a floor, and show the score in the history so curation has something to sort by. Cheap to compute, deterministic, testable, and it belongs in `verify.sh` with hand-picked repetitive and varied fixtures. Note this is *pre*-curation and distinct from L1's keep/discard: the machine filters, then the human chooses. |
 | G6 | **Buffer takes ahead** | M | ✅ done 2026-08-22. Auto-regeneration now generates the *next* take while the current one plays and holds it until the pass counter ticks, so the swap lands on a loop boundary instead of wherever the model happened to finish. A take asked for by hand still commits immediately — you pressed the button. This also closes F6: the deferred commit was what that needed, without the third sequence buffer I'd assumed. Still open: if generation is slower than a loop the take simply arrives a loop late, which the status line now says out loud rather than hiding |
 | G7 | **Accept ProgGenie output directly** | S | ✅ works 2026-08-22, given G1. ProgGenie's `Cmaj7 \| Em7♭5 \| A7 \| …` parses as-is — format, spacing and `♭` spelling all fine — and the 16-bar form now generates as four phrases. That progression is a fixture in `Scripts/verify.sh chunking` so it stays true. Open question is whether it should stay a paste or become a route (N4/X4) |
 
@@ -192,6 +236,8 @@ reading the code.
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | G8 | **Adapt stored lines to new harmony, without the model** | L | ✅ first cut done 2026-08-22. `MelodyPattern` describes a line in **scale degrees** rather than pitches, so the same rhythm and contour comes out consonant over any chord — degrees 0/2/4/6 of a seven-note scale are its chord tones, which is why landing on those on strong beats fits whatever the harmony turns out to be. `MelodyPatterns.realize` tiles a pattern across a progression, re-pitching every repetition against the chord under it, and folds each note into register the same way the model path does. Six seed lines ship (long tones, guide tones, arch, running eighths, syncopated, call and response). "Fit a stored line" is instant; Auto now fits a line on the first loop and on any loop where the model hasn't finished, so the changes keep moving instead of the same take repeating for half a minute. `Scripts/verify.sh patterns` checks all 24 line×progression combinations for scale membership, monophony, register, leap width, recurrence and determinism. Still to do: derive patterns *from* takes (R1), user-authored lines, and weighting rather than a plain cycle |
+| G10 | **Generate from the learned distributions** | M | ✅ **done 2026-08-23**, twice over: `MelodyStyleModel` (slot statistics, ported from `@enkerli/accompaniment`) and `MelodyChain` (variable-order, with backoff). Both are offered, because they learn different things from the same takes — slots have groove and no memory, the chain has phrases and only the groove its metric context carries. Original note: `StyleLearner` already measures onset, duration and interval distributions over curated takes; sampling *from* them produces a line that is new, is yours, and is instant. Today a stored line is either a hand-written seed (generic on purpose, therefore plain) or a specific past take (specific, therefore not new); this is the missing third thing. Needs a chord-conditioned degree histogram, which `LearnedStyle` doesn't have yet. Measured evidence: two thirds of everything played in the first real session came from a stored line rather than the model, and 60 distinct lines sat behind 98 takes |
+| G11 | **Mutate, score, morph** | L | ✅ **done 2026-08-23**. Fourteen transforms, each moving one axis so a variant that works can be traced to what made it work; three scores kept separate rather than summed; a morph that aligns notes proportionally rather than by onset. Original note: Deterministic transforms over a pattern (displacement, degree and duration substitution, density adjustment, inversion, retrograde, ornament insertion, register displacement), scored against the learned style, presented as variants to audition — then an interpolation between two you like, where "finding the satisfying point" means marking a position on the morph slider, which lands back in curation as a take whose provenance names both parents. Curation applied to variants rather than takes. Needs G10 first, so mutations can be scored against something |
 | G9 | **Report the cost of a generation before running it** | S | With ~2s per note measured, expected duration is predictable from bars × notes-per-bar. Say so before starting — "about 40s for 16 bars at 5 notes/bar" — rather than leaving a spinner running for two minutes. Also lets Auto refuse a configuration it can't sustain instead of quietly falling behind. |
 
 ### Templates & Motifs
@@ -201,18 +247,25 @@ to become first-class, selectable things.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| T1 | **Select which templates are in play** | S | Multi-select over the brief list; the rotation draws only from the selected set. Default all-on preserves today's behaviour. Stored per session. |
-| T2 | **Cycle vs randomize** | S | Cycle (deterministic rotation, today's behaviour) or shuffle without immediate repeats. A "lock" that repeats one template lets you iterate on a single idea at varying temperature. |
+| T1 | **Select which templates are in play** | S | ✅ done 2026-08-22. Multi-select over the brief list (`FlowChips`), stored per session; an empty selection means all of them, so a session saved before this existed behaves as it did. The set can never be emptied — an empty rotation has nothing to play. |
+| T2 | **Cycle vs randomize** | S | ✅ done 2026-08-22. Cycle, shuffle or lock, for briefs *and* stored lines. Shuffle is a shuffled cycle rather than independent draws: everything is heard once per round, and the join between rounds is checked so a round never opens with what the last one closed on — independent draws repeat immediately about once every N picks, which reads as a bug whatever the maths says. Deterministic in all three modes, so reopening a session doesn't jump the queue. |
 | T3 | **Per-template weighting** | M | Once selection exists, weights let a set lean toward one feel. Probably a later refinement — selection plus lock may be enough in practice. |
 | T4 | **User-authored templates** | M | A template is just a name plus prompt text. Letting people write their own turns the brief list into a user-extensible resource; needs an editor and validation that the text doesn't fight the schema. |
-| T5 | **Templates as motif seeds, not just prose** | L | Today a brief is an instruction. A stronger form seeds an actual figure — "use this 3-note cell, sequence it through the changes" — which overlaps with the pattern library (P-series) and re-harmonization (R-series). Design these together. |
+| T5 | **Templates as motif seeds, not just prose** | L | ✅ **done 2026-08-23** as gestures. A `MelodyGesture` is a rhythm crossed with a contour and a role in a phrase, which is exactly the "3-note cell, sequenced through the changes" this asked for — and the phrase grammar sequences it. Original note: Today a brief is an instruction. A stronger form seeds an actual figure — "use this 3-note cell, sequence it through the changes" — which overlaps with the pattern library (P-series) and re-harmonization (R-series). Design these together. |
 
 ### Rhythm & Duration
 
+**On live mutation** (added 2026-08-23): there are now two mutation systems and
+they are deliberately different. `MelodyMutation` produces a *new take to judge*,
+which is the right shape for curation. `MelodyLiveMutation` re-rolls probabilities
+every pass and never writes back, which is the right shape for playing — the
+hardware-sequencer control, where you steer by how much it drifts rather than by
+choosing between candidates. Conflating them would make one of the two useless.
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| D1 | **Finer grid — 16ths and triplets** | L | The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
-| D2 | **Duration patterns beyond pairs** | M | Long–short and short–long are pair figures. Real rhythmic identity often lives in longer cells (3+3+2). Express as a selectable cell that the model is asked to repeat and vary. Related: T5. |
+| D1 | **Finer grid — 16ths and triplets** | L | **Now the binding constraint**, and everything that would have to change is in one place at last: the grid constant in `MelodyStyleModel`, the eighth arithmetic in the pattern format, and `GestureRhythm`'s lengths. Gestures bought back most of what triplets would with dotted and 3+3+2 figures, but a swung triplet feel is still unrepresentable. Original note: The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
+| D2 | **Duration patterns beyond pairs** | M | ✅ **done 2026-08-23**. The gesture vocabulary has 3+3+2, dotted figures, ties over the bar line, uneven pairs and pushed anticipations — twelve rhythms, none of which reads as another played at a different speed. Original note: Long–short and short–long are pair figures. Real rhythmic identity often lives in longer cells (3+3+2). Express as a selectable cell that the model is asked to repeat and vary. Related: T5. |
 | D3 | **Per-note gate** | M | Promoted to Wave 1 as **G3** — playing it confirmed a single number can't give staccato notes with legato transitions. |
 | D4 | **Feel presets** | L | Raised 2026-08-22, and probably the right answer to "I'm unclear on the gate variability". Accents, swing, gate shape, gate *variability* and micro-timing are five knobs describing one thing: a feel. Named feels (straight, swung, laid back, pushed, clipped funk, rubato) would bundle them, with the individual sliders demoted to an advanced disclosure — you pick a feel and adjust, rather than assembling one from five numbers. Needs: a per-feel curve for each axis, a variability amount per axis (currently the gate shape's spread is fixed), and micro-timing beyond the current uniform jitter — probably per-metric-position offsets, which is also what a groove template is. Shareable with the rest of the suite. Do it *after* U1: choosing between feels you can't see is guesswork |
 
@@ -222,10 +275,10 @@ The single biggest addition, and a genuine fork in the plug-in's identity.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| P1 | **Mode: melodic line vs polyphonic comping** | L | These must be explicit and visible, because the *receiving instrument* differs: a mono synth given comping chords plays whichever note wins its note-priority rule, which is not music. The mode changes the schema (chords not notes), the post-processing (no monophonic truncation; voice-leading applies between chord voicings instead of between notes) and the kernel's active-note budget. |
-| P2 | **Voicing model** | L | Comping needs voicings, not pitch sets: register, spacing, inversion, which chord tones are omitted, and whether the bass is included. The suite's chord dictionary provides the pitch classes; voicing is the missing layer and is a good candidate for shared theory code. |
-| P3 | **Voice-leading between voicings** | L | The melodic version folds octaves to keep a line singable. The comping version needs the analogous constraint between successive voicings — minimize total movement, keep common tones. |
-| P4 | **Rhythmic comping figures** | M | Charleston, bossa, stabs, pad. Overlaps with the template system (T-series): a comping template is a rhythm plus a voicing policy. |
+| P1 | **Mode: melodic line vs polyphonic comping** | L | ✅ **done 2026-08-23**, and the model path added the same day: it chooses when chords land and which tones are in them, `CompingVoicer` does register, spacing and voice leading. A model asked for MIDI notes jumps register between chords, because keeping voicings near each other is arithmetic. **Corrected the same evening**: the first version handed the model the comping *figure's* description and asked it to reproduce that, which is a language model doing at two seconds a request what a four-line function does exactly — and why every take came out alike. A figure is a pattern for the deterministic path; a brief is a character for the model. See `CompingBriefs`. and cheaper than expected: the kernel was already polyphonic and the realization axis already per-note. The one real change was teaching `MelodyExpression` that a comping take must skip the passes that reason about "the next note". Original note: These must be explicit and visible, because the *receiving instrument* differs: a mono synth given comping chords plays whichever note wins its note-priority rule, which is not music. The mode changes the schema (chords not notes), the post-processing (no monophonic truncation; voice-leading applies between chord voicings instead of between notes) and the kernel's active-note budget. |
+| P2 | **Voicing model** | L | ✅ **done 2026-08-23**. `ChordVoicing.swift`: shell, rootless A and B, drop 2, quartal and close, with tones classified by interval rather than by position in the dictionary's list — which is what makes them right on suspended, quartal and altered chords. Original note: Comping needs voicings, not pitch sets: register, spacing, inversion, which chord tones are omitted, and whether the bass is included. The suite's chord dictionary provides the pitch classes; voicing is the missing layer and is a good candidate for shared theory code. |
+| P3 | **Voice-leading between voicings** | L | ✅ **done 2026-08-23**. The voicing moves as a *unit*: re-placing each voice independently finds lower total movement and destroys the voicing doing it, because internal spacing is what makes a rootless A one. Original note: The melodic version folds octaves to keep a line singable. The comping version needs the analogous constraint between successive voicings — minimize total movement, keep common tones. |
+| P4 | **Rhythmic comping figures** | M | ✅ **done 2026-08-23**, and the guess was right — a comping figure is a rhythm plus a voicing policy, and the rhythms are the melodic side's `GestureRhythm` vocabulary, so both modes share one sense of time. Original note: Charleston, bossa, stabs, pad. Overlaps with the template system (T-series): a comping template is a rhythm plus a voicing policy. |
 | P5 | **Split or dual output** | M | Line and comping in one instance, on separate MIDI channels or separate output ports, so one MelGen can feed a mono lead and a poly pad. Decide after P1: two instances may be the cleaner answer. |
 
 ### Learned Styles
@@ -234,13 +287,20 @@ The main reason to be on Foundation Models at all, and closest in spirit to the
 suite's **GloriArp** concept. Distinct from templates: a template is authored
 instruction, a style is *induced from material*.
 
+**Read [TRAINING.md](TRAINING.md) before planning any of these.** It settles what
+Foundation Models can actually do (no on-device training; adapters are an
+offline, version-locked, 160 MB developer artifact) and stages what's reachable
+without it. The headline: the next item in this family is not S1 or S2 but
+*generating from the learned distributions*, which needs neither a model nor a
+capture path.
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| S1 | **Learn from incoming MIDI** | XL | Capture MIDI input, segment it into patterns, describe them in the prompt's example format so the model imitates. Few-shot conditioning, not fine-tuning — which is what makes it feasible on device. `PatternLibrary` already does a primitive version with saved takes. |
-| S2 | **Learn from a loaded MIDI file** | L | Same pipeline, file source instead of live input. Cheaper than S1 (no real-time capture) so probably do it first. |
-| S3 | **Style extraction** | XL | Turn captured material into a *described* style — register, interval distribution, rhythmic vocabulary, syncopation, articulation — rather than raw examples. Compresses better and generalizes across progressions. This is the interesting research bit. |
-| S4 | **Named, saved styles** | M | Once extracted, a style is a savable, shareable object. Needs the library IA (P-series) underneath it. |
-| S5 | **Style transfer onto an existing pattern** | L | Apply a learned style to a pattern already in the library — the realization axis, learned rather than dialled in. |
+| S1 | **Learn from incoming MIDI** | XL | ✅ **done 2026-08-23**, and it turned out to be S, not XL — because the learned models were built so that adding material is `add(pattern)` and nothing else. A lock-free ring in the kernel, pairing that survives overlapping note-ons, segmentation on silence, and quantizing that records how far off the grid it was rather than absorbing it. Captured phrases are read against the progression that was on screen, so they're reusable over other changes rather than being a recording. |
+| S2 | **Learn from a loaded MIDI file** | L | The pipeline exists (S1); what's missing is only the file reader. `MelodyCapture.learn(from:over:)` takes plain events, so this is a MIDI file parser and nothing else. Pairs with X4. |
+| S3 | **Style extraction** | XL | ✅ first cut done 2026-08-22. `StyleLearner.learn` measures the curated takes into `LearnedStyle` — density, rest share, register, step/skip/leap shares, direction changes, duration and onset histograms, harmonic role balance, and the tags — and renders it as prompt text shown in the interface in the words the model receives. The compression claim holds: 620 characters for 24 takes, against several hundred tokens for *one* quoted take. Still to do: a degree histogram conditioned on the chord (which is what generating from the style needs), per-facet styles, and a floor below which the description should say "not yet" rather than a confident number over three takes. |
+| S4 | **Named, saved styles** | M | Half done: `MelodyStyleModel` and `MelodyChain` are both `Codable` and round-trip through JSON (tested), and the slot model accumulates so a style can grow across sessions. What's missing is storage and a name — they're currently recomputed from the kept takes on every draw, which is correct and wasteful. Depends on where the library lives (I5). |
+| S5 | **Style transfer onto an existing pattern** | L | Partly done and partly still interesting. `MelodyTransforms.applyRhythm` transfers a *rhythm* onto existing pitch material, and the morph interpolates between two lines. What's missing is transferring a learned style's distributions onto a pattern — redraw this line's durations and placement from that style, keep its contour. Now a small piece of work on top of `PatternProfile`. |
 
 ### Pattern Library & Information Architecture
 
@@ -249,11 +309,14 @@ would make it one.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| L1 | **Keep / discard / rate** | S | The history is currently a flat 24-item ring that silently drops the oldest. Keeping a take should protect it from eviction. Minimum viable curation. |
-| L2 | **Name and tag takes** | S | Free-text name plus tags. Settings are already recorded per take (temperature, density, brief, palette); tags add the human judgement that settings can't capture. |
+| L1 | ~~**Keep / discard / rate**~~ → **Dispositions and passes** | S | ✅ done 2026-08-22, in a different shape than planned. Rating was the wrong model: "good for now", "affords tweaks", "worth another try", "right elsewhere", "the rhythm works and the rest doesn't", "second pass", "skip for now" are seven different *next actions*, not seven points on one axis. So marks are unranked dispositions, each one keystroke; every mark records the pass it was made on and the take it was heard after; a take keeps all its marks rather than the latest, so a take skipped on pass 1 and kept on pass 3 preserves the disagreement instead of resolving it. The ring now drops only what you skipped or never heard. See `MelodyCuration.swift`. |
+| L2 | **Name and tag takes** | S | ✅ mostly done 2026-08-22. Free-text tags with a `TagVocabulary` that counts usage, orders the suggestions by it, and reports which tags have been used often enough to be worth making structural — the folksonomy-to-controlled-vocabulary ratchet. Facets (density, placement, register, colour, motion) are the other half: derived, fixed, read-only, and how you find something on purpose. **Loose end:** `GenerationRecord.title` and `MelGenState.retitle` exist and nothing in the interface calls them, so takes can't be named yet. |
 | L3 | **Search and filter** | M | By progression, tag, brief, note count, density. Matters once the library outgrows one screen. |
 | L4 | **Library vs session split** | M | History is per-session (in the host's saved state); a library should outlive sessions and be shared across instances. Two stores with an explicit "promote to library" action. Note the App Group question in the shared-infrastructure section. |
 | L5 | **Curate incoming patterns too** | L | Not just generated material — captured MIDI, imported files. At which point this is a pattern manager that happens to generate, and overlaps MIDIcurator by design. Decide the boundary (see Open Questions). |
+| L7 | **Promote a tag to a facet** | M | The ratchet the vocabulary is built for: a tag used often enough stops being free text and becomes something structural you can filter by. `TagVocabulary.promotable` identifies candidates; nothing acts on them. Open Question 7 is what "acts on them" should mean. |
+| L8 | **Serendipity, done honestly** | M | A "surprise me" that isn't random: weighted away from what you've heard recently and toward facet combinations under-represented in what you kept, with the disagreement between passes used as signal. "Here's one you skipped twice that fits these changes" is a better surprise than a random pick, and the data for it already exists. |
+| L9 | **Curation of variants, not just takes** | M | The mutate/morph loop (G11) produces candidates by the dozen. They need the same dispositions and the same passes, and their provenance names parents rather than a progression. Mostly a question of whether variants share the history ring or get their own. |
 | L6 | **Pattern preview without committing** | M | Audition a library pattern without replacing what's loaded. Needs a second sequence slot in the kernel, or an audition path that bypasses the main one. |
 
 ### Interchange: MIDI Files & Drag-and-Drop
@@ -297,24 +360,38 @@ cables.
 | N2 | **Channel-based routing** | S | The fallback that works in every host today: chords on one MIDI channel, melody input on another, configurable. Less elegant than cables, but nothing needs to support anything. Worth building regardless as the fallback path when a host offers one cable. |
 | N3 | **Note-range split** | S | Second fallback: below a split point is harmonic input, above it is melodic. Familiar from arpeggiators and hardware; no configuration for the person to get wrong. Weaker than N2 because it spends register. |
 | N4 | **Chords in as harmonic context** | L | Play or route chords in and have them become the progression, instead of typing leadsheet text. Needs chord *detection* from simultaneous notes — which is exactly what `chordDetect.ts` does in music-suite, and it's already fingerprint-based, so a Swift port is generated-table work rather than new theory. Pairs with X4 (a MIDI file carrying chords) as the two ways context arrives. |
-| N5 | **Melody in as training material** | XL | The input side of S1/S2: captured phrases become style examples. Distinct from N4 in what it does with the notes, which is why they want separate routes. |
-| N6 | **Trade fours** | XL | The interactive payoff, and a genuinely different mode: MelGen listens for N bars, then answers for N bars. Needs the capture path (N5), bar-accurate switching against the host transport, and a response conditioned on what was just played. **The latency problem is now measured, not hypothetical**: at ~2s per note the model cannot answer inside four bars, so a from-scratch generated response is out. See N8 for the way round it |
-| N8 | **Markov mutation of an input phrase** | L | Raised 2026-08-22, after Kai Aras's MIDIrack "Markov Mirror", which mutates incoming MIDI phrases rather than composing replies. That's the answer to N6's latency wall: mutation is deterministic and instant, so it can respond *this* bar. A hybrid looks right — mutate for the immediate answer, and let the model contribute new material in the background (same division of labour as G8). Worth studying what Markov Mirror actually does before designing: the interesting question is what the state is (interval? scale degree? interval plus metric position?) and how much it's allowed to drift before the answer stops relating to the call. |
+| N5 | **Melody in as training material** | XL | ✅ **done 2026-08-23** via S1. Still open: it currently listens to everything on the one input, so N2's channel split is what would let chords and melody arrive at once. |
+| N6 | **Trade fours** | XL → **L** | The latency wall is gone. The capture path exists (N5), and `MelodyChain` walks a response in microseconds from a model of what was just played — so the answer can be instant and still be *about* the call. What's left is bar-accurate switching against the host transport and a mode that alternates listening and answering. This is now the most interesting item on the roadmap and no longer the most expensive. |
+| N8 | **Markov mutation of an input phrase** | L | Partly answered from the other direction 2026-08-23: `MelodyLiveMutation` is the *live* half — probabilities re-rolled every pass (note order, accents, slides, skipped steps, octaves), after Ruismaker's Troublemaker, applied at render time so the take is never touched and seeded by (take, pass) so a good pass can be got back. What's still N8's own is mutating an *incoming* phrase rather than the loaded one, which needs the capture path pointed at a live buffer rather than at a review queue. Original note: Raised 2026-08-22, after Kai Aras's MIDIrack "Markov Mirror", which mutates incoming MIDI phrases rather than composing replies. That's the answer to N6's latency wall: mutation is deterministic and instant, so it can respond *this* bar. A hybrid looks right — mutate for the immediate answer, and let the model contribute new material in the background (same division of labour as G8). Worth studying what Markov Mirror actually does before designing: the interesting question is what the state is (interval? scale degree? interval plus metric position?) and how much it's allowed to drift before the answer stops relating to the call. |
 | N7 | **Multiple MIDI outputs** | M | Cheap and well-supported — `midiOutputNames` already takes an array. Would let the line and the comping (P5) leave on separate ports rather than separate channels. |
 
 ### Re-harmonization
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| R1 | **Apply an existing pattern to a new progression** | L | ✅ mechanism done 2026-08-22 as part of G8 — `MelodyPatterns.realize` does exactly this, for hand-written patterns. What's left is the *input*: converting a generated take into a degree-relative pattern so takes you like become reusable lines. That's R2, and it's now the highest-value remaining item |
-| R2 | **Degree-relative pattern representation** | M | Half done: `PatternNote` (degree, octave, alteration) is the representation, and it's proven over four progressions. The missing direction is **analysis** — given a take's absolute pitches and the progression it was generated over, infer the degrees. Mostly straightforward (pitch class against the sounding chord's scale) with one real decision: what to do with a note that isn't in the scale at all, since that's either a chromatic approach worth keeping as an alteration or a mistake worth snapping away |
-| R3 | **Fit report** | S | Some patterns don't survive re-harmonization — a pattern built on a ♯11 over a progression with no altered chords. Say so rather than silently mangling it. |
+| R1 | **Apply an existing pattern to a new progression** | L | ✅ **done 2026-08-22**. `MelodyPatterns.realize` fits a pattern to any progression; `extract` supplies the input R1 was missing. "Keep as a line" on a take does both, so the loop is closed end to end |
+| R2 | **Degree-relative pattern representation** | M | ✅ **done 2026-08-22**. `MelodyPatterns.extract` inverts `realize` from the same interval table, which is what makes the round trip hold — checked by replaying rather than by comparing degree numbers, since a flattened seventh and a natural sixth can be the same pitch and reading one as the other is correct rather than a loss. The off-scale decision went the way the note predicted it might not: nothing is snapped. An off-scale note is stored as its nearest degree plus an `alteration`, and the `HarmonicRole` it had over its original harmony travels with it — a chromatic approach and a mis-snapped pitch are the same two numbers, and only the original harmony can tell them apart. Patterns also carry `PatternOrigin` (take, progression, brief, source), because a library without provenance is a pile of anonymous lines |
+| R3 | **Fit report** | S | ✅ done 2026-08-22. `MelodyPatterns.fitReport` realizes a pattern over a progression and reports notes that fell outside the form, off-scale notes, landings on avoid notes, and whether the line tiles evenly. **Loose end:** computed and tested, not yet shown anywhere in the interface. |
 
 ### Interface
 
+**Reviewed 2026-08-23, after the second device session.** The verdict was that
+capability had outrun legibility: "harder to know what control does what". Three
+causes, all fixed. Style briefs and comping figures did the same job from
+opposite ends and had two rotations and two selection controls between them —
+merged into one template list, with the mode choosing which half is in play.
+"Slots" and "Chain" were named for their implementations — now "Groove" and
+"Phrasing", which is what they give you. And generating a progression was three
+screens below the field it fills in, under a heading that read as "edit
+something" — now "New changes", directly under it.
+
+The standing lesson: a new source of material is cheap, and a new *control* is
+not. Six ways to make a take is only an improvement if the interface says what
+each one is for.
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| U1 | **Piano-roll display of the take** | L | The take summary is a text list of note names, so density, gate and contour have to be *understood* rather than seen — and gate length in particular is invisible as text. MIDIcurator and other parts of the suite already have a piano-roll idiom; reuse its visual language (and ideally its geometry code) rather than inventing a third one. Should show the chord regions behind the notes, since that's what makes a wrong note legible. Overlaps U2: the same view is where a playhead belongs. |
+| U1 | **Piano-roll display of the take** | L | ✅ **done 2026-08-23**. Chord regions behind the notes with each chord's scale shaded and its chord tones shaded harder, notes coloured by the same `MelodyAnalyser.role` that scores takes, velocity as a cap on the bar. Shows what the text grid can't: gate length below an eighth, and two voices at once. The grid stays behind a disclosure — it survives being copied into a note. Original note: The take summary is a text list of note names, so density, gate and contour have to be *understood* rather than seen — and gate length in particular is invisible as text. MIDIcurator and other parts of the suite already have a piano-roll idiom; reuse its visual language (and ideally its geometry code) rather than inventing a third one. Should show the chord regions behind the notes, since that's what makes a wrong note legible. Overlaps U2: the same view is where a playhead belongs. |
 | U2 | **Playhead position in the UI** | M | The kernel already publishes a loop-pass counter; a within-loop phase readout would let the UI show where playback is, and make the auto-regeneration boundary visible. |
 | U3 | **Chord progression editor beyond a text field** | L | Typing leadsheet text is fast for people who know the notation and opaque for everyone else. Chord chips with a picker, backed by the shared chord dictionary. |
 | U4 | **Dynamic Type support** | M | Fonts are fixed point sizes. Should scale with the accessibility text size; the 44pt control heights already give room to grow. Audit with the Dynamic Type nutrition label. |
@@ -342,9 +419,9 @@ Things MelGen needs that shouldn't live only in MelGen.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| I1 | **Chord voicing layer in `packages/theory`** | L | See P2. The dictionary gives pitch classes; voicing (register, spacing, omissions, inversions) is missing and every comping-capable app in the suite will want it. |
+| I1 | **Chord voicing layer in `packages/theory`** | L | Built in MelGen 2026-08-23 (`ChordVoicing.swift`), written to be portable and depending on nothing but the chord dictionary. Extracting it to the suite is now a copy rather than a design. See P2. The dictionary gives pitch classes; voicing (register, spacing, omissions, inversions) is missing and every comping-capable app in the suite will want it. |
 | I2 | **Chord-in-MIDI encode/decode, extracted** | M | See X3. Currently inside MIDIcurator. Wants to be a small shared library — ideally with the format documented, since it's reverse-engineered. |
-| I3 | **Degree-relative pattern format** | M | See R2. If MelGen, MIDIcurator and GloriArp all describe patterns the same way, patterns move between them. This is the interchange format the suite doesn't have yet. |
+| I3 | **Degree-relative pattern format** | M | ✅ **converged 2026-08-23**. MelGen's slot model uses `@enkerli/accompaniment`'s own `degree:alteration:category` key, with `HarmonicRole` where the suite says category, so the two projects mean the same thing by a degree histogram. `PatternNote` carries degree, octave, alteration and role. What's left is agreeing the serialization, which is now a small conversation rather than a design. |
 | I6 | **Chord detection in Swift** | M | See N4. `chordDetect.ts` is fingerprint-based against the same dictionary, so this is generated-table work plus the rotation search — and `packages/theory/vectors/chord-detection.json` already exists as a test fixture. Any suite app that wants to read chords off a keyboard needs it. |
 | I7 | **Piano-roll rendering, shared** | L | See U1. MIDIcurator has the idiom; a shared geometry/visual-language description (even just documented conventions plus a Swift and a web implementation) stops the suite growing three different piano rolls. |
 | I4 | **Swift port of the theory package, generated** | M | `ChordDictionary+Generated.swift` proves the pattern works. `chordScale.ts` was hand-ported and can drift — `verify.sh chords` catches it, but generating both would be better. Any other Swift app in the suite needs the same. |
@@ -356,7 +433,7 @@ Things MelGen needs that shouldn't live only in MelGen.
 
 | # | Project | Effort | Notes |
 |---|---------|--------|-------|
-| B1 | **Progression generator** | XL | Now expected to land *inside* MelGen rather than as a sibling — see Open Question 3. Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
+| B1 | **Progression generator** | XL | ✅ **done 2026-08-23**, inside MelGen as Open Question 3 decided, and **extended the same day** after it was judged too generic: its own Adventurousness rather than borrowing the melodic temperature, and a substitution pass — tritone subs, secondary dominants that resolve into whatever follows, relative swaps, borrowed-mode chords, extensions. Applied after the walk rather than folded into it, so the numerals still say what the corpus proposed and the substitution says what was done to it. ProgGenie's corpus transition tables, generated from music-suite rather than transcribed, walked at order two with a blended backoff to order one. Every emitted label is checked against MelGen's own dictionary before it's used, because the corpus vocabulary is larger than the dictionary's. Original note: Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
 | B2 | **Comping instrument** | XL | If P1's mode switch makes MelGen incoherent, comping becomes its own plug-in sharing the theory, library and realization code. Decide after P1's design, not before. |
 | B3 | **Pattern librarian** | L | If L5 wins (curating incoming material as well as generated), the library outgrows a plug-in panel and wants to be an app — at which point it is either a MIDIcurator feature or its replacement. |
 
@@ -388,13 +465,31 @@ Things MelGen needs that shouldn't live only in MelGen.
 5. **Where do styles live?** A style learned from your playing is more valuable
    and more personal than a generated take. Session state is the wrong home for
    it. Depends on I5.
-6. **Should variety scoring reject, or just annotate?** (G5) Auto-rejecting below
-   a floor means never seeing a dull take, but it also means the machine quietly
-   deciding what's dull — and an ostinato is sometimes exactly what's wanted.
-   Annotating and sorting keeps the judgement human but doesn't save any
-   auditioning. Probably: annotate always, reject only when auto-regeneration is
-   running unattended.
-7. **What defines a chunk boundary?** (G1) Fixed four-bar blocks are simple and
+6. **Should variety scoring reject, or just annotate?** (G5) **Settled
+   2026-08-22: annotate, never reject.** An ostinato is sometimes exactly what's
+   wanted, and a take that's dull after one thing is the thing you needed after
+   another — which is the same argument the curation model is built on. A machine
+   that quietly withholds candidates makes that impossible to discover. The
+   scores annotate, the facets make them filterable, and the human decides.
+7. **How do tags become facets?** The vocabulary counts what you type and can
+   say which tags you've reached for often enough to be worth making structural
+   (`TagVocabulary.promotable`). Nothing acts on that yet. The question is
+   whether promotion should be a suggestion the person accepts, a fully automatic
+   thing, or the output of grouping the corpus by similarity and asking what the
+   groups have in common — which is where topic modelling belongs, per
+   [TRAINING.md](TRAINING.md) §5.
+8. **Is context worth modelling further than "heard after"?** Every mark records
+   the take it followed, because judgement is comparative whether or not we admit
+   it. But context is also time of day, what you were doing, how long you'd been
+   listening, and what you'd just rejected — and the honest version might be that
+   only the *disagreement between passes* is recoverable signal. Worth looking at
+   once there are enough passes to look at.
+9. **Where does an audition sit?** L6 asks for previewing a library pattern
+   without committing. Curation makes that sharper: a sweep is exactly a sequence
+   of auditions, and doing it by loading each take into the kernel means the
+   sweep is destructive to whatever was playing. The morph slider (G11) has the
+   same need.
+10. **What defines a chunk boundary?** (G1) Fixed four-bar blocks are simple and
    predictable. Phrase or chord-group boundaries respect the music but are
    variable-length, which complicates the token budgeting that motivated
    chunking in the first place. Fixed bars first, with the seam-carrying context

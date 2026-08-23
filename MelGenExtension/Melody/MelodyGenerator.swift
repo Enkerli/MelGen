@@ -3,9 +3,10 @@
 //  MelGenExtension
 //
 //  Generates melodic lines from a parsed chord progression using the on-device
-//  Foundation Models framework. Pattern examples from PatternLibrary are
-//  embedded in the instructions as few-shot material, and generated notes are
-//  snapped to each chord's recommended scale.
+//  Foundation Models framework. Curated material reaches the model two ways —
+//  quoted, as a few short few-shot excerpts, and described, as the measured
+//  style in MelodyStyle.swift — and generated notes are snapped to each chord's
+//  recommended scale.
 //
 
 import Foundation
@@ -55,6 +56,12 @@ enum MelodyGenerator {
     ///     Clamped to the range the framework accepts.
     ///   - brief: The rhythmic/contour brief for this take. Rotating it is what
     ///     makes successive takes differ from one another.
+    ///   - style: What the takes this musician kept have in common, measured.
+    ///     Costs about a hundred tokens and conditions everything; nil until
+    ///     there's enough kept material to describe.
+    ///   - examples: Short quoted excerpts of curated material. Deliberately few
+    ///     and short — see MelodyStyle.swift on why description beats quotation
+    ///     inside a 4,096-token window.
     ///   - progress: Called on each request with the chunk index and total, so a
     ///     long progression can report where it's up to instead of hanging.
     static func generate(for progression: ChordProgression,
@@ -62,6 +69,8 @@ enum MelodyGenerator {
                          brief: StyleBrief,
                          density: Double = 0.5,
                          durationPalette: DurationPalette = .mixed,
+                         style: LearnedStyle? = nil,
+                         examples: [PatternExample]? = nil,
                          progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
         let chunks = MelodyChunker.chunks(for: progression)
         let options = GenerationOptions(
@@ -76,7 +85,8 @@ enum MelodyGenerator {
             // A fresh session per chunk, so each one gets a clean context window
             // rather than accumulating the previous chunks' transcripts.
             let session = LanguageModelSession(
-                instructions: instructions(examples: PatternLibrary.allExamples)
+                instructions: instructions(examples: examples ?? PatternLibrary.allExamples,
+                                           style: style)
             )
             let response = try await session.respond(
                 to: prompt(for: chunk.progression,
@@ -102,9 +112,381 @@ enum MelodyGenerator {
         return sequence(from: collected, progression: progression)
     }
 
+    // MARK: - Comping
+
+    /// Asks the model for a comping part.
+    ///
+    /// It chooses when the chords land and which tones are in them; the voicing
+    /// layer decides register, spacing and how each voicing moves to the next.
+    /// That split is the point: a model asked for MIDI notes produces voicings
+    /// that jump register between chords, because keeping them near each other
+    /// is arithmetic and it is not doing arithmetic.
+    /// - Parameter angle: which rotating nudge to use, so two takes of the same
+    ///   template differ. Without it every model comp came out alike, which is
+    ///   the same failure the style briefs exist to prevent on the melodic side.
+    static func comp(for progression: ChordProgression,
+                     temperature: Double = 0.6,
+                     figure: CompingFigure,
+                     angle: Int = 0,
+                     centre: Int = ChordVoicings.defaultCentre,
+                     progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
+        let chunks = MelodyChunker.chunks(for: progression)
+        let options = GenerationOptions(samplingMode: nil, temperature: min(max(temperature, 0), 1))
+
+        var collected: [CompingHit] = []
+        for (index, chunk) in chunks.enumerated() {
+            progress?(index, chunks.count)
+            let session = LanguageModelSession(instructions: compingInstructions())
+            let response = try await session.respond(
+                to: compingPrompt(for: chunk.progression, figure: figure, angle: angle),
+                generating: CompingIdea.self,
+                options: options
+            )
+            for hit in response.content.hits {
+                var shifted = hit
+                shifted.startEighth += chunk.startEighth
+                collected.append(shifted)
+            }
+        }
+
+        return voice(collected, over: progression, centre: centre)
+    }
+
+    static func compingInstructions() -> String {
+        var text = "You are MelGen, writing the comping part for a MIDI plug-in — the chords a "
+        text += "pianist or guitarist plays behind a soloist, not the melody.\n\n"
+        text += "You choose two things and only two: when each chord lands, and which of its "
+        text += "tones are in it. Register, spacing and voice leading are handled after you, so "
+        text += "do not think about octaves at all.\n\n"
+        text += "Rhythm:\n"
+        text += "- Comping is mostly space. Two to four chords per bar, often fewer.\n"
+        text += "- Land off the beat at least as often as on it. The and-of-two is the single "
+        text += "most idiomatic place for a chord.\n"
+        text += "- Anticipate: a chord an eighth before the bar line, held through it, is worth "
+        text += "more than one on the downbeat.\n"
+        text += "- Vary it. Four bars of the same rhythm is a drum machine.\n\n"
+        text += "Tones, given as degrees of the sounding chord (0 root, 1 ninth, 2 third, "
+        text += "3 eleventh, 4 fifth, 5 thirteenth, 6 seventh):\n"
+        text += "- Three or four per chord. Five is muddy.\n"
+        text += "- Include the third and the seventh — degrees 2 and 6 — nearly always. They are "
+        text += "what name the chord.\n"
+        text += "- Leave the root out most of the time. Something else has the bass.\n"
+        text += "- The ninth and the thirteenth are colour. Use them; a comp of nothing but "
+        text += "chord tones is an exercise.\n"
+        text += "- Vary which tones you use between chords, not only which chords they're on.\n"
+        return text
+    }
+
+    static func compingPrompt(for progression: ChordProgression,
+                              figure: CompingFigure,
+                              angle: Int = 0) -> String {
+        var lines = ["Write a comping part for this progression: \(progression.text)", "", "Chords:"]
+        for placed in progression.chords {
+            let startEighth = Int((placed.startBeat * 2).rounded())
+            let endEighth = Int(((placed.startBeat + placed.durationBeats) * 2).rounded())
+            lines.append("- \(placed.symbol.text): eighths \(startEighth)–\(endEighth)")
+        }
+        let totalEighths = Int((progression.totalBeats * 2).rounded())
+        lines.append("")
+        // The brief, not the figure. Handing the model the figure's own
+        // description — "beat one and the and of two" — is asking a language
+        // model to reproduce what a four-line function already does exactly, at
+        // two seconds a request, and it's why every take came out the same.
+        lines.append(CompingBriefs.brief(for: figure.name))
+        lines.append("")
+        lines.append(CompingBriefs.angle(at: angle))
+        lines.append("")
+        lines.append("A chord must not sound past the end of the chord it belongs to.")
+        lines.append("Total length: \(totalEighths) eighths.")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Turns the model's degree choices into actual voicings, voice-led.
+    ///
+    /// Free of any FoundationModels type on purpose in everything but its
+    /// argument, so the arithmetic that matters can be checked outside Xcode.
+    static func voice(_ hits: [CompingHit],
+                      over progression: ChordProgression,
+                      centre: Int) -> [SequencedNote] {
+        CompingVoicer.voice(hits.map { (startEighth: $0.startEighth,
+                                        lengthEighths: $0.lengthEighths,
+                                        degrees: $0.degrees,
+                                        velocity: $0.velocity) },
+                            over: progression,
+                            centre: centre)
+    }
+
+    // MARK: - When it goes wrong
+
+    /// What a generation failure actually was, and what to do about it.
+    ///
+    /// Every failure used to arrive as "Generation failed: The operation couldn't
+    /// be completed", which is true and useless — it doesn't say whether the
+    /// progression was too long, whether the model is busy, or whether something
+    /// in the system fell over. Three of these need different actions from the
+    /// person and one needs no action at all, so they're told apart (ROADMAP F11).
+    struct Failure {
+        var message: String
+        /// Worth trying again unchanged — the failure was in the machinery, not
+        /// in what was asked for.
+        var isTransient: Bool
+        /// A few words, for a list where the long form would be repeated five
+        /// times. The diagnostic printed the same paragraph under every probe,
+        /// which buried the one thing the list was for: *which* probe failed.
+        var short: String
+        /// Whether the whole framework is down rather than this request having
+        /// gone wrong. Retrying is pointless and the plug-in should stop asking.
+        var isSystemwide: Bool
+
+        init(message: String, isTransient: Bool, short: String? = nil, isSystemwide: Bool = false) {
+            self.message = message
+            self.isTransient = isTransient
+            self.short = short ?? message
+            self.isSystemwide = isSystemwide
+        }
+    }
+
+    static func describe(_ error: any Error) -> Failure {
+        if #available(iOS 26.0, macOS 26.0, *),
+           let generation = error as? LanguageModelSession.GenerationError {
+            switch generation {
+            case .exceededContextWindowSize:
+                return Failure(
+                    message: "That progression is too long for one request. "
+                           + "Try eight bars, or fewer notes per bar.",
+                    isTransient: false, short: "too long for one request")
+            case .guardrailViolation:
+                return Failure(
+                    message: "The model's safety check refused this one. "
+                           + "Nothing is wrong with the progression — try again.",
+                    isTransient: true, short: "refused by the safety check")
+            case .rateLimited:
+                return Failure(message: "The model is busy. Try again in a moment.",
+                               isTransient: true, short: "busy")
+            case .unsupportedLanguageOrLocale:
+                return Failure(
+                    message: "The on-device model doesn't support this device's language. "
+                           + "Switch to a supported one, such as English (United States).",
+                    isTransient: false, short: "unsupported language", isSystemwide: true)
+            case .assetsUnavailable:
+                return Failure(message: "The model's assets aren't on the device yet.",
+                               isTransient: true, short: "assets missing", isSystemwide: true)
+            case .concurrentRequests:
+                return Failure(message: "Another generation is already running.",
+                               isTransient: true, short: "already running")
+            case .decodingFailure:
+                return Failure(
+                    message: "The model returned something that wasn't a melody. Try again.",
+                    isTransient: true, short: "unreadable answer")
+            default:
+                break
+            }
+        }
+
+        // Apple's content scanner surfaces as a plain NSError rather than as a
+        // generation error — and, as a device session showed, usually *wrapped*
+        // in one, so the outer domain is something else entirely and only the
+        // description names it. Checking the domain alone matched nothing, which
+        // is why this error was still arriving raw after being handled.
+        if let scanner = contentScannerFault(in: error) {
+            return Failure(
+                message: "Foundation Models can't run: the safety scanner every generation passes "
+                       + "through isn't answering (\(scanner)). This is the layer under the model, "
+                       + "and nothing about MelGen or the progression causes it. If generation used "
+                       + "to work on this device, the usual cause is a change in Settings ▸ Apple "
+                       + "Intelligence & Siri — a third-party model extension in particular, which "
+                       + "redirects the request away from the on-device model. Turn extensions off "
+                       + "and try again. If it has never worked here, the assets may genuinely be "
+                       + "missing; opening that settings page on Wi-Fi makes the device fetch them.",
+                isTransient: false,
+                short: "the safety scanner isn't answering",
+                isSystemwide: true)
+        }
+
+        return Failure(message: "Generation failed: \(error.localizedDescription)",
+                       isTransient: true,
+                       short: error.localizedDescription)
+    }
+
+    /// Finds a content-scanner fault however deeply it's wrapped.
+    ///
+    /// Walks `NSUnderlyingErrorKey` and falls back to the description, because
+    /// the framework wraps this one and the wrapper's domain says nothing useful.
+    static func contentScannerFault(in error: any Error) -> String? {
+        var current: NSError? = error as NSError
+        var depth = 0
+        while let nsError = current, depth < 6 {
+            if nsError.domain.contains("SensitiveContentAnalysis") {
+                return "\(nsError.domain) \(nsError.code)"
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        let description = (error as NSError).localizedDescription
+        guard description.contains("SensitiveContentAnalysis") else { return nil }
+        // The description embeds it as "(com.apple.SensitiveContentAnalysisML error 15.)".
+        guard let open = description.range(of: "com.apple.SensitiveContentAnalysis"),
+              let close = description[open.lowerBound...].firstIndex(of: ")") else {
+            return "com.apple.SensitiveContentAnalysis"
+        }
+        return String(description[open.lowerBound..<close])
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+    }
+
+    // MARK: - Finding out what's wrong
+
+    /// One step of the diagnostic, and what it proves.
+    struct Probe: Sendable {
+        var name: String
+        var detail: String
+        var succeeded: Bool
+        /// The full explanation, shown once under the list.
+        var message: String
+        /// A few words, shown per row. Five copies of the same paragraph is not
+        /// a diagnostic, it's a wall.
+        var short: String
+    }
+
+    /// Asks the model four progressively larger questions and reports which ones
+    /// it can answer.
+    ///
+    /// "The model doesn't work any more" is a claim about the whole path, and the
+    /// path has four independent parts: whether the framework will answer at all,
+    /// whether it will answer *this app's* instructions, whether guided
+    /// generation into our schema works, and whether a real progression fits. A
+    /// failure at step one is the system; a failure only at step four is us. That
+    /// distinction can't be guessed at from an error message, and guessing at it
+    /// is what a session spends its time on otherwise.
+    /// - Parameter hasWorkedHere: whether this device has ever produced a model
+    ///   take. The plug-in knows — the history records the source of every take —
+    ///   and it is the single most useful input the diagnosis has. "The assets
+    ///   are missing" cannot be true of a device that generated a line last week,
+    ///   and reaching for that explanation anyway is how a diagnosis ends up
+    ///   confidently wrong.
+    static func diagnose(progression: ChordProgression?,
+                         hasWorkedHere: Bool = false) async -> [Probe] {
+        var probes: [Probe] = []
+
+        // 1. Anything at all, no instructions, no schema.
+        probes.append(await run("Plain text",
+                                detail: "no instructions, no schema — is the framework answering?") {
+            let session = LanguageModelSession()
+            _ = try await session.respond(to: "Name three notes of a C major chord.")
+        })
+
+        // 2. Guided generation into our schema, trivial content.
+        probes.append(await run("Our schema",
+                                detail: "guided generation into MelodyIdea, one bar") {
+            let session = LanguageModelSession()
+            _ = try await session.respond(
+                to: "Write two notes on an eighth-note grid, MIDI 60 and 64, starting at eighths 0 and 4.",
+                generating: MelodyIdea.self)
+        })
+
+        // 3. Our instructions, without examples or a learned style.
+        probes.append(await run("Our instructions",
+                                detail: "the full instruction text, no examples") {
+            let session = LanguageModelSession(instructions: instructions(examples: []))
+            _ = try await session.respond(
+                to: "Compose a melody for this progression: C | G7\n\nTotal length: 16 eighths.",
+                generating: MelodyIdea.self)
+        })
+
+        // 4. Instructions plus the few-shot examples that are actually in play.
+        probes.append(await run("With examples",
+                                detail: "\(PatternLibrary.allExamples.count) few-shot examples included") {
+            let session = LanguageModelSession(
+                instructions: instructions(examples: PatternLibrary.allExamples))
+            _ = try await session.respond(
+                to: "Compose a melody for this progression: C | G7\n\nTotal length: 16 eighths.",
+                generating: MelodyIdea.self)
+        })
+
+        // 5. The real thing, if there is one.
+        if let progression {
+            let chunk = MelodyChunker.chunks(for: progression).first?.progression ?? progression
+            probes.append(await run("This progression",
+                                    detail: "the first phrase of \(progression.text)") {
+                let session = LanguageModelSession(
+                    instructions: instructions(examples: PatternLibrary.allExamples))
+                _ = try await session.respond(
+                    to: prompt(for: chunk, brief: StyleBriefs.brief(at: 0)),
+                    generating: MelodyIdea.self)
+            })
+        }
+
+        return probes
+    }
+
+    private static func run(_ name: String,
+                            detail: String,
+                            _ body: () async throws -> Void) async -> Probe {
+        do {
+            try await body()
+            return Probe(name: name, detail: detail, succeeded: true,
+                         message: "answered", short: "answered")
+        } catch {
+            let failure = describe(error)
+            return Probe(name: name, detail: detail, succeeded: false,
+                         message: failure.message, short: failure.short)
+        }
+    }
+
+    /// Whether the whole framework is down, judged from a set of probe results.
+    ///
+    /// The plainest question failing is the definitive signal: if the framework
+    /// won't answer "name three notes of a C major chord" with no instructions
+    /// and no schema, nothing this app sends is the cause.
+    static func isSystemwideFailure(_ probes: [Probe]) -> Bool {
+        guard let first = probes.first else { return false }
+        return !first.succeeded
+    }
+
+    /// What the probe results mean, in a sentence.
+    static func verdict(for probes: [Probe], hasWorkedHere: Bool = false) -> String {
+        guard let first = probes.first else { return "Nothing ran." }
+        if probes.allSatisfy(\.succeeded) {
+            return "Everything answered. Whatever failed before was transient — try generating again."
+        }
+        if !first.succeeded {
+            var verdict = "The framework won't answer even a plain question — no instructions, no "
+                        + "schema — so nothing MelGen sends is the cause. This is Foundation "
+                        + "Models on this device."
+            if hasWorkedHere {
+                verdict += " It has generated here before, so something changed rather than "
+                        + "something being absent. Check Settings ▸ Apple Intelligence & Siri "
+                        + "for a third-party model extension: with one enabled, requests go "
+                        + "somewhere other than the on-device model and the guardrail path "
+                        + "fails. Turning extensions off is the first thing to try. Otherwise: "
+                        + "language, and whether an update is mid-download."
+            } else {
+                verdict += " No model take has ever been produced here, so the assets may "
+                        + "genuinely be missing. Open Settings ▸ Apple Intelligence & Siri on "
+                        + "Wi-Fi, which makes the device fetch what it's short of. Everything in "
+                        + "MelGen that doesn't need a model still works meanwhile."
+            }
+            return verdict
+        }
+        guard let firstFailure = probes.first(where: { !$0.succeeded }) else { return "Mixed." }
+        switch firstFailure.name {
+        case "Our schema":
+            return "Plain text works and guided generation doesn't, so the schema is the problem — "
+                 + "that's ours to fix, not the system's."
+        case "Our instructions":
+            return "The schema works and our instruction text doesn't. Something in the "
+                 + "instructions is tripping a guardrail; the text is in MelodyGenerator."
+        case "With examples":
+            return "Instructions work and the few-shot examples don't. Clearing the saved "
+                 + "examples should restore generation."
+        default:
+            return "Everything generic works and this progression doesn't. It's the length or "
+                 + "one of the chords — try a shorter form."
+        }
+    }
+
     // MARK: - Prompt construction
 
-    static func instructions(examples: [PatternExample]) -> String {
+    static func instructions(examples: [PatternExample], style: LearnedStyle? = nil) -> String {
         var text = """
         You are MelGen, a composer of monophonic melodic lines for a MIDI plug-in.
         You receive a chord progression in leadsheet notation with a harmonic plan, and reply \
@@ -140,6 +522,12 @@ enum MelodyGenerator {
         - Notes must not overlap: each note starts at or after the previous note ends.
 
         """
+        // The measured style goes last and is the strongest thing here: it is
+        // the one part of the instructions derived from what this musician
+        // actually kept rather than from what melodies are generally like.
+        if let style, !style.isEmpty {
+            text += "\n" + style.promptText + "\n"
+        }
         if !examples.isEmpty {
             text += "\nExample patterns (progression → melody as midiNote@startEighth:lengthEighths):\n"
             for example in examples {
@@ -258,7 +646,7 @@ enum MelodyGenerator {
         let patched = MelodyPatterns.fillHoles(
             in: result,
             over: progression,
-            pattern: MelodyPatterns.seed(at: patchPatternCursor)
+            pattern: MelodyPatterns.line(at: patchPatternCursor, from: PatternStore.library)
         )
 
         // Open a rest where there is none, then cap any that are so long the line

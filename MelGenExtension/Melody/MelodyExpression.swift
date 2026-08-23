@@ -20,20 +20,33 @@ enum MelodyExpression {
     ///
     /// - Parameter generatedDensity: the density the take was generated at. The
     ///   density control can thin below it but can't invent notes above it.
+    /// - Parameter polyphonic: true for a comping take, where several notes share
+    ///   a start beat on purpose.
+    ///
+    ///   Everything in this file that reasons about "the next note" assumes there
+    ///   is one line: thinning ranks notes by metric position and would take two
+    ///   voices out of a four-note chord; the gate reads the gap to the next note
+    ///   to tell a rest from articulation space, and inside a chord that gap is
+    ///   zero. So a polyphonic take gets velocity, swing and timing — which are
+    ///   per-note and harmless — and skips the passes that only make sense for a
+    ///   line. That's the whole cost of comping in the realization layer.
     static func apply(to notes: [SequencedNote],
                       settings: ExpressionSettings,
                       generatedDensity: Double,
                       lengthBeats: Double,
-                      seed: UInt64) -> [SequencedNote] {
+                      seed: UInt64,
+                      polyphonic: Bool = false) -> [SequencedNote] {
         guard !notes.isEmpty else { return [] }
 
         let amount = min(max(settings.amount, 0), 1)
         let swing = min(max(settings.swing, 0), 1)
         var random = SplitMix64(seed: seed)
 
-        let sorted = thin(notes.sorted { $0.startBeat < $1.startBeat },
-                          to: settings.density,
-                          generatedDensity: generatedDensity)
+        let sorted = polyphonic
+            ? notes.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) }
+            : thin(notes.sorted { $0.startBeat < $1.startBeat },
+                   to: settings.density,
+                   generatedDensity: generatedDensity)
 
         var shaped: [SequencedNote] = []
         shaped.reserveCapacity(sorted.count)
@@ -66,6 +79,22 @@ enum MelodyExpression {
                 startBeat: start,
                 durationBeats: max(duration, 0.05)
             ))
+        }
+
+        guard !polyphonic else {
+            // Gate as a plain scaling, and no clipping to the next note: inside a
+            // chord the "next note" starts at the same instant, so the monophonic
+            // passes would collapse every voicing to a single grace note.
+            let scale = 0.4 + min(max(settings.noteLength, 0), 1) * 0.8
+            return shaped.compactMap { note in
+                var copy = note
+                copy.durationBeats = max(0.05, note.durationBeats * scale)
+                guard lengthBeats <= 0 || copy.startBeat < lengthBeats else { return nil }
+                if lengthBeats > 0 {
+                    copy.durationBeats = min(copy.durationBeats, lengthBeats - copy.startBeat)
+                }
+                return copy.durationBeats > 0 ? copy : nil
+            }
         }
 
         return clean(applyGate(to: shaped, setting: settings.noteLength),

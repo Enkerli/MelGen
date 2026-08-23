@@ -79,6 +79,44 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
 
     /// How many complete loop passes have played. The UI polls this to decide
     /// when to generate the next take.
+    // MARK: - Capture
+
+    /// How far the UI has read into the kernel's capture ring.
+    private var captureCursor: UInt64 = 0
+
+    /// Whether incoming MIDI is being collected for learning.
+    var isCapturing: Bool {
+        get { kernel.isCaptureEnabled() }
+        set {
+            if newValue { captureCursor = kernel.capturedEventCount() }
+            kernel.setCaptureEnabled(newValue)
+        }
+    }
+
+    /// Everything captured since the last drain.
+    ///
+    /// The ring is single-writer, single-reader and lock-free: the render thread
+    /// only ever appends, and this only ever reads forward from its own cursor.
+    /// If playing outran the UI the oldest events are simply gone — a dropped
+    /// phrase is a nuisance, a glitch on the audio thread is a bug.
+    func drainCapturedEvents() -> [CapturedMIDIEvent] {
+        let written = kernel.capturedEventCount()
+        guard written > captureCursor else { return [] }
+        let oldest = kernel.oldestCapturedEvent()
+        var index = max(captureCursor, oldest)
+        var events: [CapturedMIDIEvent] = []
+        events.reserveCapacity(Int(written - index))
+        while index < written {
+            events.append(CapturedMIDIEvent(beat: kernel.capturedBeat(index),
+                                            note: kernel.capturedNote(index),
+                                            velocity: kernel.capturedVelocity(index),
+                                            isOn: kernel.capturedIsOn(index)))
+            index += 1
+        }
+        captureCursor = written
+        return events
+    }
+
     var currentPass: Int64 {
         kernel.currentPass()
     }
