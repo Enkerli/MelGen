@@ -69,6 +69,11 @@ struct MelGenExtensionMainView: View {
     /// Whether the last thing that went wrong was the model, so the diagnostic
     /// appears when it's relevant and not before.
     @State private var lastFailureWasModel = false
+    /// Set when a failure says the framework itself is down. Once it is, the
+    /// plug-in stops asking: retrying a missing safety model produces the same
+    /// answer every time, three seconds later, and the deterministic sources are
+    /// right there. Cleared by a successful probe.
+    @State private var modelIsDown = false
     @State private var showRotationPicker = false
     @State private var showDrift = false
 
@@ -124,6 +129,7 @@ struct MelGenExtensionMainView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if modelIsDown { modelDownBanner }
                 modelDiagnostics
 
                 nextTakeSection
@@ -401,9 +407,12 @@ struct MelGenExtensionMainView: View {
                                         .font(.system(size: 10))
                                         .foregroundStyle(theme.textMuted)
                                     if !probe.succeeded {
-                                        Text(probe.message)
+                                        // The short form: the same paragraph under
+                                        // every probe buried the one thing the
+                                        // list is for, which is *which* failed.
+                                        Text(probe.short)
                                             .font(.system(size: 10))
-                                            .foregroundStyle(theme.textMuted)
+                                            .foregroundStyle(theme.warning)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
                                 }
@@ -427,12 +436,53 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    /// Says once, quietly, what would otherwise be said after every attempt.
+    private var modelDownBanner: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(theme.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Foundation Models isn't available on this device")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Text("Everything that doesn't need a model still works — composing, "
+                     + "stored lines, comping, drawing from your own material, and the "
+                     + "whole curation loop. The model would only be a fifth source.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button {
+                modelIsDown = false
+                statusMessage = "Trying the model again."
+            } label: {
+                Text("Try again")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(MelGenMetrics.space2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .fill(theme.raised)
+        )
+    }
+
     private func runDiagnostics() {
         isProbing = true
         probes = []
         Task {
             let progression = try? ChordProgression.parse(liveState.progressionText)
             probes = await MelodyGenerator.diagnose(progression: progression)
+            modelIsDown = MelodyGenerator.isSystemwideFailure(probes)
+            if !modelIsDown, probes.allSatisfy(\.succeeded) {
+                lastFailureWasModel = false
+                statusMessage = "The model answered everything. Try generating again."
+            }
             isProbing = false
         }
     }
@@ -486,7 +536,7 @@ struct MelGenExtensionMainView: View {
                             Image(systemName: state.mode == .line ? "wand.and.stars" : "pianokeys")
                                 .font(.system(size: 14, weight: .semibold))
                         }
-                        Text(isGenerating ? "Working" : (state.mode == .line ? "Generate" : "Comp"))
+                        Text(nextTakeLabel)
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .padding(.horizontal, MelGenMetrics.space3)
@@ -639,7 +689,18 @@ struct MelGenExtensionMainView: View {
     private var nextTakeEnabled: Bool {
         guard !state.progressionText.isEmpty, !isGenerating else { return false }
         // Comping needs no model, so it's available whatever the model is doing.
-        return state.mode == .comping || generateEnabled
+        return state.mode == .comping || generateEnabled || modelIsDown
+    }
+
+    /// What the main button does right now, which is not always what it's called.
+    ///
+    /// With the framework down, "Generate" would be a button that waits three
+    /// seconds and then composes — so it says what it will actually do. A control
+    /// that names an action it can't perform is worse than one that isn't there.
+    private var nextTakeLabel: String {
+        if isGenerating { return "Working" }
+        if state.mode == .comping { return modelIsDown ? "Comp" : "Comp" }
+        return modelIsDown ? "Compose" : "Generate"
     }
 
     /// Makes a template the next one, whatever mode the rotation is in.
@@ -687,6 +748,12 @@ struct MelGenExtensionMainView: View {
 
     /// The one "what comes next" action, which does whichever thing the mode says.
     private func nextTake() {
+        guard !modelIsDown else {
+            // Known down: go straight to the source that answers, rather than
+            // spending three seconds finding out again.
+            if liveState.mode == .comping { compChanges() } else { composeLine() }
+            return
+        }
         if liveState.mode == .comping {
             generateComp()
         } else {
@@ -753,6 +820,7 @@ struct MelGenExtensionMainView: View {
             } catch {
                 let failure = MelodyGenerator.describe(error)
                 lastFailureWasModel = true
+                if failure.isSystemwide { modelIsDown = true }
                 compChanges()
                 statusMessage = failure.message + " Comped it here instead."
             }
@@ -2592,7 +2660,9 @@ struct MelGenExtensionMainView: View {
                 // than in what was asked for. The model's safety layer fails
                 // spuriously often enough that making a person press the button
                 // twice is just making them do the retry by hand.
-                if failure.isTransient, !auto {
+                if failure.isSystemwide { modelIsDown = true }
+
+                if failure.isTransient, !failure.isSystemwide, !auto {
                     do {
                         let notes = try await MelodyGenerator.generate(
                             for: progression,

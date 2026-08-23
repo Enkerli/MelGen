@@ -218,6 +218,20 @@ enum MelodyGenerator {
         /// Worth trying again unchanged — the failure was in the machinery, not
         /// in what was asked for.
         var isTransient: Bool
+        /// A few words, for a list where the long form would be repeated five
+        /// times. The diagnostic printed the same paragraph under every probe,
+        /// which buried the one thing the list was for: *which* probe failed.
+        var short: String
+        /// Whether the whole framework is down rather than this request having
+        /// gone wrong. Retrying is pointless and the plug-in should stop asking.
+        var isSystemwide: Bool
+
+        init(message: String, isTransient: Bool, short: String? = nil, isSystemwide: Bool = false) {
+            self.message = message
+            self.isTransient = isTransient
+            self.short = short ?? message
+            self.isSystemwide = isSystemwide
+        }
     }
 
     static func describe(_ error: any Error) -> Failure {
@@ -228,30 +242,30 @@ enum MelodyGenerator {
                 return Failure(
                     message: "That progression is too long for one request. "
                            + "Try eight bars, or fewer notes per bar.",
-                    isTransient: false)
+                    isTransient: false, short: "too long for one request")
             case .guardrailViolation:
                 return Failure(
                     message: "The model's safety check refused this one. "
                            + "Nothing is wrong with the progression — try again.",
-                    isTransient: true)
+                    isTransient: true, short: "refused by the safety check")
             case .rateLimited:
                 return Failure(message: "The model is busy. Try again in a moment.",
-                               isTransient: true)
+                               isTransient: true, short: "busy")
             case .unsupportedLanguageOrLocale:
                 return Failure(
                     message: "The on-device model doesn't support this device's language. "
                            + "Switch to a supported one, such as English (United States).",
-                    isTransient: false)
+                    isTransient: false, short: "unsupported language", isSystemwide: true)
             case .assetsUnavailable:
                 return Failure(message: "The model's assets aren't on the device yet.",
-                               isTransient: true)
+                               isTransient: true, short: "assets missing", isSystemwide: true)
             case .concurrentRequests:
                 return Failure(message: "Another generation is already running.",
-                               isTransient: true)
+                               isTransient: true, short: "already running")
             case .decodingFailure:
                 return Failure(
                     message: "The model returned something that wasn't a melody. Try again.",
-                    isTransient: true)
+                    isTransient: true, short: "unreadable answer")
             default:
                 break
             }
@@ -264,14 +278,20 @@ enum MelodyGenerator {
         // is why this error was still arriving raw after being handled.
         if let scanner = contentScannerFault(in: error) {
             return Failure(
-                message: "The system's content scanner failed (\(scanner)). That's the OS layer "
-                       + "*under* the model, not the music — nothing about the progression caused "
-                       + "it. Use \u{201C}Test the model\u{201D} to see whether anything generates at all.",
-                isTransient: true)
+                message: "Foundation Models can't run: its on-device safety model is missing from "
+                       + "this device (\(scanner)). Generation goes through that scanner, so "
+                       + "nothing generates until it's there. Open Settings ▸ Apple Intelligence & "
+                       + "Siri on Wi-Fi to make the device fetch what's missing. Nothing about "
+                       + "MelGen, the progression or the prompt causes this, and nothing in MelGen "
+                       + "can work around it.",
+                isTransient: false,
+                short: "the safety model is missing from this device",
+                isSystemwide: true)
         }
 
         return Failure(message: "Generation failed: \(error.localizedDescription)",
-                       isTransient: true)
+                       isTransient: true,
+                       short: error.localizedDescription)
     }
 
     /// Finds a content-scanner fault however deeply it's wrapped.
@@ -306,7 +326,11 @@ enum MelodyGenerator {
         var name: String
         var detail: String
         var succeeded: Bool
+        /// The full explanation, shown once under the list.
         var message: String
+        /// A few words, shown per row. Five copies of the same paragraph is not
+        /// a diagnostic, it's a wall.
+        var short: String
     }
 
     /// Asks the model four progressively larger questions and reports which ones
@@ -378,11 +402,23 @@ enum MelodyGenerator {
                             _ body: () async throws -> Void) async -> Probe {
         do {
             try await body()
-            return Probe(name: name, detail: detail, succeeded: true, message: "answered")
+            return Probe(name: name, detail: detail, succeeded: true,
+                         message: "answered", short: "answered")
         } catch {
+            let failure = describe(error)
             return Probe(name: name, detail: detail, succeeded: false,
-                         message: describe(error).message)
+                         message: failure.message, short: failure.short)
         }
+    }
+
+    /// Whether the whole framework is down, judged from a set of probe results.
+    ///
+    /// The plainest question failing is the definitive signal: if the framework
+    /// won't answer "name three notes of a C major chord" with no instructions
+    /// and no schema, nothing this app sends is the cause.
+    static func isSystemwideFailure(_ probes: [Probe]) -> Bool {
+        guard let first = probes.first else { return false }
+        return !first.succeeded
     }
 
     /// What the probe results mean, in a sentence.
@@ -392,10 +428,21 @@ enum MelodyGenerator {
             return "Everything answered. Whatever failed before was transient — try generating again."
         }
         if !first.succeeded {
-            return "The framework won't answer even a plain question, so nothing about MelGen's "
-                 + "prompt is the cause. This is Apple Intelligence on this device: check that "
-                 + "it's on, that the language is supported, and that the model has finished "
-                 + "downloading. A restart clears a wedged content scanner more often than not."
+            var verdict = "The framework won't answer even a plain question — no instructions, no "
+                        + "schema — so nothing MelGen sends is the cause. This is Foundation "
+                        + "Models on this device."
+            if first.message.contains("safety model is missing") {
+                verdict += " Specifically: the on-device safety model isn't installed. Every "
+                        + "generation runs through it, so nothing will generate until it is. "
+                        + "Open Settings ▸ Apple Intelligence & Siri on Wi-Fi, which makes the "
+                        + "device fetch the assets it's missing; it's a known Foundation Models "
+                        + "fault rather than anything to configure. Everything in MelGen that "
+                        + "doesn't need a model still works."
+            } else {
+                verdict += " Check Apple Intelligence is on, the language is supported, and the "
+                        + "model has finished downloading."
+            }
+            return verdict
         }
         guard let firstFailure = probes.first(where: { !$0.succeeded }) else { return "Mixed." }
         switch firstFailure.name {
