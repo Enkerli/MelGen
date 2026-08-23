@@ -51,6 +51,10 @@ struct MelGenExtensionMainView: View {
     @State private var isExporting = false
     @State private var exportDocument: MelGenJSONDocument?
 
+    /// Whether the review sweep is unfolded. Not session state: it's about what
+    /// you're doing right now, not what the document is.
+    @State private var showCuration = false
+
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
     @Environment(\.colorScheme) private var ambientScheme
@@ -91,6 +95,7 @@ struct MelGenExtensionMainView: View {
                     currentTakeSection
                 }
 
+                curationSection
                 historySection
             }
             .padding(MelGenMetrics.space4)
@@ -477,6 +482,10 @@ struct MelGenExtensionMainView: View {
             )
 
             if let take = state.currentTake {
+                curationControls(for: take)
+            }
+
+            if let take = state.currentTake {
                 let saved = savedExampleIDs.contains(take.id)
                 Button {
                     PatternLibrary.addUserExample(progression: take.progressionText, notes: take.notes)
@@ -506,6 +515,125 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    // MARK: - Curation
+
+    /// One tap per take, while you're listening to it.
+    ///
+    /// This is the whole interaction: hear it, say what you want to happen to it,
+    /// move on. Everything else in the section exists so that saying it once
+    /// doesn't have to be the last word.
+    @ViewBuilder
+    private func curationControls(for take: GenerationRecord) -> some View {
+        let mark = take.mark(onPass: state.curationPass)
+
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Eyebrow(text: "Pass \(state.curationPass)", theme: theme)
+                FacetChips(facets: take.facets, theme: theme)
+                Spacer(minLength: 0)
+            }
+
+            DispositionBar(current: mark?.disposition, theme: theme) { disposition in
+                commit(reloadKernel: false) { state in
+                    if let disposition {
+                        state.mark(take.id, as: disposition, aspects: mark?.aspects ?? [])
+                    } else {
+                        state.unmark(take.id)
+                    }
+                }
+                statusMessage = disposition.map { "\($0.label) — pass \(state.curationPass)." }
+            }
+
+            // Only asked when it's the question: "part of it works" is the one
+            // disposition that's incomplete on its own.
+            if mark?.disposition == .partial {
+                AspectPicker(selected: mark?.aspects ?? [], theme: theme) { aspect in
+                    var aspects = mark?.aspects ?? []
+                    if let index = aspects.firstIndex(of: aspect) {
+                        aspects.remove(at: index)
+                    } else {
+                        aspects.append(aspect)
+                    }
+                    commit(reloadKernel: false) { state in
+                        state.mark(take.id, as: .partial, aspects: aspects)
+                    }
+                }
+            }
+
+            TagField(tags: take.tags,
+                     suggestions: state.tagVocabulary.suggestions,
+                     theme: theme) { tags in
+                commit(reloadKernel: false) { $0.setTags(tags, for: take.id) }
+            }
+        }
+    }
+
+    /// The sweep: what's left to hear on this pass, and the way to start another.
+    private var curationSection: some View {
+        let progress = state.reviewProgress
+        return CollapsibleSection(
+            title: "Review (pass \(state.curationPass))",
+            summary: "\(progress.answered)/\(progress.total) this pass",
+            isExpanded: $showCuration,
+            theme: theme
+        ) {
+            if state.history.isEmpty {
+                Text("Generate a few takes, then sweep through them here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textMuted)
+            } else {
+                VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                    Text("Deferred first, then what you haven't heard, then what you skipped — "
+                         + "because a second sweep over the discards is where the surprises are.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(spacing: 4) {
+                        ForEach(state.reviewQueue.prefix(12)) { take in
+                            ReviewRow(take: take,
+                                      isCurrent: take.id == state.currentTake?.id,
+                                      currentPass: state.curationPass,
+                                      theme: theme) {
+                                commit { $0.select(take.id) }
+                            }
+                        }
+                    }
+
+                    nextPassButton
+                }
+            }
+        }
+    }
+
+    private var nextPassButton: some View {
+        Button {
+            commit(reloadKernel: false) { $0.beginNextPass() }
+            statusMessage = "Pass \(state.curationPass). Everything is up for review again — "
+                          + "including what you skipped."
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.trianglehead.2.clockwise")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Start pass \(state.curationPass + 1)")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, MelGenMetrics.space3)
+            .frame(height: MelGenMetrics.controlHeight)
+            .foregroundStyle(theme.text)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Reopens every take for review, including the ones you skipped")
+    }
+
     // MARK: - History
 
     private var historySection: some View {
@@ -530,7 +658,7 @@ struct MelGenExtensionMainView: View {
     private func historyRow(_ take: GenerationRecord) -> some View {
         let isCurrent = take.id == state.currentTake?.id
         return Button {
-            commit { $0.currentTakeID = take.id }
+            commit { $0.select(take.id) }
         } label: {
             HStack(spacing: MelGenMetrics.space2) {
                 Image(systemName: isCurrent ? "speaker.wave.2.fill" : "arrow.counterclockwise")
@@ -539,7 +667,7 @@ struct MelGenExtensionMainView: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(take.progressionText) · \(take.briefName)")
+                    Text(take.displayName)
                         .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
                         .foregroundStyle(theme.text)
                         .lineLimit(1)
@@ -550,6 +678,13 @@ struct MelGenExtensionMainView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if let mark = take.latestMark {
+                    Image(systemName: mark.disposition.symbolName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(mark.pass == state.curationPass ? theme.accent : theme.textMuted)
+                        .accessibilityLabel(mark.disposition.label)
+                }
             }
             .padding(.horizontal, MelGenMetrics.space2)
             .frame(minHeight: MelGenMetrics.controlHeight)
