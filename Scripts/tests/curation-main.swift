@@ -233,6 +233,57 @@ check("an empty library falls back to the seeds",
 check("a locked line is the only line",
       MelodyPatterns.line(at: 3, from: MelodyPatterns.seeds, mode: .lock, locked: "Arch").name == "Arch")
 
+// MARK: - Learning from it
+
+print()
+print("── what gets learned from what you kept ───────────────")
+
+var learning = MelGenState()
+for index in 0..<6 {
+    let record = take(index)
+    learning.add(record)
+    learning.mark(record.id, as: index < 3 ? .keep : .skip)
+    if index < 3 { learning.setTags(["bossa"], for: record.id) }
+}
+
+let learned = StyleLearner.learn(from: learning.curatedTakes)
+check("a style is learned only from the curated takes", learned.takeCount == 3,
+      "\(learned.takeCount) takes")
+check("it measures density", learned.notesPerBar > 0,
+      "\(learned.notesPerBar.formatted(.number.precision(.fractionLength(1))))/bar")
+check("the motion shares are a distribution",
+      abs(learned.stepShare + learned.skipShare + learned.leapShare - 1) < 0.001,
+      "\(learned.stepShare) + \(learned.skipShare) + \(learned.leapShare)")
+check("the harmonic shares are a distribution",
+      abs(learned.chordToneShare + learned.colourShare
+          + learned.avoidShare + learned.offScaleShare - 1) < 0.001)
+check("register is ordered", learned.registerLow <= learned.registerCentre
+      && learned.registerCentre <= learned.registerHigh,
+      "\(learned.registerLow)–\(learned.registerCentre)–\(learned.registerHigh)")
+check("it carries the tags you used", learned.tags == ["bossa"], "\(learned.tags)")
+check("it is deterministic", learned == StyleLearner.learn(from: learning.curatedTakes))
+check("nothing kept means no style to describe",
+      StyleLearner.learn(from: []).isEmpty && StyleLearner.learn(from: []).promptText.isEmpty)
+
+// The whole reason to describe rather than quote is that description doesn't
+// grow with the corpus. Check that it actually doesn't.
+var wide = MelGenState()
+for index in 0..<24 {
+    let record = take(index)
+    wide.add(record)
+    wide.mark(record.id, as: .keep)
+}
+let manyTakes = StyleLearner.learn(from: wide.curatedTakes)
+check("a description of 20-odd takes still fits in a prompt",
+      manyTakes.promptText.count < 1200,
+      "\(manyTakes.promptText.count) characters from \(manyTakes.takeCount) takes")
+check("quoting is capped and excerpted",
+      PatternLibrary.examples(from: wide.curatedTakes).count <= 3
+      && PatternLibrary.examples(from: wide.curatedTakes).allSatisfy { $0.pattern.count < 400 })
+
+print()
+print(learned.promptText.split(separator: "\n").map { "        " + $0 }.joined(separator: "\n"))
+
 print()
 print(failures == 0 ? "curation: all checks passed" : "curation: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

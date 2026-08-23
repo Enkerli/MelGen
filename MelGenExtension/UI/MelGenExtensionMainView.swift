@@ -840,10 +840,40 @@ struct MelGenExtensionMainView: View {
                         }
                     }
 
+                    learnedStyleReadout
                     nextPassButton
                 }
             }
         }
+    }
+
+    /// What the model has been told about your material, in the words it's told.
+    ///
+    /// Shown rather than hidden because a prompt you can't read is a system you
+    /// can't reason about — and because seeing "68% stepwise" is itself a piece
+    /// of feedback about what you've been keeping.
+    @ViewBuilder
+    private var learnedStyleReadout: some View {
+        let style = StyleLearner.learn(from: state.curatedTakes)
+        VStack(alignment: .leading, spacing: 4) {
+            Eyebrow(text: "Learned from what you kept", theme: theme)
+            Text(style.summary)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !style.isEmpty {
+                Text(style.promptText)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(MelGenMetrics.space2)
+        .background(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .fill(theme.raised)
+        )
     }
 
     private var nextPassButton: some View {
@@ -1245,12 +1275,22 @@ struct MelGenExtensionMainView: View {
         let durationPalette = current.durationPalette
         let progressionText = current.progressionText
 
+        // What you kept, measured, and a couple of short quotes of it. Both are
+        // computed here rather than inside the generator so this stays the only
+        // place that knows what "curated" means.
+        let curated = current.curatedTakes
+        let style = StyleLearner.learn(from: curated)
+        let examples = curated.isEmpty
+            ? PatternLibrary.allExamples
+            : PatternLibrary.examples(from: curated) + PatternLibrary.userExamples
+
         // A long progression is generated a phrase at a time, so say how many —
         // otherwise it just looks like it's hung.
         let phrases = MelodyChunker.chunks(for: progression).count
+        let voice = style.isEmpty ? "" : " · in your voice, from \(style.takeCount) kept"
         statusMessage = phrases > 1
-            ? "Generating \(brief.name.lowercased()) take over \(progressionText) — \(phrases) phrases…"
-            : "Generating \(brief.name.lowercased()) take over \(progressionText)…"
+            ? "Generating \(brief.name.lowercased()) take over \(progressionText) — \(phrases) phrases\(voice)…"
+            : "Generating \(brief.name.lowercased()) take over \(progressionText)\(voice)…"
         isGenerating = true
 
         Task {
@@ -1261,7 +1301,9 @@ struct MelGenExtensionMainView: View {
                     temperature: temperature,
                     brief: brief,
                     density: density,
-                    durationPalette: durationPalette
+                    durationPalette: durationPalette,
+                    style: style.isEmpty ? nil : style,
+                    examples: examples
                 )
                 if notes.isEmpty {
                     statusMessage = "The model returned no notes — try again."

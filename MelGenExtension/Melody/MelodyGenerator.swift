@@ -3,9 +3,10 @@
 //  MelGenExtension
 //
 //  Generates melodic lines from a parsed chord progression using the on-device
-//  Foundation Models framework. Pattern examples from PatternLibrary are
-//  embedded in the instructions as few-shot material, and generated notes are
-//  snapped to each chord's recommended scale.
+//  Foundation Models framework. Curated material reaches the model two ways —
+//  quoted, as a few short few-shot excerpts, and described, as the measured
+//  style in MelodyStyle.swift — and generated notes are snapped to each chord's
+//  recommended scale.
 //
 
 import Foundation
@@ -55,6 +56,12 @@ enum MelodyGenerator {
     ///     Clamped to the range the framework accepts.
     ///   - brief: The rhythmic/contour brief for this take. Rotating it is what
     ///     makes successive takes differ from one another.
+    ///   - style: What the takes this musician kept have in common, measured.
+    ///     Costs about a hundred tokens and conditions everything; nil until
+    ///     there's enough kept material to describe.
+    ///   - examples: Short quoted excerpts of curated material. Deliberately few
+    ///     and short — see MelodyStyle.swift on why description beats quotation
+    ///     inside a 4,096-token window.
     ///   - progress: Called on each request with the chunk index and total, so a
     ///     long progression can report where it's up to instead of hanging.
     static func generate(for progression: ChordProgression,
@@ -62,6 +69,8 @@ enum MelodyGenerator {
                          brief: StyleBrief,
                          density: Double = 0.5,
                          durationPalette: DurationPalette = .mixed,
+                         style: LearnedStyle? = nil,
+                         examples: [PatternExample]? = nil,
                          progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
         let chunks = MelodyChunker.chunks(for: progression)
         let options = GenerationOptions(
@@ -76,7 +85,8 @@ enum MelodyGenerator {
             // A fresh session per chunk, so each one gets a clean context window
             // rather than accumulating the previous chunks' transcripts.
             let session = LanguageModelSession(
-                instructions: instructions(examples: PatternLibrary.allExamples)
+                instructions: instructions(examples: examples ?? PatternLibrary.allExamples,
+                                           style: style)
             )
             let response = try await session.respond(
                 to: prompt(for: chunk.progression,
@@ -104,7 +114,7 @@ enum MelodyGenerator {
 
     // MARK: - Prompt construction
 
-    static func instructions(examples: [PatternExample]) -> String {
+    static func instructions(examples: [PatternExample], style: LearnedStyle? = nil) -> String {
         var text = """
         You are MelGen, a composer of monophonic melodic lines for a MIDI plug-in.
         You receive a chord progression in leadsheet notation with a harmonic plan, and reply \
@@ -140,6 +150,12 @@ enum MelodyGenerator {
         - Notes must not overlap: each note starts at or after the previous note ends.
 
         """
+        // The measured style goes last and is the strongest thing here: it is
+        // the one part of the instructions derived from what this musician
+        // actually kept rather than from what melodies are generally like.
+        if let style, !style.isEmpty {
+            text += "\n" + style.promptText + "\n"
+        }
         if !examples.isEmpty {
             text += "\nExample patterns (progression → melody as midiNote@startEighth:lengthEighths):\n"
             for example in examples {
