@@ -274,6 +274,17 @@ struct MelGenState: Codable, Sendable {
     /// Rotates through the stored generic lines, for the same reason.
     var patternCursor: Int = 0
 
+    /// Which briefs are in play. Empty means all of them, so a session saved
+    /// before selection existed behaves exactly as it did.
+    var selectedBriefNames: [String] = []
+    var briefMode: SelectionMode = .cycle
+    /// The brief the rotation is pinned to, in lock mode.
+    var lockedBriefName: String?
+
+    var lineMode: SelectionMode = .cycle
+    /// The stored line the rotation is pinned to, in lock mode.
+    var lockedLineName: String?
+
     /// Newest first. The take at `currentTakeID` is the one loaded in the kernel.
     var history: [GenerationRecord] = []
     var currentTakeID: UUID?
@@ -306,6 +317,11 @@ struct MelGenState: Codable, Sendable {
         regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses) ?? 1
         briefCursor = try container.decodeIfPresent(Int.self, forKey: .briefCursor) ?? 0
         patternCursor = try container.decodeIfPresent(Int.self, forKey: .patternCursor) ?? 0
+        selectedBriefNames = try container.decodeIfPresent([String].self, forKey: .selectedBriefNames) ?? []
+        briefMode = try container.decodeIfPresent(SelectionMode.self, forKey: .briefMode) ?? .cycle
+        lockedBriefName = try container.decodeIfPresent(String.self, forKey: .lockedBriefName)
+        lineMode = try container.decodeIfPresent(SelectionMode.self, forKey: .lineMode) ?? .cycle
+        lockedLineName = try container.decodeIfPresent(String.self, forKey: .lockedLineName)
         history = try container.decodeIfPresent([GenerationRecord].self, forKey: .history) ?? []
         currentTakeID = try container.decodeIfPresent(UUID.self, forKey: .currentTakeID)
         curationPass = try container.decodeIfPresent(Int.self, forKey: .curationPass) ?? 1
@@ -387,6 +403,22 @@ extension MelGenState {
     mutating func unmark(_ takeID: UUID) {
         guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
         history[index].marks.removeAll { $0.pass == curationPass }
+    }
+
+    /// The brief for the next take, honouring the selection and the mode.
+    var nextBrief: StyleBrief {
+        StyleBriefs.brief(at: briefCursor,
+                          selected: selectedBriefNames,
+                          mode: briefMode,
+                          locked: lockedBriefName)
+    }
+
+    /// The stored line for the next instant take, from whichever library is in play.
+    func nextLine(from library: [MelodyPattern]) -> MelodyPattern {
+        MelodyPatterns.line(at: patternCursor,
+                            from: library,
+                            mode: lineMode,
+                            locked: lockedLineName)
     }
 
     /// Loads a take, remembering what it displaced.

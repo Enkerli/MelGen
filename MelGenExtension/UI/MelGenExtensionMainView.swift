@@ -54,6 +54,12 @@ struct MelGenExtensionMainView: View {
     /// Whether the review sweep is unfolded. Not session state: it's about what
     /// you're doing right now, not what the document is.
     @State private var showCuration = false
+    /// Same: which lines and briefs are in play is a session setting, but whether
+    /// the drawer is open isn't.
+    @State private var showRotation = false
+    /// Redrawn when the library changes, since it lives outside the session state
+    /// the rest of this view mirrors.
+    @State private var libraryRevision = 0
 
     /// Whatever appearance the host is offering, used only when the appearance
     /// setting is "Auto".
@@ -89,6 +95,7 @@ struct MelGenExtensionMainView: View {
 
                 transportSection
                 shapeSection
+                rotationSection
                 feelSection
 
                 if state.currentTake != nil {
@@ -239,7 +246,7 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 13, weight: .semibold))
                     Text("Fit a stored line")
                         .font(.system(size: 13, weight: .medium))
-                    Text(MelodyPatterns.seed(at: state.patternCursor).name)
+                    Text(state.nextLine(from: PatternStore.library).name)
                         .font(.system(size: 13))
                         .foregroundStyle(theme.textMuted)
                         .lineLimit(1)
@@ -565,7 +572,240 @@ struct MelGenExtensionMainView: View {
                      theme: theme) { tags in
                 commit(reloadKernel: false) { $0.setTags(tags, for: take.id) }
             }
+
+            keepAsLineButton(for: take)
         }
+    }
+
+    /// The payoff of the whole loop: a take you liked becomes a line you can
+    /// play over anything, instantly, with no model involved.
+    private func keepAsLineButton(for take: GenerationRecord) -> some View {
+        Button {
+            keepAsLine(take)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.doc")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Keep as a line")
+                    .font(.system(size: 13, weight: .medium))
+                Text("plays over any changes")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+            }
+            .padding(.horizontal, MelGenMetrics.space3)
+            .frame(height: MelGenMetrics.controlHeight)
+            .foregroundStyle(theme.text)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Reads this take back as scale degrees and adds it to the line library")
+    }
+
+    /// Reads a take back as degrees and stores it (ROADMAP R1/R2).
+    private func keepAsLine(_ take: GenerationRecord) {
+        let progression: ChordProgression
+        do {
+            progression = try ChordProgression.parse(take.progressionText)
+        } catch {
+            statusMessage = "Can't read that take's progression back: \(error.localizedDescription)"
+            return
+        }
+
+        let name = take.title.isEmpty ? "\(take.briefName) line" : take.title
+        guard let pattern = MelodyPatterns.extract(
+            from: take.notes,
+            over: progression,
+            name: name,
+            lengthBeats: take.lengthBeats,
+            origin: PatternOrigin(takeID: take.id,
+                                  progressionText: take.progressionText,
+                                  briefName: take.briefName,
+                                  source: take.source)
+        ) else {
+            statusMessage = "Nothing in that take could be placed against a chord."
+            return
+        }
+
+        let stored = PatternStore.add(pattern)
+        libraryRevision += 1
+        statusMessage = "Kept as \"\(stored.name)\" — \(stored.summary). It's in the rotation now."
+    }
+
+    // MARK: - Rotation
+
+    /// What the next take gets to draw from.
+    ///
+    /// Half the variety problem was never temperature: it was that the rotation
+    /// included things you didn't want and visited them in the same order every
+    /// time.
+    private var rotationSection: some View {
+        CollapsibleSection(title: "Rotation · next take",
+                           summary: rotationSummary,
+                           isExpanded: $showRotation,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                briefSelection
+                lineSelection
+            }
+            .id(libraryRevision)
+        }
+    }
+
+    private var rotationSummary: String {
+        let briefs = state.selectedBriefNames.isEmpty ? StyleBriefs.all.count : state.selectedBriefNames.count
+        return "\(briefs) briefs · \(PatternStore.library.count) lines · \(state.briefMode.label.lowercased())"
+    }
+
+    private var briefSelection: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack {
+                Text("Style briefs")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: MelGenMetrics.space2)
+                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.briefMode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 220)
+            }
+
+            // Multi-select: an empty selection means all of them, so this starts
+            // out behaving exactly as it did before it existed.
+            FlowChips(items: StyleBriefs.all.map(\.name),
+                      isSelected: { name in
+                          state.selectedBriefNames.isEmpty || state.selectedBriefNames.contains(name)
+                      },
+                      isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
+                      theme: theme) { name in
+                toggleBrief(name)
+            }
+
+            Text(state.briefMode == .lock
+                 ? "Locked to one brief — vary temperature and density around it."
+                 : "Tap to include or exclude. All of them, if none are chosen.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+        }
+    }
+
+    private func toggleBrief(_ name: String) {
+        commit(reloadKernel: false) { state in
+            if state.briefMode == .lock {
+                state.lockedBriefName = state.lockedBriefName == name ? nil : name
+                return
+            }
+            var selection = state.selectedBriefNames.isEmpty
+                ? StyleBriefs.all.map(\.name)
+                : state.selectedBriefNames
+            if let index = selection.firstIndex(of: name) {
+                // Never empty the set: an empty rotation has nothing to play.
+                if selection.count > 1 { selection.remove(at: index) }
+            } else {
+                selection.append(name)
+            }
+            state.selectedBriefNames = selection.count == StyleBriefs.all.count ? [] : selection
+        }
+    }
+
+    private var lineSelection: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack {
+                Text("Stored lines")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: MelGenMetrics.space2)
+                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
+                           selection: binding(\.lineMode, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 220)
+            }
+
+            VStack(spacing: 4) {
+                ForEach(PatternStore.library) { pattern in
+                    lineRow(pattern)
+                }
+            }
+
+            if PatternStore.isEmpty {
+                Text("The six built-in lines are generic on purpose — the property that "
+                     + "makes them fit anything is the one that makes them plain. Keep a take "
+                     + "you liked as a line and it joins them here.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func lineRow(_ pattern: MelodyPattern) -> some View {
+        let isPinned = state.lineMode == .lock && state.lockedLineName == pattern.name
+        let isMine = pattern.origin != nil
+        return HStack(spacing: MelGenMetrics.space2) {
+            Button {
+                commit(reloadKernel: false) { state in
+                    state.lineMode = .lock
+                    state.lockedLineName = isPinned ? nil : pattern.name
+                    if isPinned { state.lineMode = .cycle }
+                }
+            } label: {
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isPinned ? theme.accent : theme.textMuted)
+                    .frame(width: 24, height: MelGenMetrics.smallControlHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPinned ? "Unpin \(pattern.name)" : "Pin \(pattern.name)")
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(pattern.name)
+                    .font(.system(size: 12, weight: isPinned ? .semibold : .regular))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                Text(pattern.summary)
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if isMine {
+                Button {
+                    PatternStore.remove(named: pattern.name)
+                    libraryRevision += 1
+                    statusMessage = "Removed \"\(pattern.name)\" from the line library."
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.textMuted)
+                        .frame(width: 24, height: MelGenMetrics.smallControlHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(pattern.name)")
+            } else {
+                Text("built in")
+                    .font(.system(size: 9))
+                    .foregroundStyle(theme.textMuted)
+            }
+        }
+        .padding(.horizontal, MelGenMetrics.space2)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isPinned ? theme.sunken : theme.raised)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(isPinned ? theme.accent : theme.border, lineWidth: isPinned ? 1.5 : 1)
+        )
     }
 
     /// The sweep: what's left to hear on this pass, and the way to start another.
@@ -855,7 +1095,7 @@ struct MelGenExtensionMainView: View {
             return nil
         }
 
-        let pattern = MelodyPatterns.seed(at: current.patternCursor)
+        let pattern = current.nextLine(from: PatternStore.library)
         let notes = MelodyPatterns.realize(pattern, over: progression)
         guard !notes.isEmpty else {
             statusMessage = "That line didn't fit this progression."
@@ -999,7 +1239,7 @@ struct MelGenExtensionMainView: View {
             return
         }
 
-        let brief = StyleBriefs.brief(at: current.briefCursor)
+        let brief = current.nextBrief
         let temperature = current.temperature
         let density = current.expression.density
         let durationPalette = current.durationPalette

@@ -294,3 +294,110 @@ struct ToggleChip: View {
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 }
+
+/// A wrapping row of chips, for a multi-select over a set too long for one line.
+///
+/// Written as a `Layout` rather than a horizontal scroller because the whole
+/// point of the control is seeing the *set* — what's in the rotation and what
+/// isn't — and half of it hidden off the right edge doesn't show that.
+struct FlowChips: View {
+    let items: [String]
+    let isSelected: (String) -> Bool
+    var isPinned: (String) -> Bool = { _ in false }
+    let theme: MelGenTheme
+    let onTap: (String) -> Void
+
+    var body: some View {
+        FlowLayout(spacing: 4) {
+            ForEach(items, id: \.self) { item in
+                let selected = isSelected(item)
+                let pinned = isPinned(item)
+                Button {
+                    onTap(item)
+                } label: {
+                    HStack(spacing: 3) {
+                        if pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        Text(item)
+                            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                    }
+                    .lineLimit(1)
+                    .padding(.horizontal, MelGenMetrics.space2)
+                    .frame(height: MelGenMetrics.smallControlHeight)
+                    .foregroundStyle(selected ? theme.accentText : theme.textSecondary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selected ? theme.accent : theme.raised)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(pinned ? theme.text : (selected ? theme.accent : theme.border),
+                                          lineWidth: pinned ? 2 : 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item)
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+    }
+}
+
+/// Left-to-right, wrapping when the row runs out. The smallest thing that does
+/// the job; no alignment guides, no priorities.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = arrange(subviews: subviews, in: width)
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(0, rows.count - 1))
+        let widest = rows.map(\.width).max() ?? 0
+        return CGSize(width: min(width, max(widest, 0)), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(subviews: subviews, in: bounds.width)
+        var y = bounds.minY
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                                      proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(subviews: Subviews, in width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let next = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            if !row.indices.isEmpty, next > width {
+                rows.append(row)
+                row = Row()
+                row.indices = [index]
+                row.width = size.width
+                row.height = size.height
+            } else {
+                row.indices.append(index)
+                row.width = next
+                row.height = max(row.height, size.height)
+            }
+        }
+        if !row.indices.isEmpty { rows.append(row) }
+        return rows
+    }
+}

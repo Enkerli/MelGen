@@ -258,7 +258,7 @@ enum MelodyGenerator {
         let patched = MelodyPatterns.fillHoles(
             in: result,
             over: progression,
-            pattern: MelodyPatterns.seed(at: patchPatternCursor)
+            pattern: MelodyPatterns.line(at: patchPatternCursor, from: PatternStore.library)
         )
 
         // Open a rest where there is none, then cap any that are so long the line

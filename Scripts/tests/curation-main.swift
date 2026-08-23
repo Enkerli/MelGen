@@ -195,6 +195,44 @@ tagged.setTags([], for: another.id)
 check("retagging forgets the tags it replaced",
       tagged.tagVocabulary.counts["wide"] == nil && tagged.tagVocabulary.counts["bossa"] == 1)
 
+// MARK: - The rotation
+
+print()
+print("── choosing what comes next ───────────────────────────")
+
+check("cycle goes in order",
+      (0..<9).map { Rotation.index(cursor: $0, count: 4, mode: .cycle) } == [0, 1, 2, 3, 0, 1, 2, 3, 0])
+
+for count in 3...9 {
+    let picks = (0..<(count * 12)).map { Rotation.index(cursor: $0, count: count, mode: .shuffle) }
+    let rounds = stride(from: 0, to: picks.count, by: count).map { Array(picks[$0..<($0 + count)]) }
+    check("shuffle of \(count) hears everything once per round",
+          rounds.allSatisfy { Set($0).count == count })
+    check("shuffle of \(count) never repeats back to back",
+          zip(picks, picks.dropFirst()).allSatisfy { $0 != $1 })
+}
+
+check("shuffle is deterministic",
+      (0..<40).map { Rotation.index(cursor: $0, count: 6, mode: .shuffle) }
+        == (0..<40).map { Rotation.index(cursor: $0, count: 6, mode: .shuffle) })
+
+check("a locked brief is the only brief",
+      (0..<5).allSatisfy {
+          StyleBriefs.brief(at: $0, selected: [], mode: .lock, locked: "Sparse").name == "Sparse"
+      })
+check("an empty selection means all of them",
+      Set((0..<StyleBriefs.all.count).map { StyleBriefs.brief(at: $0, selected: [], mode: .cycle).name })
+        == Set(StyleBriefs.all.map(\.name)))
+let pair = ["Sparse", "Syncopated"]
+check("a selection restricts the rotation to it",
+      Set((0..<8).map { StyleBriefs.brief(at: $0, selected: pair, mode: .cycle).name }) == Set(pair))
+check("a selection naming nothing real falls back to everything rather than crashing",
+      !StyleBriefs.brief(at: 0, selected: ["nonexistent"], mode: .cycle).name.isEmpty)
+check("an empty library falls back to the seeds",
+      MelodyPatterns.line(at: 0, from: []).name == MelodyPatterns.seeds[0].name)
+check("a locked line is the only line",
+      MelodyPatterns.line(at: 3, from: MelodyPatterns.seeds, mode: .lock, locked: "Arch").name == "Arch")
+
 print()
 print(failures == 0 ? "curation: all checks passed" : "curation: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

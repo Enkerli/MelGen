@@ -28,6 +28,14 @@ MELODY="$REPO/MelGenExtension/Melody"
 DSP="$REPO/MelGenExtension/DSP"
 PARAMS="$REPO/MelGenExtension/Parameters"
 MUSIC_SUITE="${MUSIC_SUITE:-$REPO/../../music-suite}"
+# Every Melody source except the one that needs FoundationModels. They are one
+# interdependent set now — the pattern format knows about curation, curation
+# knows about analysis — and keeping a hand-written list per suite meant every
+# new file broke four of them for no reason anyone learned anything from.
+melody_sources() {
+    find "$MELODY" -name "*.swift" ! -name "MelodyGenerator.swift" | sort
+}
+
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 
@@ -79,14 +87,10 @@ PY
 }
 
 run_state() {
-    echo "── state ──────────────────────────────────────────"
+    echo "── state ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/state-expression-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/MelodyModels.swift" "$MELODY/MelGenState.swift" "$MELODY/MelodyCuration.swift" \
-        "$MELODY/MelodyExpression.swift" "$MELODY/StyleBriefs.swift" \
-        "$MELODY/MelodyNotation.swift" "$MELODY/MelodyAnalysis.swift" "$MELODY/ChordDictionary.swift" \
-        "$MELODY/ChordDictionary+Generated.swift" "$MELODY/ChordScale.swift" \
-        "$MELODY/ChordParser.swift" \
-        "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
     "$BUILD/state" || status=1
 }
 
@@ -105,51 +109,34 @@ run_chunking() {
 }
 
 run_patterns() {
-    echo "── patterns ───────────────────────────────────────"
+    echo "── patterns ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/patterns-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyModels.swift" \
-        "$MELODY/MelGenState.swift" "$MELODY/MelodyCuration.swift" "$MELODY/MelodyExpression.swift" \
-        "$MELODY/MelodyPattern.swift" "$MELODY/PatternSeeds.swift" \
-        "$MELODY/MelodyAnalysis.swift" "$MELODY/MelodyChunker.swift" \
-        "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
     "$BUILD/patterns" || status=1
 }
 
 run_extraction() {
-    echo "── extraction ─────────────────────────────────────"
+    echo "── extraction ────────────────────────────────────"
     cp "$REPO/Scripts/tests/extraction-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyModels.swift" \
-        "$MELODY/MelGenState.swift" "$MELODY/MelodyCuration.swift" "$MELODY/MelodyExpression.swift" \
-        "$MELODY/MelodyPattern.swift" "$MELODY/MelodyPatternExtraction.swift" \
-        "$MELODY/PatternSeeds.swift" "$MELODY/MelodyAnalysis.swift" "$MELODY/MelodyChunker.swift" \
-        "$MELODY/MelodyNotation.swift" "$MELODY/StyleBriefs.swift" \
-        "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
     "$BUILD/extraction" || status=1
 }
 
 run_curation() {
-    echo "── curation ───────────────────────────────────────"
+    echo "── curation ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/curation-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyModels.swift" \
-        "$MELODY/MelGenState.swift" "$MELODY/MelodyExpression.swift" "$MELODY/MelodyCuration.swift" \
-        "$MELODY/MelodyPattern.swift" "$MELODY/MelodyPatternExtraction.swift" \
-        "$MELODY/PatternSeeds.swift" "$MELODY/MelodyAnalysis.swift" "$MELODY/MelodyChunker.swift" \
-        "$MELODY/MelodyNotation.swift" "$MELODY/StyleBriefs.swift" \
-        "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
     "$BUILD/curation" || status=1
 }
 
 run_analysis() {
-    echo "── analysis ───────────────────────────────────────"
+    echo "── analysis ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyModels.swift" \
-        "$MELODY/MelGenState.swift" "$MELODY/MelodyCuration.swift" "$MELODY/MelodyExpression.swift" "$MELODY/MelodyChunker.swift" \
-        "$MELODY/MelodyPattern.swift" "$MELODY/PatternSeeds.swift" "$MELODY/MelodyAnalysis.swift" \
-        "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
+    # shellcheck disable=SC2046
+    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
     "$BUILD/analysis" || status=1
 }
 
