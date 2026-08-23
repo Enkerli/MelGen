@@ -38,6 +38,82 @@ struct PatternNote: Codable, Hashable, Sendable {
     var velocity: Int = 90
     /// Eighths of silence after this note, as in the model's schema.
     var restAfterEighths: Int = 0
+    /// How this note sat against the chord it was *derived* from, when it was
+    /// derived from anything. Kept because it records what the note was for —
+    /// a chromatic approach and a mis-snapped pitch look identical as numbers,
+    /// and only the original harmony can tell them apart. Nil on a hand-written
+    /// pattern, which has no original harmony to be relative to.
+    var role: HarmonicRole?
+
+    init(startEighth: Int,
+         lengthEighths: Int,
+         degree: Int,
+         octave: Int = 0,
+         alteration: Int = 0,
+         velocity: Int = 90,
+         restAfterEighths: Int = 0,
+         role: HarmonicRole? = nil) {
+        self.startEighth = startEighth
+        self.lengthEighths = lengthEighths
+        self.degree = degree
+        self.octave = octave
+        self.alteration = alteration
+        self.velocity = velocity
+        self.restAfterEighths = restAfterEighths
+        self.role = role
+    }
+
+    // Field by field, so a pattern stored by an older build still loads: the
+    // synthesized decoder throws on a missing key even where a default exists,
+    // and these are persisted now that patterns come from curation.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        startEighth = try container.decodeIfPresent(Int.self, forKey: .startEighth) ?? 0
+        lengthEighths = try container.decodeIfPresent(Int.self, forKey: .lengthEighths) ?? 1
+        degree = try container.decodeIfPresent(Int.self, forKey: .degree) ?? 0
+        octave = try container.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        alteration = try container.decodeIfPresent(Int.self, forKey: .alteration) ?? 0
+        velocity = try container.decodeIfPresent(Int.self, forKey: .velocity) ?? 90
+        restAfterEighths = try container.decodeIfPresent(Int.self, forKey: .restAfterEighths) ?? 0
+        role = try container.decodeIfPresent(HarmonicRole.self, forKey: .role)
+    }
+}
+
+/// Where a pattern came from, when it came from somewhere.
+///
+/// A hand-written seed has no provenance; one derived from a take has all of it,
+/// and losing that is how a library becomes a pile of anonymous lines.
+struct PatternOrigin: Codable, Hashable, Sendable {
+    /// The take this was derived from.
+    var takeID: UUID?
+    /// The progression it was played over, in leadsheet text.
+    var progressionText: String
+    /// The style brief or stored line that produced the take.
+    var briefName: String
+    /// Whether the take was composed by the model or fitted from a stored line.
+    var source: TakeSource
+    var derivedAt: Date
+
+    init(takeID: UUID? = nil,
+         progressionText: String,
+         briefName: String = "",
+         source: TakeSource = .model,
+         derivedAt: Date = Date()) {
+        self.takeID = takeID
+        self.progressionText = progressionText
+        self.briefName = briefName
+        self.source = source
+        self.derivedAt = derivedAt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        takeID = try container.decodeIfPresent(UUID.self, forKey: .takeID)
+        progressionText = try container.decodeIfPresent(String.self, forKey: .progressionText) ?? ""
+        briefName = try container.decodeIfPresent(String.self, forKey: .briefName) ?? ""
+        source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
+        derivedAt = try container.decodeIfPresent(Date.self, forKey: .derivedAt) ?? Date()
+    }
 }
 
 /// A generic line: rhythm and contour, with no harmony of its own.
@@ -49,6 +125,25 @@ struct MelodyPattern: Codable, Hashable, Sendable, Identifiable {
     /// What it's for, shown in the interface.
     var summary: String
     var notes: [PatternNote]
+    /// The take this was lifted from, if it was lifted from one.
+    var origin: PatternOrigin?
+
+    init(name: String, bars: Int, summary: String, notes: [PatternNote], origin: PatternOrigin? = nil) {
+        self.name = name
+        self.bars = bars
+        self.summary = summary
+        self.notes = notes
+        self.origin = origin
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
+        bars = try container.decodeIfPresent(Int.self, forKey: .bars) ?? 2
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        notes = try container.decodeIfPresent([PatternNote].self, forKey: .notes) ?? []
+        origin = try container.decodeIfPresent(PatternOrigin.self, forKey: .origin)
+    }
 }
 
 enum MelodyPatterns {

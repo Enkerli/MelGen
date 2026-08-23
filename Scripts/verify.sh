@@ -13,6 +13,7 @@
 #   state   — session state round-trip and the expression/swing pass
 #   chunking — how a progression is split into model requests (context window)
 #   patterns — stored generic lines fitted to real harmony, with no model
+#   extraction — takes read back as degree-relative patterns, and the fit report
 #   analysis — take measurement (variety, harmonic roles) and the dead-air guard
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
@@ -114,6 +115,19 @@ run_patterns() {
     "$BUILD/patterns" || status=1
 }
 
+run_extraction() {
+    echo "── extraction ─────────────────────────────────────"
+    cp "$REPO/Scripts/tests/extraction-main.swift" "$BUILD/main.swift"
+    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
+        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyModels.swift" \
+        "$MELODY/MelGenState.swift" "$MELODY/MelodyExpression.swift" \
+        "$MELODY/MelodyPattern.swift" "$MELODY/MelodyPatternExtraction.swift" \
+        "$MELODY/PatternSeeds.swift" "$MELODY/MelodyAnalysis.swift" "$MELODY/MelodyChunker.swift" \
+        "$MELODY/MelodyNotation.swift" "$MELODY/StyleBriefs.swift" \
+        "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
+    "$BUILD/extraction" || status=1
+}
+
 run_analysis() {
     echo "── analysis ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
@@ -140,16 +154,17 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_analysis; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_analysis; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
     patterns) run_patterns ;;
+    extraction) run_extraction ;;
     analysis) run_analysis ;;
     contrast) run_contrast ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|analysis|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|analysis|contrast|kernel]"; exit 2 ;;
 esac
 
 echo
