@@ -166,20 +166,160 @@ enum MelodyGenerator {
         }
 
         // Apple's content scanner surfaces as a plain NSError rather than as a
-        // generation error, and error 15 in particular is the scanner itself
-        // failing rather than anything being refused. Saying "generation failed"
-        // to that reads as "your progression is a problem", which it isn't.
-        let nsError = error as NSError
-        if nsError.domain.contains("SensitiveContentAnalysis") {
+        // generation error — and, as a device session showed, usually *wrapped*
+        // in one, so the outer domain is something else entirely and only the
+        // description names it. Checking the domain alone matched nothing, which
+        // is why this error was still arriving raw after being handled.
+        if let scanner = contentScannerFault(in: error) {
             return Failure(
-                message: "The system's content scanner failed (\(nsError.domain) \(nsError.code)). "
-                       + "That's a fault in the OS layer under the model, not in the music — "
-                       + "retrying usually clears it.",
+                message: "The system's content scanner failed (\(scanner)). That's the OS layer "
+                       + "*under* the model, not the music — nothing about the progression caused "
+                       + "it. Use \u{201C}Test the model\u{201D} to see whether anything generates at all.",
                 isTransient: true)
         }
 
         return Failure(message: "Generation failed: \(error.localizedDescription)",
                        isTransient: true)
+    }
+
+    /// Finds a content-scanner fault however deeply it's wrapped.
+    ///
+    /// Walks `NSUnderlyingErrorKey` and falls back to the description, because
+    /// the framework wraps this one and the wrapper's domain says nothing useful.
+    static func contentScannerFault(in error: any Error) -> String? {
+        var current: NSError? = error as NSError
+        var depth = 0
+        while let nsError = current, depth < 6 {
+            if nsError.domain.contains("SensitiveContentAnalysis") {
+                return "\(nsError.domain) \(nsError.code)"
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        let description = (error as NSError).localizedDescription
+        guard description.contains("SensitiveContentAnalysis") else { return nil }
+        // The description embeds it as "(com.apple.SensitiveContentAnalysisML error 15.)".
+        guard let open = description.range(of: "com.apple.SensitiveContentAnalysis"),
+              let close = description[open.lowerBound...].firstIndex(of: ")") else {
+            return "com.apple.SensitiveContentAnalysis"
+        }
+        return String(description[open.lowerBound..<close])
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+    }
+
+    // MARK: - Finding out what's wrong
+
+    /// One step of the diagnostic, and what it proves.
+    struct Probe: Sendable {
+        var name: String
+        var detail: String
+        var succeeded: Bool
+        var message: String
+    }
+
+    /// Asks the model four progressively larger questions and reports which ones
+    /// it can answer.
+    ///
+    /// "The model doesn't work any more" is a claim about the whole path, and the
+    /// path has four independent parts: whether the framework will answer at all,
+    /// whether it will answer *this app's* instructions, whether guided
+    /// generation into our schema works, and whether a real progression fits. A
+    /// failure at step one is the system; a failure only at step four is us. That
+    /// distinction can't be guessed at from an error message, and guessing at it
+    /// is what a session spends its time on otherwise.
+    static func diagnose(progression: ChordProgression?) async -> [Probe] {
+        var probes: [Probe] = []
+
+        // 1. Anything at all, no instructions, no schema.
+        probes.append(await run("Plain text",
+                                detail: "no instructions, no schema — is the framework answering?") {
+            let session = LanguageModelSession()
+            _ = try await session.respond(to: "Name three notes of a C major chord.")
+        })
+
+        // 2. Guided generation into our schema, trivial content.
+        probes.append(await run("Our schema",
+                                detail: "guided generation into MelodyIdea, one bar") {
+            let session = LanguageModelSession()
+            _ = try await session.respond(
+                to: "Write two notes on an eighth-note grid, MIDI 60 and 64, starting at eighths 0 and 4.",
+                generating: MelodyIdea.self)
+        })
+
+        // 3. Our instructions, without examples or a learned style.
+        probes.append(await run("Our instructions",
+                                detail: "the full instruction text, no examples") {
+            let session = LanguageModelSession(instructions: instructions(examples: []))
+            _ = try await session.respond(
+                to: "Compose a melody for this progression: C | G7\n\nTotal length: 16 eighths.",
+                generating: MelodyIdea.self)
+        })
+
+        // 4. Instructions plus the few-shot examples that are actually in play.
+        probes.append(await run("With examples",
+                                detail: "\(PatternLibrary.allExamples.count) few-shot examples included") {
+            let session = LanguageModelSession(
+                instructions: instructions(examples: PatternLibrary.allExamples))
+            _ = try await session.respond(
+                to: "Compose a melody for this progression: C | G7\n\nTotal length: 16 eighths.",
+                generating: MelodyIdea.self)
+        })
+
+        // 5. The real thing, if there is one.
+        if let progression {
+            let chunk = MelodyChunker.chunks(for: progression).first?.progression ?? progression
+            probes.append(await run("This progression",
+                                    detail: "the first phrase of \(progression.text)") {
+                let session = LanguageModelSession(
+                    instructions: instructions(examples: PatternLibrary.allExamples))
+                _ = try await session.respond(
+                    to: prompt(for: chunk, brief: StyleBriefs.brief(at: 0)),
+                    generating: MelodyIdea.self)
+            })
+        }
+
+        return probes
+    }
+
+    private static func run(_ name: String,
+                            detail: String,
+                            _ body: () async throws -> Void) async -> Probe {
+        do {
+            try await body()
+            return Probe(name: name, detail: detail, succeeded: true, message: "answered")
+        } catch {
+            return Probe(name: name, detail: detail, succeeded: false,
+                         message: describe(error).message)
+        }
+    }
+
+    /// What the probe results mean, in a sentence.
+    static func verdict(for probes: [Probe]) -> String {
+        guard let first = probes.first else { return "Nothing ran." }
+        if probes.allSatisfy(\.succeeded) {
+            return "Everything answered. Whatever failed before was transient — try generating again."
+        }
+        if !first.succeeded {
+            return "The framework won't answer even a plain question, so nothing about MelGen's "
+                 + "prompt is the cause. This is Apple Intelligence on this device: check that "
+                 + "it's on, that the language is supported, and that the model has finished "
+                 + "downloading. A restart clears a wedged content scanner more often than not."
+        }
+        guard let firstFailure = probes.first(where: { !$0.succeeded }) else { return "Mixed." }
+        switch firstFailure.name {
+        case "Our schema":
+            return "Plain text works and guided generation doesn't, so the schema is the problem — "
+                 + "that's ours to fix, not the system's."
+        case "Our instructions":
+            return "The schema works and our instruction text doesn't. Something in the "
+                 + "instructions is tripping a guardrail; the text is in MelodyGenerator."
+        case "With examples":
+            return "Instructions work and the few-shot examples don't. Clearing the saved "
+                 + "examples should restore generation."
+        default:
+            return "Everything generic works and this progression doesn't. It's the length or "
+                 + "one of the chords — try a shorter form."
+        }
     }
 
     // MARK: - Prompt construction

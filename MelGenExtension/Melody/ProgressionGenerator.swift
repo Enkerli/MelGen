@@ -32,6 +32,122 @@
 
 import Foundation
 
+/// How far down each transition's probability list to reach.
+///
+/// ProgGenie calls this Surprise, and it is not temperature. Temperature
+/// flattens a distribution — every option gets nearer to every other. Surprise
+/// *walks down the ranked list*: at zero it takes what the corpus does most, and
+/// as it rises the second, third and fourth choices become reachable while the
+/// tail stays where it is. That difference matters because a corpus of leadsheets
+/// has a very long tail of things seen once, and flattening reaches the tail
+/// before it reaches the interesting middle.
+struct Surprise: Sendable {
+    var amount: Double
+
+    init(_ amount: Double) { self.amount = max(0, min(1, amount)) }
+
+    /// Re-weights a ranked list so that more of it is reachable.
+    ///
+    /// The list is sorted best-first. `amount` sets how far down is "in play":
+    /// at 0 only the top entry is, at 1 all of them are. Everything in play is
+    /// levelled toward the top entry's weight; everything past it keeps its own
+    /// weight, discounted. So raising Surprise opens the second, third and
+    /// fourth choices *before* it opens the tail — which is the whole difference
+    /// from temperature, and it matters because a leadsheet corpus has a very
+    /// long tail of things seen once and flattening reaches that tail first.
+    func reweight(_ ranked: [(key: String, weight: Double)]) -> [String: Double] {
+        guard let top = ranked.first?.weight, top > 0, ranked.count > 1 else {
+            return Dictionary(uniqueKeysWithValues: ranked.map { ($0.key, $0.weight) })
+        }
+        guard amount > 0 else {
+            return Dictionary(uniqueKeysWithValues: ranked.map { ($0.key, $0.weight) })
+        }
+
+        let reach = max(1.0, amount * Double(ranked.count))
+        var result: [String: Double] = [:]
+        for (rank, entry) in ranked.enumerated() {
+            if Double(rank) < reach {
+                // Levelled toward the top: in play, and increasingly so.
+                result[entry.key] = entry.weight * (1 - amount) + top * amount
+            } else {
+                // Past the reach, and still not banned — the tail is where the
+                // genuinely strange chords are, and they should stay reachable
+                // at a low rate rather than being cut off.
+                result[entry.key] = entry.weight * (1 - amount * 0.5)
+            }
+        }
+        return result
+    }
+}
+
+/// How hard to avoid the moves everyone makes.
+enum Freshness: String, Codable, CaseIterable, Sendable {
+    /// Take the corpus at its word.
+    case faithful
+    /// Avoid the obvious repeats.
+    case fresh
+    /// Avoid clichés outright.
+    case bold
+
+    var label: String {
+        switch self {
+        case .faithful: return "Faithful"
+        case .fresh: return "Fresh"
+        case .bold: return "Bold"
+        }
+    }
+
+    /// How much to discount a move that's a cliché. 1 leaves it alone.
+    var penalty: Double {
+        switch self {
+        case .faithful: return 1
+        case .fresh: return 0.35
+        case .bold: return 0.06
+        }
+    }
+}
+
+/// Which substitutions are in play, and how often.
+enum Reharm: String, Codable, CaseIterable, Sendable {
+    case none, subtle, bold
+
+    var label: String {
+        switch self {
+        case .none: return "None"
+        case .subtle: return "Subtle"
+        case .bold: return "Bold"
+        }
+    }
+
+    /// How often a chord gets rewritten.
+    var rate: Double {
+        switch self {
+        case .none: return 0
+        case .subtle: return 0.22
+        case .bold: return 0.55
+        }
+    }
+
+    /// Split by what the substitution *changes*, not by how strange it is.
+    ///
+    /// Subtle keeps to the route-preserving ones: a tritone sub, a backdoor
+    /// dominant and a secondary dominant all still resolve where the chord they
+    /// replaced was going. Bold adds the ones that change the harmony's colour —
+    /// relative swaps, borrowed-mode chords, extensions.
+    ///
+    /// ProgGenie's own Reharm is tritone and backdoor at two different rates.
+    /// This is a superset and deliberately so: with only those two, Subtle is a
+    /// no-op on any progression whose middle is minor sevenths, which is most of
+    /// them, and a control that does nothing most of the time reads as broken.
+    var kinds: [ProgressionGenerator.Substitution] {
+        switch self {
+        case .none: return []
+        case .subtle: return [.tritone, .backdoor, .secondaryDominant]
+        case .bold: return ProgressionGenerator.Substitution.allCases
+        }
+    }
+}
+
 /// Major or minor, which is which corpus table gets walked.
 enum ProgressionMode: String, Codable, CaseIterable, Sendable {
     case major, minor
@@ -194,11 +310,23 @@ enum ProgressionGenerator {
     ///   replace some of them. Applying them afterwards rather than folding them
     ///   into the walk keeps both legible — the numerals say what the corpus
     ///   proposed and the reharmonization says what was done to it.
+    /// - Parameters:
+    ///   - surprise: how far down each transition's ranked list to reach.
+    ///   - freshness: how hard to avoid the moves everyone makes.
+    ///   - contextDepth: 2 leans on what follows a two-chord context; 1 is the
+    ///     plain first-order walk. Exposed rather than always-on because the
+    ///     longer context is what produces phrasing and also what makes a small
+    ///     corpus quote itself, and which of those you want is a musical choice.
+    ///   - reharm: which substitutions are in play, and how often.
+    ///   - modulateEvery: change key every N bars, 0 for none.
     static func generate(bars: Int = 8,
                          key: Int = 0,
                          mode: ProgressionMode = .major,
-                         temperature: Double = 1,
-                         substitution: Double = 0,
+                         surprise: Surprise = Surprise(0.3),
+                         freshness: Freshness = .fresh,
+                         contextDepth: Int = 2,
+                         reharm: Reharm = .subtle,
+                         modulateEvery: Int = 0,
                          cadence: Bool = true,
                          seed: UInt64) -> GeneratedProgression? {
         let first = bigrams(mode)
@@ -218,9 +346,12 @@ enum ProgressionGenerator {
                 ? "\(labels[labels.count - 2]) → \(previous)"
                 : nil
 
-            let blended = blend(first: first[previous] ?? [:],
-                                second: context.flatMap { second[$0] } ?? [:])
+            var blended = blend(first: first[previous] ?? [:],
+                                second: contextDepth >= 2 ? (context.flatMap { second[$0] } ?? [:]) : [:])
             guard !blended.isEmpty else { break }
+
+            blended = rank(blended, surprise: surprise)
+            blended = freshen(blended, after: labels, freshness: freshness)
 
             // The last chord goes home if anything in reach does — and to a
             // tonic that sounds like an ending. "Idim7" has the right numeral
@@ -241,17 +372,30 @@ enum ProgressionGenerator {
                 continue
             }
 
-            guard let next = pick(blended, draw: rng.nextUnit(), temperature: temperature) else { break }
+            guard let next = pick(blended, draw: rng.nextUnit(), temperature: 1) else { break }
             labels.append(next)
         }
 
-        if substitution > 0 {
-            labels = substitute(labels, amount: substitution, mode: mode, rng: &rng)
+        if reharm != .none {
+            labels = substitute(labels, amount: reharm.rate, kinds: reharm.kinds,
+                                mode: mode, rng: &rng)
+        }
+
+        // Modulation is mechanical on purpose: a related key every N bars, which
+        // is what a bridge does, rather than a key change the walk stumbled into.
+        var keys = Array(repeating: key, count: labels.count)
+        if modulateEvery > 0 {
+            let related = [7, 5, 9, 2]     // dominant, subdominant, relative, up a step
+            var current = key
+            for index in labels.indices where index > 0 && index % modulateEvery == 0 {
+                current = (current + related[(index / modulateEvery - 1) % related.count]) % 12
+                for later in index..<labels.count { keys[later] = current }
+            }
         }
 
         // Drop anything the dictionary can't spell rather than emitting it.
-        let playable = labels.compactMap { label -> (String, String)? in
-            chordText(for: label, key: key).map { (label, $0) }
+        let playable = zip(labels, keys).compactMap { label, inKey -> (String, String)? in
+            chordText(for: label, key: inKey).map { (label, $0) }
         }
         guard playable.count >= 2 else { return nil }
 
@@ -280,6 +424,11 @@ enum ProgressionGenerator {
         /// chord brightens. The move that makes an ordinary progression sound
         /// like it was written by someone.
         case borrowed
+        /// The dominant a tone below the tonic — ♭VII7 — which resolves to I by
+        /// the same voice leading a V7 does, from the other side. The other
+        /// substitution that works anywhere, and the reason "subtle" is two
+        /// things rather than one.
+        case backdoor
         /// A seventh chord gains its extensions.
         case extended
 
@@ -289,8 +438,45 @@ enum ProgressionGenerator {
             case .secondaryDominant: return "secondary dominant"
             case .relative: return "relative swap"
             case .borrowed: return "borrowed"
+            case .backdoor: return "backdoor dominant"
             case .extended: return "extended"
             }
+        }
+    }
+
+    /// Re-weights a distribution by rank rather than by flattening it.
+    static func rank(_ distribution: [String: Double], surprise: Surprise) -> [String: Double] {
+        guard surprise.amount > 0, distribution.count > 1 else { return distribution }
+        // Stable ranking: by weight, then by name, so the same distribution
+        // always ranks the same way.
+        let ranked = distribution
+            .sorted { ($0.value, $1.key) > ($1.value, $0.key) }
+            .map { (key: $0.key, weight: $0.value) }
+        return surprise.reweight(ranked)
+    }
+
+    /// Discounts the moves everyone makes.
+    ///
+    /// Three clichés, and they're the three ProgGenie names: repeating the chord
+    /// you're on, going back to the one before it, and V→I. None of them is
+    /// *wrong* — a progression made only of fresh moves is its own kind of
+    /// tiresome — which is why this is a discount rather than a ban, and why
+    /// Faithful leaves them alone entirely.
+    static func freshen(_ distribution: [String: Double],
+                        after labels: [String],
+                        freshness: Freshness) -> [String: Double] {
+        guard freshness != .faithful, let previous = labels.last else { return distribution }
+        let beforeThat = labels.count >= 2 ? labels[labels.count - 2] : nil
+        let previousNumeral = split(previous)?.numeral
+
+        return distribution.reduce(into: [:]) { result, entry in
+            var weight = entry.value
+            if entry.key == previous { weight *= freshness.penalty }
+            if let beforeThat, entry.key == beforeThat { weight *= freshness.penalty }
+            if previousNumeral == "V", split(entry.key)?.numeral == "I" {
+                weight *= freshness.penalty
+            }
+            result[entry.key] = weight
         }
     }
 
@@ -301,6 +487,7 @@ enum ProgressionGenerator {
     /// heard against.
     static func substitute(_ labels: [String],
                            amount: Double,
+                           kinds: [Substitution] = Substitution.allCases,
                            mode: ProgressionMode,
                            rng: inout SplitMix64) -> [String] {
         guard labels.count > 2 else { return labels }
@@ -311,15 +498,24 @@ enum ProgressionGenerator {
             guard let parts = split(result[index]) else { continue }
             let next = split(result[index + 1])
 
-            var options: [Substitution] = [.extended]
-            if parts.suffix.hasPrefix("7") || parts.suffix.isEmpty {
+            var options: [Substitution] = []
+            if kinds.contains(.extended) { options.append(.extended) }
+            if kinds.contains(.borrowed), parts.suffix.hasPrefix("7") || parts.suffix.isEmpty {
                 options.append(.borrowed)
             }
-            if isDominant(parts.suffix) { options.append(.tritone) }
-            if let next, semitones(for: next.numeral) != nil { options.append(.secondaryDominant) }
-            if parts.suffix.isEmpty || parts.suffix.hasPrefix("maj") || parts.suffix.hasPrefix("m") {
+            if kinds.contains(.tritone), isDominant(parts.suffix) { options.append(.tritone) }
+            if kinds.contains(.backdoor), let next, split(next.numeral)?.numeral == "I"
+                || next.numeral == "I" {
+                options.append(.backdoor)
+            }
+            if kinds.contains(.secondaryDominant), let next, semitones(for: next.numeral) != nil {
+                options.append(.secondaryDominant)
+            }
+            if kinds.contains(.relative),
+               parts.suffix.isEmpty || parts.suffix.hasPrefix("maj") || parts.suffix.hasPrefix("m") {
                 options.append(.relative)
             }
+            guard !options.isEmpty else { continue }
 
             let choice = options[Int(rng.next() % UInt64(options.count))]
             if let rewritten = apply(choice, to: parts, before: next, mode: mode),
@@ -369,6 +565,10 @@ enum ProgressionGenerator {
                 return parts.numeral + (parts.suffix.hasPrefix("m7") ? "7" : "")
             }
             return parts.numeral + (parts.suffix.contains("7") ? "m7" : "m")
+
+        case .backdoor:
+            // ♭VII7, resolving to whatever tonic follows.
+            return numeral(for: 10) + "7"
 
         case .extended:
             let extensions = mode == .major

@@ -154,8 +154,15 @@ check("every score is a proportion",
           (0...1).contains($0.novelty) && (0...1).contains($0.variety)
               && (0...1).contains($0.styleDistance)
       })
+// Deterministic to the last bit, not merely in order. Summing entropies over a
+// dictionary's iteration order gave answers differing in the final digits, which
+// is invisible in a percentage and fatal in a list sorted by it.
 check("exploring is deterministic",
       MelodyVariants.explore(parent, seed: 7, limit: 20) == allVariants)
+check("and the scores are identical, not merely close",
+      MelodyVariants.explore(parent, seed: 7, limit: 20).map(\.variety) == allVariants.map(\.variety))
+check("variety is stable across repeated measurement",
+      (1...5).allSatisfy { _ in MelodyVariants.variety(of: parent) == MelodyVariants.variety(of: parent) })
 
 // Style distance has to mean something: a line measured against its own style
 // is nearer than one measured against a style built from something else.

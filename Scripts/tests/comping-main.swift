@@ -200,6 +200,67 @@ check("a comping take renders polyphonically from the session",
 check("and a line take still renders as a line",
       PlayMode.allCases.count == 2 && PlayMode.line.label == "Line")
 
+// MARK: - Varying a comp
+
+print()
+print("── varying a comp, as a comp ──────────────────────")
+
+let compVariants = MelodyComping.variants(of: changes, figure: .charleston, seed: 5)
+check("a comp has variants", compVariants.count >= 8, "\(compVariants.count)")
+check("every one of them is still polyphonic",
+      compVariants.allSatisfy { MelodyComping.maximumPolyphony(of: $0.notes) >= 2 },
+      "least polyphonic: \(compVariants.map { MelodyComping.maximumPolyphony(of: $0.notes) }.min() ?? 0)")
+check("they vary the voicing and the rhythm, which are a comp's two axes",
+      compVariants.contains { $0.name.contains("Drop 2") || $0.name.contains("Quartal") }
+        && compVariants.contains { $0.name.contains("Tresillo") || $0.name.contains("Even") })
+check("they include a register move", compVariants.contains { $0.name.contains("octave") })
+check("none of them is the original", compVariants.allSatisfy {
+    $0.notes != MelodyComping.comp(changes, figure: .charleston, seed: 5)
+})
+check("every one plays the chord that's sounding",
+      compVariants.allSatisfy { variant in
+          variant.notes.allSatisfy { note in
+              guard let chord = changes.chord(at: note.startBeat) else { return false }
+              return chord.symbol.scalePitchClasses.contains(((Int(note.note) % 12) + 12) % 12)
+          }
+      })
+check("varying a comp is deterministic",
+      MelodyComping.variants(of: changes, figure: .charleston, seed: 5).map(\.name)
+        == compVariants.map(\.name))
+check("names are distinct", Set(compVariants.map(\.name)).count == compVariants.count)
+
+// The bug this exists to prevent, stated precisely. Extraction itself keeps
+// every note — it's the *transforms* and realization that assume one note per
+// onset, so a comp routed through the melodic variant path survives being read
+// and is flattened the moment anything is done to it.
+let flattened = MelodyPatterns.extract(from: comp, over: changes, name: "flattened")
+check("extraction keeps every note of a comp", flattened?.notes.count == comp.count,
+      "\(flattened?.notes.count ?? 0) from \(comp.count)")
+if let flattened {
+    let transformed = MelodyTransforms.displace(flattened, byEighths: 1)
+    check("but a transform flattens it, because a pattern is one note per onset",
+          transformed.notes.count < flattened.notes.count,
+          "\(transformed.notes.count) from \(flattened.notes.count)")
+    // Realization doesn't drop them — it collapses them. `monophonic` clips each
+    // note to the next one's start, and inside a chord that distance is zero, so
+    // every voice but the last becomes a 0.05-beat sliver. Audibly the same as
+    // losing them, and harder to notice in a note count.
+    let realized = MelodyPatterns.realize(flattened, over: changes)
+    let slivers = realized.filter { $0.durationBeats <= 0.06 }.count
+    check("and realizing it collapses the voices to slivers",
+          slivers > realized.count / 2,
+          "\(slivers) of \(realized.count) notes are 0.05 beats long")
+}
+
+// And the variant material distinguishes the two kinds so the wrong transforms
+// can't be applied.
+let lineVariant = MelodyVariant(pattern: MelodyPhrases.compose(bars: 4, seed: 1),
+                                transform: "t", novelty: 0.5, styleDistance: 0, variety: 0.5)
+let compVariant = MelodyVariant(voiced: comp, name: "c", summary: "s", transform: "t",
+                                novelty: 0.5, variety: 0.5)
+check("a line variant carries a pattern", lineVariant.material.patternIfLine != nil)
+check("a comp variant does not", compVariant.material.patternIfLine == nil)
+
 print()
 print(failures == 0 ? "comping: all checks passed" : "comping: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

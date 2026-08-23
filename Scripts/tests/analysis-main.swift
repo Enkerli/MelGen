@@ -158,5 +158,17 @@ check("notes worth reviewing are counted",
 check("the summary is readable", counted.summary.contains("variety"), counted.summary)
 
 print()
+// Measuring a take twice has to give the same number to the last bit: the
+// history is sorted by these, and a score that wobbles in its final digits
+// reorders a list for no reason anybody can see.
+let stableProgression = try ChordProgression.parse("Dm7 | G7 | Cmaj7 | A7♭9")
+let stableNotes = MelodyPatterns.realize(MelodyPhrases.compose(bars: 4, seed: 3),
+                                         over: stableProgression)
+let firstPass = MelodyAnalyser.analyse(stableNotes, over: stableProgression)
+check("a take measures the same way twice",
+      (1...5).allSatisfy { _ in
+          MelodyAnalyser.analyse(stableNotes, over: stableProgression) == firstPass
+      })
+
 print(failures == 0 ? "analysis: all checks passed" : "analysis: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

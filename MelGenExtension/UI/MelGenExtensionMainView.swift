@@ -63,7 +63,13 @@ struct MelGenExtensionMainView: View {
     /// The store keeps hundreds of takes; the list shows a page of them. Bounding
     /// the store to what fits on screen was the actual mistake.
     @State private var historyRowLimit = 40
-    @State private var showTextGrid = false
+    /// The model diagnostic's results, when it has been run.
+    @State private var probes: [MelodyGenerator.Probe] = []
+    @State private var isProbing = false
+    /// Whether the last thing that went wrong was the model, so the diagnostic
+    /// appears when it's relevant and not before.
+    @State private var lastFailureWasModel = false
+    @State private var showRotationPicker = false
 
     /// Mutations of the current take, and the morph between it and one of them.
     /// Not session state: they're a working surface, regenerated on demand.
@@ -116,6 +122,8 @@ struct MelGenExtensionMainView: View {
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                modelDiagnostics
 
                 nextTakeSection
                 instantSection
@@ -250,7 +258,7 @@ struct MelGenExtensionMainView: View {
                 Button {
                     makeChanges()
                 } label: {
-                    findLabel("New changes", systemImage: "arrow.triangle.branch")
+                    findLabel("Generate a progression", systemImage: "arrow.triangle.branch")
                 }
                 .buttonStyle(.plain)
 
@@ -307,25 +315,132 @@ struct MelGenExtensionMainView: View {
                 commit(reloadKernel: false) { $0.progressionKey = index }
             }
 
-            LabelledSlider(title: "Adventurousness",
+            LabelledSlider(title: "Surprise",
                            lowLabel: "the usual",
-                           highLabel: "the unlikely",
-                           value: binding(\.progressionAdventure, reloadKernel: false),
+                           highLabel: "further down",
+                           value: binding(\.progressionSurprise, reloadKernel: false),
                            theme: theme)
 
-            LabelledSlider(title: "Substitutions",
-                           lowLabel: "none",
-                           highLabel: "everywhere",
-                           value: binding(\.progressionSubstitution, reloadKernel: false),
+            labelledRow("Freshness") {
+                ChipPicker(options: Freshness.allCases.map { ($0, $0.label) },
+                           selection: binding(\.progressionFreshness, reloadKernel: false),
                            theme: theme)
+            }
 
-            Text("Corpus transition counts from ProgGenie, walked at order two. "
-                 + "Adventurousness flattens the counts; substitutions rewrite chords "
-                 + "afterwards — tritone subs, secondary dominants, relative swaps, "
-                 + "borrowed minor.")
+            labelledRow("Context") {
+                ChipPicker(options: [(1, "1 chord"), (2, "2 chords")],
+                           selection: binding(\.progressionContext, reloadKernel: false),
+                           theme: theme)
+            }
+
+            labelledRow("Reharm") {
+                ChipPicker(options: Reharm.allCases.map { ($0, $0.label) },
+                           selection: binding(\.progressionReharm, reloadKernel: false),
+                           theme: theme)
+            }
+
+            labelledRow("Modulate") {
+                ChipPicker(options: [(0, "Never"), (4, "4 bars"), (8, "8 bars")],
+                           selection: binding(\.progressionModulation, reloadKernel: false),
+                           theme: theme)
+            }
+
+            Text("Surprise reaches further down each transition's list rather than "
+                 + "flattening it. Freshness discounts the moves everyone makes — "
+                 + "repeats, quick returns, rote V→I. Context is how much history the "
+                 + "walk leans on. Reharm rewrites chords afterwards: subtle keeps the "
+                 + "route and changes how you get there, bold changes the colour too.")
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Diagnosing the model
+
+    /// Offered only once the model has actually failed, and then insistently.
+    ///
+    /// "The model doesn't work any more" is a claim about a path with four
+    /// independent parts, and which part broke can't be read off an error
+    /// message. This asks the model four progressively larger questions and says
+    /// which it can answer, so the answer is evidence rather than a guess.
+    @ViewBuilder
+    private var modelDiagnostics: some View {
+        if lastFailureWasModel || !probes.isEmpty {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                Button {
+                    runDiagnostics()
+                } label: {
+                    findLabel(isProbing ? "Testing…" : "Test the model",
+                              systemImage: "stethoscope",
+                              detail: "four questions, smallest first")
+                }
+                .buttonStyle(.plain)
+                .disabled(isProbing)
+
+                if !probes.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(probes.enumerated()), id: \.offset) { _, probe in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: probe.succeeded ? "checkmark.circle" : "xmark.circle")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(probe.succeeded ? theme.accent : theme.warning)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(probe.name)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(theme.text)
+                                    Text(probe.detail)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(theme.textMuted)
+                                    if !probe.succeeded {
+                                        Text(probe.message)
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(theme.textMuted)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(MelodyGenerator.verdict(for: probes))
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+                    .padding(MelGenMetrics.space2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .fill(theme.raised)
+                    )
+                }
+            }
+        }
+    }
+
+    private func runDiagnostics() {
+        isProbing = true
+        probes = []
+        Task {
+            let progression = try? ChordProgression.parse(liveState.progressionText)
+            probes = await MelodyGenerator.diagnose(progression: progression)
+            isProbing = false
+        }
+    }
+
+    /// A label and a control on one line, which the settings needed and the
+    /// chip pickers didn't provide — a row of unlabelled chips says nothing about
+    /// what it's a row of.
+    private func labelledRow<Content: View>(_ title: String,
+                                            @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: MelGenMetrics.space2) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(theme.text)
+                .frame(width: 80, alignment: .leading)
+            content()
+            Spacer(minLength: 0)
         }
     }
 
@@ -390,19 +505,59 @@ struct MelGenExtensionMainView: View {
                     .frame(maxWidth: 200)
             }
 
+            // Tapping a template *uses* it. That was the question the last
+            // session ended on — "how do I select a specific template?" — and the
+            // answer was "switch to Lock, then tap", which is not an answer. A
+            // list of things you can pick from should pick one when you pick one.
             FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
-                      isSelected: { name in
-                          state.selectedBriefNames.isEmpty || state.selectedBriefNames.contains(name)
-                      },
+                      isSelected: { $0 == state.nextTemplate.name },
                       isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
                       theme: theme) { name in
-                toggleTemplate(name)
+                useTemplate(name)
             }
+
+            Text(state.briefMode == .lock
+                 ? "Pinned. Cycle or Shuffle to move on."
+                 : "Tap one to use it next. Cycle and Shuffle move through whichever are in the rotation.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
 
             Text(state.nextTemplate.summary)
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                showRotationPicker.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: showRotationPicker ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(state.selectedBriefNames.isEmpty
+                         ? "All \(MelGenTemplates.all(for: state.mode).count) in the rotation"
+                         : "\(state.selectedBriefNames.count) in the rotation")
+                        .font(.system(size: 11))
+                }
+                .foregroundStyle(theme.textMuted)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Curating the rotation is a different job from choosing what's next,
+            // and doing both with one control is what made neither discoverable.
+            if showRotationPicker {
+                FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
+                          isSelected: { name in
+                              state.selectedBriefNames.isEmpty
+                                  || state.selectedBriefNames.contains(name)
+                          },
+                          theme: theme) { name in
+                    toggleTemplate(name)
+                }
+                Text("Which templates Cycle and Shuffle draw from.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+            }
         }
     }
 
@@ -477,6 +632,28 @@ struct MelGenExtensionMainView: View {
         guard !state.progressionText.isEmpty, !isGenerating else { return false }
         // Comping needs no model, so it's available whatever the model is doing.
         return state.mode == .comping || generateEnabled
+    }
+
+    /// Makes a template the next one, whatever mode the rotation is in.
+    ///
+    /// Pins it, because "use this one" and "keep using this one" are the same
+    /// wish nine times in ten, and Cycle or Shuffle un-pins it again. Tapping the
+    /// pinned one lets go.
+    private func useTemplate(_ name: String) {
+        commit(reloadKernel: false) { state in
+            if state.briefMode == .lock, state.lockedBriefName == name {
+                state.lockedBriefName = nil
+                state.briefMode = .cycle
+                return
+            }
+            state.lockedBriefName = name
+            state.briefMode = .lock
+            // Anything you pick has to be in the rotation, or letting go of the
+            // pin would skip straight past it.
+            if !state.selectedBriefNames.isEmpty, !state.selectedBriefNames.contains(name) {
+                state.selectedBriefNames.append(name)
+            }
+        }
     }
 
     private func toggleTemplate(_ name: String) {
@@ -566,11 +743,11 @@ struct MelGenExtensionMainView: View {
             bars: current.progressionBars,
             key: current.progressionKey,
             mode: current.progressionMode,
-            // Its own control. Borrowing the melodic temperature meant the
-            // progression got more adventurous only when the *line* was asked to
-            // be, which is two unrelated decisions wired together.
-            temperature: 0.4 + current.progressionAdventure * 2,
-            substitution: current.progressionSubstitution,
+            surprise: Surprise(current.progressionSurprise),
+            freshness: current.progressionFreshness,
+            contextDepth: current.progressionContext,
+            reharm: current.progressionReharm,
+            modulateEvery: current.progressionModulation,
             seed: seed
         ) else {
             statusMessage = "Couldn't generate changes — the corpus tables are missing."
@@ -777,35 +954,6 @@ struct MelGenExtensionMainView: View {
                           progression: try? ChordProgression.parse(state.progressionText),
                           lengthBeats: state.currentTake?.lengthBeats ?? 0,
                           theme: theme)
-
-                Button {
-                    showTextGrid.toggle()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showTextGrid ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
-                        Text(showTextGrid ? "Hide the grid" : "Show it as a grid")
-                            .font(.system(size: 11))
-                    }
-                    .foregroundStyle(theme.textMuted)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                // The text grid stays available: it's the thing that survives
-                // being copied into a note, and it reads a rhythm at a glance in
-                // a way a picture doesn't.
-                if showTextGrid {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(Array(takeBars.enumerated()), id: \.offset) { _, row in
-                                Text(row)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(theme.text)
-                            }
-                        }
-                    }
-                }
 
                 Text(takeSummary)
                     .font(.system(size: 11, design: .monospaced))
@@ -1142,11 +1290,15 @@ struct MelGenExtensionMainView: View {
                     VStack(spacing: 3) {
                         ForEach(variants.prefix(8)) { variant in
                             VariantRow(variant: variant, theme: theme) {
-                                play(variant.pattern, describedAs: variant.transform)
+                                play(variant)
                             } onMorphTarget: {
-                                morphTarget = variant.pattern
-                                morphRhythm = 0.5
-                                morphPitch = 0.5
+                                // Only a line has a degree-relative form to morph
+                                // through; a comp's variants are the morph.
+                                if let pattern = variant.material.patternIfLine {
+                                    morphTarget = pattern
+                                    morphRhythm = 0.5
+                                    morphPitch = 0.5
+                                }
                             }
                         }
                     }
@@ -1212,17 +1364,49 @@ struct MelGenExtensionMainView: View {
         }
     }
 
-    /// Reads the current take back to degrees and mutates it.
+    /// Varies the current take, in whichever way its kind of take can be varied.
     private func exploreVariants() {
         let current = liveState
         guard let take = current.currentTake,
-              let progression = try? ChordProgression.parse(take.progressionText),
-              let pattern = MelodyPatterns.extract(from: take.notes,
+              let progression = try? ChordProgression.parse(take.progressionText) else {
+            statusMessage = "Nothing to vary — load a take first."
+            return
+        }
+
+        // A comp varies as a comp. Reading it back through degree extraction —
+        // which is monophonic by construction — was turning every chord into a
+        // single note before the first transform ran.
+        if take.source == .comping {
+            let figure = CompingFigure.named(
+                take.briefName.components(separatedBy: " · ").first ?? "")
+            let voiced = MelodyComping.variants(of: progression,
+                                                figure: figure,
+                                                seed: take.id.uuidStableSeed)
+            let parentKeys = Set(take.notes.map { "\($0.note):\($0.startBeat)" })
+            variantParent = nil
+            morphTarget = nil
+            variants = voiced.map { entry in
+                let keys = Set(entry.notes.map { "\($0.note):\($0.startBeat)" })
+                let union = parentKeys.union(keys).count
+                return MelodyVariant(
+                    voiced: entry.notes,
+                    name: entry.name,
+                    summary: entry.summary,
+                    transform: entry.name,
+                    novelty: union > 0 ? 1 - Double(parentKeys.intersection(keys).count) / Double(union) : 0,
+                    variety: min(1, Double(MelodyComping.maximumPolyphony(of: entry.notes)) / 5)
+                )
+            }
+            statusMessage = "\(variants.count) ways to comp these changes."
+            return
+        }
+
+        guard let pattern = MelodyPatterns.extract(from: take.notes,
                                                    over: progression,
                                                    name: take.displayName,
                                                    lengthBeats: take.lengthBeats)
         else {
-            statusMessage = "Nothing to vary — load a take first."
+            statusMessage = "That take couldn't be read back as a pattern."
             return
         }
 
@@ -1233,6 +1417,36 @@ struct MelGenExtensionMainView: View {
                                           style: style.isEmpty ? nil : style)
         morphTarget = variants.first?.pattern
         statusMessage = "\(variants.count) variants of \(pattern.name)."
+    }
+
+    /// Plays a variant, whichever kind it is.
+    private func play(_ variant: MelodyVariant) {
+        switch variant.material {
+        case .line(let pattern):
+            play(pattern, describedAs: variant.transform)
+        case .voiced(let notes, let summary):
+            playVoiced(notes, named: variant.name, describedAs: summary)
+        }
+    }
+
+    /// Commits already-realized polyphonic notes as a take.
+    private func playVoiced(_ notes: [SequencedNote], named name: String, describedAs detail: String) {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText),
+              !notes.isEmpty else { return }
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .comping,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+        commit { $0.add(record) }
+        statusMessage = "\(name) — \(detail)."
     }
 
     /// Commits a pattern as a take so it can be heard and judged like any other.
@@ -1823,11 +2037,6 @@ struct MelGenExtensionMainView: View {
         )
     }
 
-    private var takeBars: [String] {
-        MelodyNotation.bars(for: state.renderedMelody,
-                            lengthBeats: state.currentTake?.lengthBeats ?? 0)
-    }
-
     private var takeSummary: String {
         MelodyNotation.summary(for: state.renderedMelody,
                                lengthBeats: state.currentTake?.lengthBeats ?? 0)
@@ -2252,6 +2461,7 @@ struct MelGenExtensionMainView: View {
                 // compose a phrase: the whole point of having sources that need
                 // no model is that the model failing is an inconvenience rather
                 // than a dead end.
+                lastFailureWasModel = true
                 if composeLine() != nil {
                     statusMessage = failure.message + " Composed a phrase instead."
                 } else {

@@ -98,10 +98,46 @@ struct PatternProfile: Hashable, Sendable {
     }
 }
 
+/// What a variant is made of.
+///
+/// Two cases, because a take is one of two things and pretending otherwise cost
+/// a real bug: variants of a comping take were being read back through
+/// `MelodyPatterns.extract`, which is monophonic by construction — one note per
+/// onset — so every chord came out as a single note and the whole point of the
+/// comp was gone before the first transform ran.
+///
+/// A monophonic take varies in degree space, where the transforms live. A
+/// polyphonic one varies as *already-realized notes*, because its content is
+/// voicings and a voicing has no degree-relative representation in this format.
+/// The two need different transforms, and saying so in the type is what stops
+/// the wrong ones being applied.
+enum VariantMaterial: Hashable, Sendable {
+    case line(MelodyPattern)
+    case voiced(notes: [SequencedNote], summary: String)
+
+    var patternIfLine: MelodyPattern? {
+        if case .line(let pattern) = self { return pattern }
+        return nil
+    }
+
+    var summary: String {
+        switch self {
+        case .line(let pattern): return pattern.summary
+        case .voiced(_, let summary): return summary
+        }
+    }
+}
+
 /// One mutation, with the three numbers that decide whether it's worth hearing.
 struct MelodyVariant: Hashable, Sendable, Identifiable {
-    var id: String { pattern.name }
-    var pattern: MelodyPattern
+    var id: String { "\(transform)·\(name)" }
+    var name: String
+    var material: VariantMaterial
+    /// The monophonic pattern, when there is one. Nil for a comping variant.
+    var pattern: MelodyPattern {
+        material.patternIfLine
+            ?? MelodyPattern(name: name, bars: 1, summary: material.summary, notes: [])
+    }
     /// What was done to get here.
     var transform: String
     /// 0 identical to the parent, 1 nothing in common.
@@ -114,6 +150,26 @@ struct MelodyVariant: Hashable, Sendable, Identifiable {
     var summary: String {
         "\(transform) · \(Int(novelty * 100))% new · \(Int(variety * 100))% varied"
             + (styleDistance > 0 ? " · \(Int(styleDistance * 100))% from your style" : "")
+    }
+
+    init(pattern: MelodyPattern, transform: String,
+         novelty: Double, styleDistance: Double, variety: Double) {
+        self.name = pattern.name
+        self.material = .line(pattern)
+        self.transform = transform
+        self.novelty = novelty
+        self.styleDistance = styleDistance
+        self.variety = variety
+    }
+
+    init(voiced notes: [SequencedNote], name: String, summary: String, transform: String,
+         novelty: Double, variety: Double) {
+        self.name = name
+        self.material = .voiced(notes: notes, summary: summary)
+        self.transform = transform
+        self.novelty = novelty
+        self.styleDistance = 0
+        self.variety = variety
     }
 }
 
@@ -231,7 +287,13 @@ enum MelodyVariants {
         for value in values { counts[value, default: 0] += 1 }
         guard counts.count > 1 else { return 0 }
         let total = Double(values.count)
-        let measured = counts.values.reduce(0.0) { partial, count in
+        // Summed in a fixed order. Reducing over a dictionary's values sums in
+        // whatever order that dictionary iterates, which Swift does not promise
+        // is the same twice — and floating-point addition is not associative, so
+        // the same counts produced answers differing in the last bits. Harmless
+        // in a displayed percentage; not harmless in a list that is sorted by it
+        // and expected to come back the same, which is how this was found.
+        let measured = counts.values.sorted().reduce(0.0) { partial, count in
             let probability = Double(count) / total
             return partial - probability * log2(probability)
         }

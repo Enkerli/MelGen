@@ -304,14 +304,17 @@ struct MelGenState: Codable, Sendable {
     var progressionBars: Int = 8
     /// Bumped per generation so the same settings give a new progression.
     var progressionCursor: Int = 0
-    /// How far from the corpus's favourite moves to wander. 0.5 samples the
-    /// counts as they are; higher flattens them toward what the corpus did
-    /// rarely, which is where the interesting changes live.
-    var progressionAdventure: Double = 0.5
-    /// How often a generated chord is rewritten by a substitution — tritone,
-    /// secondary dominant, relative swap, borrowed minor. 0 leaves the walk
-    /// alone.
-    var progressionSubstitution: Double = 0.25
+    /// How far down each transition's ranked list to reach.
+    var progressionSurprise: Double = 0.35
+    /// How hard to avoid the moves everyone makes.
+    var progressionFreshness: Freshness = .fresh
+    /// 1 chord or 2 — the plain first-order walk, or the longer context that
+    /// produces phrasing.
+    var progressionContext: Int = 2
+    /// Which substitutions are in play, and how often.
+    var progressionReharm: Reharm = .subtle
+    /// Change key every N bars. 0 for none.
+    var progressionModulation: Int = 0
 
     /// Which groups of the interface are unfolded.
     var showShape: Bool = true
@@ -376,8 +379,11 @@ struct MelGenState: Codable, Sendable {
         progressionMode = try container.decodeIfPresent(ProgressionMode.self, forKey: .progressionMode) ?? .major
         progressionBars = try container.decodeIfPresent(Int.self, forKey: .progressionBars) ?? 8
         progressionCursor = try container.decodeIfPresent(Int.self, forKey: .progressionCursor) ?? 0
-        progressionAdventure = try container.decodeIfPresent(Double.self, forKey: .progressionAdventure) ?? 0.5
-        progressionSubstitution = try container.decodeIfPresent(Double.self, forKey: .progressionSubstitution) ?? 0.25
+        progressionSurprise = try container.decodeIfPresent(Double.self, forKey: .progressionSurprise) ?? 0.35
+        progressionFreshness = try container.decodeIfPresent(Freshness.self, forKey: .progressionFreshness) ?? .fresh
+        progressionContext = try container.decodeIfPresent(Int.self, forKey: .progressionContext) ?? 2
+        progressionReharm = try container.decodeIfPresent(Reharm.self, forKey: .progressionReharm) ?? .subtle
+        progressionModulation = try container.decodeIfPresent(Int.self, forKey: .progressionModulation) ?? 0
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true

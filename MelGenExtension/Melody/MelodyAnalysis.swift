@@ -159,7 +159,13 @@ enum MelodyAnalyser {
         guard counts.count > 1 else { return 0 }
 
         let total = Double(values.count)
-        let entropy = counts.values.reduce(0.0) { partial, count in
+        // Summed in a fixed order. Reducing over a dictionary's values sums in
+        // whatever order that dictionary iterates, which Swift does not promise
+        // is the same twice — and floating-point addition is not associative, so
+        // the same counts produced answers differing in the last bits. Harmless
+        // in a displayed percentage; not harmless in a list that is sorted by it
+        // and expected to come back the same, which is how this was found.
+        let entropy = counts.values.sorted().reduce(0.0) { partial, count in
             let probability = Double(count) / total
             return partial - probability * log2(probability)
         }

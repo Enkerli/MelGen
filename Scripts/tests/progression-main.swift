@@ -151,17 +151,18 @@ check("the same walk transposes rather than changing",
         == ProgressionGenerator.generate(bars: 8, key: 7, mode: .major, seed: 11)?.labels)
 
 // Temperature.
-func vocabulary(_ temperature: Double) -> Int {
+func vocabulary(_ surprise: Double) -> Int {
     var labels = Set<String>()
     for seed in (1...25).map(UInt64.init) {
         labels.formUnion(ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
-                                                       temperature: temperature,
+                                                       surprise: Surprise(surprise),
+                                                       reharm: .none,
                                                        seed: seed)?.labels ?? [])
     }
     return labels.count
 }
-check("temperature widens the vocabulary", vocabulary(2.5) > vocabulary(0.3),
-      "\(vocabulary(0.3)) cold, \(vocabulary(2.5)) hot")
+check("surprise widens the vocabulary", vocabulary(0.95) > vocabulary(0.0),
+      "\(vocabulary(0.0)) at the top of the list, \(vocabulary(0.95)) further down")
 
 check("without a cadence it may end anywhere",
       (1...20).contains { seed in
@@ -169,6 +170,102 @@ check("without a cadence it may end anywhere",
                                         seed: UInt64(seed))
               .flatMap { ProgressionGenerator.split($0.labels[7])?.numeral } != "I"
       })
+
+// MARK: - The depth controls
+
+print()
+print("── surprise, freshness, context, reharm ───────────")
+
+/// How often a cliché shows up across a run of progressions.
+func clicheRate(_ freshness: Freshness) -> Double {
+    var cliches = 0, moves = 0
+    for seed in (1...40).map(UInt64.init) {
+        guard let generated = ProgressionGenerator.generate(
+            bars: 8, key: 0, mode: .major, surprise: Surprise(0.35),
+            freshness: freshness, reharm: .none, seed: seed) else { continue }
+        for (index, label) in generated.labels.enumerated() where index > 0 {
+            moves += 1
+            if label == generated.labels[index - 1] { cliches += 1 }
+            else if index > 1 && label == generated.labels[index - 2] { cliches += 1 }
+            else if ProgressionGenerator.split(generated.labels[index - 1])?.numeral == "V"
+                && ProgressionGenerator.split(label)?.numeral == "I" { cliches += 1 }
+        }
+    }
+    return moves > 0 ? Double(cliches) / Double(moves) : 0
+}
+
+let faithful = clicheRate(.faithful)
+let fresh = clicheRate(.fresh)
+let bold = clicheRate(.bold)
+check("Fresh avoids more clichés than Faithful", fresh < faithful,
+      "\(Int(faithful * 100))% → \(Int(fresh * 100))%")
+check("and Bold avoids more than Fresh", bold < fresh,
+      "\(Int(fresh * 100))% → \(Int(bold * 100))%")
+check("but none of them bans them outright — a progression of only fresh moves "
+      + "is its own kind of tiresome", bold > 0, "\(Int(bold * 100))% still")
+
+// Surprise is not temperature: it walks down the ranked list rather than
+// flattening, so the second and third choices open before the tail does.
+let ranked = ProgressionGenerator.rank(["a": 100, "b": 50, "c": 10, "d": 1],
+                                       surprise: Surprise(0.6))
+check("surprise keeps the ranking", (ranked["a"] ?? 0) >= (ranked["d"] ?? 0))
+check("and narrows the gap", (ranked["b"] ?? 0) / (ranked["a"] ?? 1)
+        > 50.0 / 100.0, "b/a went from 0.5 to \(((ranked["b"] ?? 0) / (ranked["a"] ?? 1)))")
+check("surprise at zero changes nothing",
+      ProgressionGenerator.rank(["a": 100, "b": 50], surprise: Surprise(0)) == ["a": 100, "b": 50])
+
+// Context depth has to change the walk, or exposing it is theatre.
+var depthOne = Set<String>(), depthTwo = Set<String>()
+for seed in (1...25).map(UInt64.init) {
+    depthOne.insert(ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                                  contextDepth: 1, reharm: .none,
+                                                  seed: seed)?.text ?? "")
+    depthTwo.insert(ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                                  contextDepth: 2, reharm: .none,
+                                                  seed: seed)?.text ?? "")
+}
+check("one chord of context and two give different walks", depthOne != depthTwo)
+
+// Reharm, at both settings, has to actually rewrite something.
+func reharmRate(_ reharm: Reharm) -> Int {
+    var changed = 0
+    for seed in (1...40).map(UInt64.init) {
+        let plain = ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                                  reharm: .none, seed: seed)?.labels
+        let rewritten = ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                                      reharm: reharm, seed: seed)?.labels
+        if plain != rewritten { changed += 1 }
+    }
+    return changed
+}
+check("Subtle rewrites something — a control that does nothing reads as broken",
+      reharmRate(.subtle) > 5, "\(reharmRate(.subtle)) of 40 progressions changed")
+check("and Bold rewrites more", reharmRate(.bold) > reharmRate(.subtle),
+      "\(reharmRate(.subtle)) → \(reharmRate(.bold)) of 40")
+check("None rewrites nothing", reharmRate(.none) == 0)
+
+// The backdoor dominant, which is the one ProgGenie names alongside the tritone.
+check("a backdoor dominant is ♭VII7",
+      ProgressionGenerator.apply(.backdoor, to: ("V", "7"), before: ("I", ""), mode: .major)
+        == "♭VII7")
+check("a tritone sub is a tritone away",
+      ProgressionGenerator.apply(.tritone, to: ("V", "7"), before: nil, mode: .major) == "♭II7")
+
+// Modulation moves the key and keeps everything playable.
+guard let modulated = ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                                    reharm: .none, modulateEvery: 4, seed: 8),
+      let parsedModulated = try? ChordProgression.parse(modulated.text) else {
+    print("  FAIL  modulation generates")
+    exit(1)
+}
+check("modulation still parses", parsedModulated.chords.count == 8)
+check("and it actually leaves the key",
+      Set(parsedModulated.chords.suffix(3).map { $0.symbol.rootPitchClass })
+        != Set(parsedModulated.chords.prefix(3).map { $0.symbol.rootPitchClass }))
+check("not modulating leaves the key alone",
+      ProgressionGenerator.generate(bars: 8, key: 0, mode: .major,
+                                    reharm: .none, modulateEvery: 0, seed: 8)?.text
+        != modulated.text)
 
 // MARK: - Playing over them
 

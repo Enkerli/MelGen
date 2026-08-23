@@ -260,4 +260,79 @@ extension CompingFigure {
     static func named(_ name: String) -> CompingFigure {
         all.first { $0.name == name } ?? .charleston
     }
+
+    /// The same figure with a different voicing under it, or the same voicing
+    /// with a different figure over it. The two axes a comp actually has.
+    func with(style: VoicingStyle) -> CompingFigure {
+        var copy = self
+        copy.style = style
+        // Alternation off when a style is chosen deliberately. `comp` overrides
+        // the style per chord when it's on, so a figure asked for rootless B came
+        // back playing the same A/B alternation as one asked for rootless A —
+        // the choice made no audible difference at all.
+        copy.alternatesInversion = false
+        return copy
+    }
+
+    func with(rhythm: GestureRhythm) -> CompingFigure {
+        var copy = self
+        copy.rhythm = rhythm
+        return copy
+    }
+}
+
+extension MelodyComping {
+
+    /// Variants of a comp, as comps.
+    ///
+    /// A comping take has two axes and they are not the ones a line has: which
+    /// rhythm the chords land on, and how the chords are laid out. So the
+    /// variants are the cross of those, plus the transforms that make sense on
+    /// whole chords — displacing the figure, thinning it, moving the register.
+    /// Nothing here goes through degree extraction, which is what flattened
+    /// comping variants to single notes.
+    static func variants(of progression: ChordProgression,
+                         figure: CompingFigure,
+                         seed: UInt64,
+                         limit: Int = 12) -> [(name: String, summary: String, notes: [SequencedNote])] {
+        var results: [(String, String, [SequencedNote])] = []
+
+        // Same rhythm, every other way of laying the chords out.
+        for style in VoicingStyle.allCases where style != figure.style {
+            let varied = figure.with(style: style)
+            let notes = comp(progression, figure: varied, seed: seed)
+            guard !notes.isEmpty else { continue }
+            results.append(("\(figure.name) · \(style.label)", style.summary, notes))
+        }
+
+        // Same voicing, every other figure's rhythm.
+        for other in CompingFigure.all where other.rhythm != figure.rhythm {
+            let varied = figure.with(rhythm: other.rhythm)
+            let notes = comp(progression, figure: varied, seed: seed)
+            guard !notes.isEmpty else { continue }
+            results.append(("\(other.rhythm.name) · \(figure.style.label)",
+                            "\(figure.style.label) voicings on \(other.name)'s rhythm", notes))
+        }
+
+        // Register: a comp an octave down is a different instrument's part.
+        for (octaves, label) in [(-1, "an octave down"), (1, "an octave up")] {
+            let notes = comp(progression, figure: figure,
+                             centre: ChordVoicings.defaultCentre + 12 * octaves, seed: seed)
+            guard !notes.isEmpty else { continue }
+            results.append(("\(figure.name) \(label)", "the same comp, \(label)", notes))
+        }
+
+        // Sparser and denser, by how often a hit gets the whole voicing.
+        for (share, label) in [(0.15, "sparser"), (1.0, "every hit full")] {
+            var varied = figure
+            varied.fullVoicingShare = share
+            let notes = comp(progression, figure: varied, seed: seed)
+            guard !notes.isEmpty else { continue }
+            results.append(("\(figure.name), \(label)",
+                            share < 0.5 ? "mostly the top two voices" : "the full voicing every time",
+                            notes))
+        }
+
+        return Array(results.prefix(limit))
+    }
 }
