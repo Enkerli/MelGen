@@ -140,7 +140,33 @@ struct PianoRoll: View {
 
             let shape = Path(roundedRect: rect, cornerRadius: min(3, rowHeight / 3))
             context.fill(shape, with: .color(colour(for: note)))
-            context.stroke(shape, with: .color(theme.background.opacity(0.5)), lineWidth: 0.5)
+
+            // Role is carried by the outline as well as the fill, so it survives
+            // without colour: a note to review is hatched, one outside the scale
+            // is dashed. Colour alone is the whole of WCAG 1.4.1, and a roll
+            // that only says "wrong note" in orange says it to some people.
+            let outline = dash(for: note)
+            context.stroke(shape,
+                           with: .color(outline.isEmpty
+                                        ? theme.background.opacity(0.5)
+                                        : theme.text.opacity(0.75)),
+                           style: StrokeStyle(lineWidth: outline.isEmpty ? 0.5 : 1.2,
+                                              dash: outline))
+
+            if needsHatching(note) {
+                // Diagonals across the bar, clipped to it.
+                var hatch = Path()
+                var x = rect.minX - rect.height
+                while x < rect.maxX {
+                    hatch.move(to: CGPoint(x: x, y: rect.maxY))
+                    hatch.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+                    x += 3
+                }
+                context.drawLayer { layer in
+                    layer.clip(to: shape)
+                    layer.stroke(hatch, with: .color(theme.background.opacity(0.85)), lineWidth: 1)
+                }
+            }
 
             // Velocity as opacity would fight the role colours, so it's a cap on
             // the bar instead: a quiet note is a thinner bar, which reads at a
@@ -150,6 +176,21 @@ struct PianoRoll: View {
                              width: rect.width, height: velocityHeight)
             context.fill(Path(cap), with: .color(theme.text.opacity(0.25)))
         }
+    }
+
+    /// The outline for a note's role — empty for the two that need none.
+    private func dash(for note: SequencedNote) -> [CGFloat] {
+        guard let progression else { return [] }
+        switch MelodyAnalyser.role(of: note, in: progression) {
+        case .avoid: return [2, 2]
+        case .offScale: return [4, 3]
+        default: return []
+        }
+    }
+
+    private func needsHatching(_ note: SequencedNote) -> Bool {
+        guard let progression else { return false }
+        return MelodyAnalyser.role(of: note, in: progression) == .avoid
     }
 
     /// The role colours, from the same classification that scores a take.

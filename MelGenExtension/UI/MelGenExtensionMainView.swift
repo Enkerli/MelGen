@@ -75,7 +75,16 @@ struct MelGenExtensionMainView: View {
     /// right there. Cleared by a successful probe.
     @State private var modelIsDown = false
     @State private var showRotationPicker = false
-    @State private var showDrift = false
+    @State private var showDrift = true
+    /// Which loop is showing. Not session state: it's about what you're doing
+    /// right now, not what the document is.
+    @State private var panelTab: PanelTab = .play
+    @State private var source: MaterialSource = .composed
+    @State private var showTemplates = false
+    @State private var showTexture = false
+    @State private var showPlayMore = false
+    @State private var showDecideMore = false
+    @State private var showNoteTable = false
     /// The last template the model wrote, and what the gate made of it.
     @State private var authored: TemplateCharacter?
     @State private var authoredVerdict: TemplateVerdict?
@@ -121,39 +130,17 @@ struct MelGenExtensionMainView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
                 header
-                progressionSection
 
-                // Directly under the control that produces it: at the bottom of
-                // the view it sat hundreds of points from the Generate button and
-                // went unread.
-                if let statusMessage {
-                    Text(statusMessage)
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
+                // The status message is the take's caption now, not a floating
+                // line — except while the model is down, where it's about the
+                // whole panel rather than about a take.
                 if modelIsDown { modelDownBanner }
                 modelDiagnostics
 
-                nextTakeSection
-                instantSection
-                transportSection
-                shapeSection
-                lineLibrarySection
-                feelSection
-                driftSection
-
-                if state.currentTake != nil {
-                    currentTakeSection
+                switch panelTab {
+                case .play: playTab
+                case .decide: decideTab
                 }
-
-                captureSection
-                curationSection
-                if state.currentTake != nil {
-                    variantsSection
-                }
-                historySection
             }
             .padding(MelGenMetrics.space4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,16 +174,137 @@ struct MelGenExtensionMainView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("MelGen")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(theme.text)
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("MelGen")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(theme.text)
 
-            Spacer(minLength: MelGenMetrics.space2)
+                Spacer(minLength: MelGenMetrics.space2)
 
-            appearancePicker
+                appearancePicker
+            }
+
+            // Rule one: two loops, two tabs. Playing and judging were
+            // interleaved down one column of sixteen sections.
+            PanelTabBar(tab: $panelTab,
+                        waiting: state.reviewProgress.total - state.reviewProgress.answered,
+                        theme: theme)
         }
     }
+
+    // MARK: - Play
+
+    /// Everything you do while something is sounding.
+    private var playTab: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
+            progressionSection
+
+            if state.currentTake != nil {
+                currentTakeSection
+            }
+            autoRow
+
+            nextTakeSection
+            textureSection
+            driftSection
+
+            MoreRow(summary: "More: stored lines (\(PatternStore.library.count)) · "
+                           + "listen to what I play · write a template · export",
+                    isExpanded: $showPlayMore,
+                    theme: theme)
+            if showPlayMore {
+                VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                    lineLibrarySection
+                    captureSection
+                    authorRow
+                    exportButton
+                }
+            }
+        }
+    }
+
+    // MARK: - Decide
+
+    /// Everything you do while deciding what to keep.
+    private var decideTab: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            curationSection
+
+            if state.currentTake != nil {
+                variantsSection
+            }
+
+            MoreRow(summary: "More: history (\(state.history.count)) · export history",
+                    isExpanded: $showDecideMore,
+                    theme: theme)
+            if showDecideMore {
+                historySection
+            }
+        }
+    }
+
+    // MARK: - Texture
+
+    /// Shape and Feel, merged.
+    ///
+    /// They were two sections whose only real difference was *when* they take
+    /// effect — one waits for the next take, the other re-renders what is
+    /// playing. That's a sentence, not a section boundary, so it's two labelled
+    /// groups under one heading.
+    private var textureSection: some View {
+        CollapsibleSection(title: "Texture",
+                           summary: textureSummary,
+                           isExpanded: $showTexture,
+                           theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                WhenGroup(legend: "Takes effect on the next take", theme: theme) {
+                    VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                        LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
+                                       value: binding(\.expression.density), theme: theme,
+                                       format: { "\(MelodyExpression.notesPerBar(forDensity: $0))/bar" })
+                        LabelledSlider(title: "Temperature", lowLabel: "expected",
+                                       highLabel: "surprising",
+                                       value: binding(\.temperature, reloadKernel: false), theme: theme)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Note duration")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(theme.text)
+                            ChipPicker(options: DurationPalette.allCases.map { ($0, $0.label) },
+                                       selection: binding(\.durationPalette, reloadKernel: false),
+                                       theme: theme)
+                        }
+                    }
+                }
+
+                WhenGroup(legend: "Re-renders what is playing now", theme: theme) {
+                    VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                        LabelledSlider(title: "Expression", lowLabel: "even", highLabel: "shaped",
+                                       value: binding(\.expression.amount), theme: theme)
+                        LabelledSlider(title: "Gate length", lowLabel: "staccato",
+                                       highLabel: "legato",
+                                       value: binding(\.expression.noteLength), theme: theme)
+                        LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
+                                       value: binding(\.expression.swing), theme: theme)
+                    }
+                }
+            }
+        }
+    }
+
+    private var textureSummary: String {
+        "\(MelodyExpression.notesPerBar(forDensity: state.expression.density))/bar · "
+        + "\(state.durationPalette.label.lowercased()) · "
+        + (state.expression.swing < 0.05 ? "straight" : "swung")
+    }
+
 
     /// Labelled chips where there's room; icons alone in a narrow plug-in window,
     /// where the labels would otherwise push the title off screen. Both keep the
@@ -481,6 +589,21 @@ struct MelGenExtensionMainView: View {
         )
     }
 
+    /// How much the chain can be trusted, in words.
+    private func chainConfidence(_ share: Double) -> String {
+        let howOften: String
+        switch share {
+        case ..<0.1: howOften = "almost never"
+        case ..<0.3: howOften = "about a fifth of the time"
+        case ..<0.45: howOften = "about a third of the time"
+        case ..<0.6: howOften = "about half the time"
+        case ..<0.8: howOften = "most of the time"
+        default: howOften = "nearly always"
+        }
+        return "It can predict two notes ahead \(howOften) — "
+             + (share < 0.3 ? "not enough material yet." : "enough to be worth drawing from.")
+    }
+
     private func runDiagnostics() {
         isProbing = true
         probes = []
@@ -526,7 +649,7 @@ struct MelGenExtensionMainView: View {
 
             HStack(spacing: MelGenMetrics.space2) {
                 ChipPicker(options: PlayMode.allCases.map { ($0, $0.label) },
-                           selection: binding(\.mode, reloadKernel: false),
+                           selection: modeBinding,
                            theme: theme)
                     .frame(maxWidth: 200)
                 Text(state.mode.explanation)
@@ -535,98 +658,164 @@ struct MelGenExtensionMainView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: MelGenMetrics.space2) {
-                Button {
-                    nextTake()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isGenerating {
-                            ProgressView().controlSize(.small).tint(theme.accentText)
-                        } else {
-                            Image(systemName: state.mode == .line ? "wand.and.stars" : "pianokeys")
-                                .font(.system(size: 14, weight: .semibold))
+            // Rule three: one filled action, and it always names what it will do.
+            PrimaryAction(title: source.verb(mode: state.mode),
+                          subtitle: actionSubtitle,
+                          systemImage: source.symbolName,
+                          isWorking: isGenerating,
+                          isEnabled: sourceIsAvailable(source),
+                          theme: theme) {
+                run(source)
+            }
+
+            // Rule two: cost is the axis. Every source says whose vocabulary it
+            // is and whether it answers now or in about 1.8 seconds a note.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Where the material comes from")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                VStack(spacing: 4) {
+                    ForEach(MaterialSource.all(for: state.mode)) { candidate in
+                        SourceRow(source: candidate,
+                                  isSelected: candidate == source,
+                                  isAvailable: sourceIsAvailable(candidate),
+                                  theme: theme) {
+                            source = candidate
                         }
-                        Text(nextTakeLabel)
-                            .font(.system(size: 14, weight: .semibold))
                     }
-                    .padding(.horizontal, MelGenMetrics.space3)
-                    .frame(height: MelGenMetrics.controlHeight)
-                    .foregroundStyle(nextTakeEnabled ? theme.accentText : theme.textDisabled)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(nextTakeEnabled ? theme.accent : theme.sunken)
-                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(!nextTakeEnabled)
-
-                Text(state.nextTemplate.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.text)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
-                           selection: binding(\.briefMode, reloadKernel: false),
-                           theme: theme)
-                    .frame(maxWidth: 200)
             }
 
-            // Tapping a template *uses* it. That was the question the last
-            // session ended on — "how do I select a specific template?" — and the
-            // answer was "switch to Lock, then tap", which is not an answer. A
-            // list of things you can pick from should pick one when you pick one.
-            FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
-                      isSelected: { $0 == state.nextTemplate.name },
-                      isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
-                      theme: theme) { name in
-                useTemplate(name)
+            templateRow
+        }
+    }
+
+    /// What the action will produce, under its own name.
+    private var actionSubtitle: String {
+        switch source {
+        case .model, .composed:
+            return "\(state.nextTemplate.name)\(modelIsDown && source == .model ? " · model unavailable" : "")"
+        case .stored:
+            return state.nextLine(from: PatternStore.library).name
+        case .learned:
+            return "\(state.learnedDraw.label.lowercased()) · \(state.curatedTakes.count) kept"
+        case .played:
+            return isListening ? "listening" : "listening is off"
+        case .comp:
+            return state.nextTemplate.name
+        }
+    }
+
+    private func sourceIsAvailable(_ candidate: MaterialSource) -> Bool {
+        guard !state.progressionText.isEmpty else { return false }
+        switch candidate {
+        case .learned: return state.curatedTakes.count >= 3
+        default: return true
+        }
+    }
+
+    /// Runs whichever source is chosen. The one place that knows the mapping.
+    private func run(_ candidate: MaterialSource) {
+        switch candidate {
+        case .model:
+            // With the framework down this composes, and the button already
+            // says so rather than promising something it can't do.
+            if modelIsDown { composeLine() } else { nextTake() }
+        case .stored: adaptStoredLine()
+        case .composed: composeLine()
+        case .learned: sampleLearnedStyle()
+        case .played: isListening.toggle()
+        case .comp: compChanges()
+        }
+    }
+
+    /// Switching mode switches the source with it, since half of them can't
+    /// produce what the other mode asks for.
+    private var modeBinding: Binding<PlayMode> {
+        Binding(
+            get: { state.mode },
+            set: { newMode in
+                commit(reloadKernel: false) { $0.mode = newMode }
+                if !MaterialSource.all(for: newMode).contains(source) {
+                    source = MaterialSource.first(for: newMode)
+                }
             }
+        )
+    }
 
-            Text(state.briefMode == .lock
-                 ? "Pinned. Cycle or Shuffle to move on."
-                 : "Tap one to use it next. Cycle and Shuffle move through whichever are in the rotation.")
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
-
-            Text(state.nextTemplate.summary)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            authorRow
-
+    /// The template, behind a one-line disclosure — set once a session rather
+    /// than once a take.
+    private var templateRow: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             Button {
-                showRotationPicker.toggle()
+                showTemplates.toggle()
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: showRotationPicker ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                    Text(state.selectedBriefNames.isEmpty
-                         ? "All \(MelGenTemplates.all(for: state.mode).count) in the rotation"
-                         : "\(state.selectedBriefNames.count) in the rotation")
-                        .font(.system(size: 11))
+                HStack(spacing: 6) {
+                    Image(systemName: showTemplates ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Template · \(state.nextTemplate.name) · "
+                         + (state.briefMode == .lock
+                            ? "pinned"
+                            : "\(state.briefMode.label.lowercased()) through "
+                              + "\(MelGenTemplates.all(for: state.mode).count)"))
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .foregroundStyle(theme.textMuted)
+                .foregroundStyle(theme.textSecondary)
+                .frame(minHeight: MelGenMetrics.controlHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // Curating the rotation is a different job from choosing what's next,
-            // and doing both with one control is what made neither discoverable.
-            if showRotationPicker {
+            if showTemplates {
                 FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
-                          isSelected: { name in
-                              state.selectedBriefNames.isEmpty
-                                  || state.selectedBriefNames.contains(name)
-                          },
+                          isSelected: { $0 == state.nextTemplate.name },
+                          isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
                           theme: theme) { name in
-                    toggleTemplate(name)
+                    useTemplate(name)
                 }
-                Text("Which templates Cycle and Shuffle draw from.")
+
+                HStack(spacing: MelGenMetrics.space2) {
+                    ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
+                               selection: binding(\.briefMode, reloadKernel: false),
+                               theme: theme)
+                        .frame(maxWidth: 220)
+                    Spacer(minLength: 0)
+                }
+
+                Text(state.nextTemplate.summary)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    showRotationPicker.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showRotationPicker ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(state.selectedBriefNames.isEmpty
+                             ? "All \(MelGenTemplates.all(for: state.mode).count) in the rotation"
+                             : "\(state.selectedBriefNames.count) in the rotation")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(theme.textMuted)
+                    .frame(minHeight: MelGenMetrics.smallControlHeight)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if showRotationPicker {
+                    FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
+                              isSelected: { name in
+                                  state.selectedBriefNames.isEmpty
+                                      || state.selectedBriefNames.contains(name)
+                              },
+                              theme: theme) { name in
+                        toggleTemplate(name)
+                    }
+                }
             }
         }
     }
@@ -978,67 +1167,6 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Instant sources
 
-    /// Everything that answers immediately, gathered and labelled as such.
-    ///
-    /// They were spread down the view as differently-shaped buttons with no
-    /// indication that they had anything in common. What they have in common is
-    /// the only thing worth knowing about them: none of them waits for a model.
-    private var instantSection: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            Eyebrow(text: "Instant · no model", theme: theme)
-
-            HStack(spacing: MelGenMetrics.space2) {
-                // In Chords mode these have to comp. They produced lines
-                // whatever the mode said, which made "Chords" look like a
-                // setting that only the Generate button honoured.
-                if state.mode == .comping {
-                    Button { compChanges() } label: {
-                        findLabel("Comp these changes", systemImage: "pianokeys",
-                                  detail: state.nextTemplate.name)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state.progressionText.isEmpty)
-
-                    Button { compEveryFigure() } label: {
-                        findLabel("Try every figure", systemImage: "square.grid.2x2",
-                                  detail: "\(CompingFigure.all.count) at once")
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state.progressionText.isEmpty)
-                } else {
-                    Button { adaptStoredLine() } label: {
-                        findLabel("Stored line", systemImage: "bolt.fill",
-                                  detail: state.nextLine(from: PatternStore.library).name)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state.progressionText.isEmpty)
-
-                    Button { composeLine() } label: {
-                        findLabel("Compose", systemImage: "wand.and.stars", detail: "new every time")
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state.progressionText.isEmpty)
-                }
-            }
-
-            HStack(spacing: MelGenMetrics.space2) {
-                Button { playBestFittingLine() } label: {
-                    findLabel("Fits these changes", systemImage: "target")
-                }
-                .buttonStyle(.plain)
-                .disabled(state.progressionText.isEmpty)
-
-                Button { surpriseMe() } label: {
-                    findLabel("Surprise me", systemImage: "dice")
-                }
-                .buttonStyle(.plain)
-                .disabled(state.progressionText.isEmpty)
-            }
-
-            sampleStyleButton
-        }
-    }
-
     private var generateEnabled: Bool {
         !isGenerating && !state.progressionText.isEmpty
     }
@@ -1073,65 +1201,48 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Transport
 
-    private var transportSection: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            HStack {
-                Eyebrow(text: "Transport", theme: theme)
-                Spacer(minLength: 0)
-                Text(directionName)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(theme.textMuted)
+    /// Direction, as a radio group of three.
+    private var directionGroup: some View {
+        HStack(spacing: 4) {
+            DirectionButton(direction: .backward, label: "Backward",
+                            isSelected: direction == MelGenPlaybackDirection.backward.rawValue,
+                            theme: theme) {
+                setDirection(.backward)
             }
+            DirectionButton(direction: .pingPong, label: "Ping-pong",
+                            isSelected: direction == MelGenPlaybackDirection.pingPong.rawValue,
+                            theme: theme) {
+                setDirection(.pingPong)
+            }
+            DirectionButton(direction: .forward, label: "Forward",
+                            isSelected: direction == MelGenPlaybackDirection.forward.rawValue,
+                            theme: theme) {
+                setDirection(.forward)
+            }
+        }
+        // Capped: a small arrow centred in a 400pt button looks broken in a wide
+        // plug-in window.
+        .frame(maxWidth: 200)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playback direction")
+    }
 
+    /// How often Auto swaps a take in. Only shown when Auto is on, because it
+    /// affects nothing else.
+    @ViewBuilder
+    private var autoRow: some View {
+        if state.autoRegenerate {
             HStack(spacing: MelGenMetrics.space2) {
-                playButton
-
-                HStack(spacing: 4) {
-                    DirectionButton(direction: .backward, label: "Backward",
-                                    isSelected: direction == MelGenPlaybackDirection.backward.rawValue,
-                                    theme: theme) {
-                        setDirection(.backward)
-                    }
-                    DirectionButton(direction: .pingPong, label: "Ping-pong",
-                                    isSelected: direction == MelGenPlaybackDirection.pingPong.rawValue,
-                                    theme: theme) {
-                        setDirection(.pingPong)
-                    }
-                    DirectionButton(direction: .forward, label: "Forward",
-                                    isSelected: direction == MelGenPlaybackDirection.forward.rawValue,
-                                    theme: theme) {
-                        setDirection(.forward)
-                    }
-                }
-                // Capped: a small arrow centred in a 400pt button looks broken in
-                // a wide plug-in window.
-                .frame(maxWidth: 240)
-
+                Text("New take every")
+                    .font(.system(size: 13))
+                    .foregroundStyle(theme.text)
+                ChipPicker(
+                    options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
+                    selection: binding(\.regenerateEveryPasses, reloadKernel: false),
+                    theme: theme
+                )
+                .frame(maxWidth: 320)
                 Spacer(minLength: 0)
-            }
-
-            HStack(spacing: MelGenMetrics.space2) {
-                ToggleChip(title: "Host sync", systemImage: "metronome",
-                           isOn: hostSyncBinding, theme: theme)
-                ToggleChip(title: "Auto", systemImage: "arrow.trianglehead.2.clockwise",
-                           isOn: binding(\.autoRegenerate, reloadKernel: false), theme: theme)
-                Spacer(minLength: 0)
-            }
-
-            // Sits with Auto, which is the only thing it affects.
-            if state.autoRegenerate {
-                HStack(spacing: MelGenMetrics.space2) {
-                    Text("New take every")
-                        .font(.system(size: 13))
-                        .foregroundStyle(theme.text)
-                    ChipPicker(
-                        options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
-                        selection: binding(\.regenerateEveryPasses, reloadKernel: false),
-                        theme: theme
-                    )
-                    .frame(maxWidth: 320)
-                    Spacer(minLength: 0)
-                }
             }
         }
     }
@@ -1169,86 +1280,7 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Shape (applies to the next take)
 
-    /// Controls the model acts on. Grouped separately from Feel because these
-    /// only take effect when something is generated, and that distinction is the
-    /// one thing worth knowing before touching a control here.
-    private var shapeSection: some View {
-        CollapsibleSection(title: "Shape · next take",
-                           summary: shapeSummary,
-                           isExpanded: binding(\.showShape, reloadKernel: false),
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
-                               value: binding(\.expression.density), theme: theme,
-                               format: { "\(MelodyExpression.notesPerBar(forDensity: $0))/bar" })
-
-                LabelledSlider(title: "Temperature", lowLabel: "expected", highLabel: "surprising",
-                               value: binding(\.temperature, reloadKernel: false), theme: theme)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Note duration")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(theme.text)
-                    ChipPicker(
-                        options: DurationPalette.allCases.map { ($0, $0.label) },
-                        selection: binding(\.durationPalette, reloadKernel: false),
-                        theme: theme
-                    )
-                    Text("The written rhythm. Gate length, under Feel, is separate.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                }
-            }
-        }
-    }
-
-    private var shapeSummary: String {
-        "\(MelodyExpression.notesPerBar(forDensity: state.expression.density))/bar · "
-        + state.durationPalette.label.lowercased()
-    }
-
     // MARK: - Feel (applies to the take already loaded)
-
-    /// Controls that re-render the current take immediately, since they are
-    /// post-processing over its stored notes rather than part of generation.
-    private var feelSection: some View {
-        CollapsibleSection(title: "Feel · live",
-                           summary: feelSummary,
-                           isExpanded: binding(\.showFeel, reloadKernel: false),
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                // The three sliders own three separate things, which isn't
-                // obvious from their names alone.
-                Text("Three separate things: Gate is note length, Expression is "
-                     + "velocity and timing, Swing shifts offbeats.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    LabelledSlider(title: "Gate length", lowLabel: "staccato", highLabel: "legato",
-                                   value: binding(\.expression.noteLength), theme: theme)
-                    Text("Shaped per note: steps connect, leaps and repeats detach. "
-                         + "Rests are never filled in. See the gate range under Current take.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                LabelledSlider(title: "Expression", lowLabel: "flat", highLabel: "shaped",
-                               value: binding(\.expression.amount), theme: theme)
-
-                LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
-                               value: binding(\.expression.swing), theme: theme)
-            }
-        }
-    }
-
-    private var feelSummary: String {
-        let gate = state.expression.noteLength
-        let name = gate < 0.45 ? "staccato" : (gate > 0.55 ? "legato" : "as written")
-        return "gate \(name) · swing \(state.expression.swing.formatted(.number.precision(.fractionLength(2))))"
-    }
 
     // MARK: - Drift
 
@@ -1352,67 +1384,188 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Current take
 
+    /// The take: what you hear, what it looks like, and the controls that move it.
+    ///
+    /// The transport sits on the roll's edge rather than in a section of its
+    /// own, so what you hear and what you see never scroll apart — which they
+    /// did, by about a screen. The status message becomes the take's caption
+    /// instead of floating above everything, and it announces politely, so a new
+    /// take is spoken rather than silently replacing the old one.
     private var currentTakeSection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            Eyebrow(text: "Current take", theme: theme)
+            transportStrip
 
-            VStack(alignment: .leading, spacing: 4) {
-                // The roll first, because it shows what the grid can't: gate
-                // length below an eighth, and two voices at once.
+            if let changes = try? ChordProgression.parse(state.progressionText) {
                 PianoRoll(notes: state.renderedMelody,
-                          progression: try? ChordProgression.parse(state.progressionText),
+                          progression: changes,
                           lengthBeats: state.currentTake?.lengthBeats ?? 0,
                           theme: theme)
+            }
 
+            rollKey
+            takeCaption
+
+            if let take = state.currentTake {
+                DisclosureGroup(isExpanded: $showNoteTable) {
+                    noteTable(for: take)
+                } label: {
+                    Text("Read the take as text")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .frame(minHeight: MelGenMetrics.smallControlHeight)
+                }
+                .accessibilityHint("A table of every note with its chord and its role")
+
+                curationControls(for: take)
+            }
+        }
+    }
+
+    /// Transport, on the roll's edge.
+    private var transportStrip: some View {
+        HStack(spacing: MelGenMetrics.space2) {
+            playButton
+            directionGroup
+            Spacer(minLength: 0)
+            ToggleChip(title: "Host sync", systemImage: "metronome",
+                       isOn: hostSyncBinding, theme: theme)
+            ToggleChip(title: "Auto", systemImage: "arrow.trianglehead.2.clockwise",
+                       isOn: binding(\.autoRegenerate, reloadKernel: false), theme: theme)
+        }
+    }
+
+    /// What the colours in the roll mean.
+    ///
+    /// Role is also carried by the note's outline — solid, hatched, dashed — so
+    /// it survives without colour, which is the point of having a key at all.
+    private var rollKey: some View {
+        HStack(spacing: MelGenMetrics.space3) {
+            ForEach(rollKeyEntries, id: \.label) { entry in
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(entry.colour)
+                        .frame(width: 14, height: 9)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .strokeBorder(theme.text.opacity(0.55),
+                                              style: StrokeStyle(lineWidth: 1, dash: entry.dash))
+                        )
+                    Text(entry.label)
+                        .font(.system(size: 10))
+                        .foregroundStyle(theme.textMuted)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Colour key: "
+                            + rollKeyEntries.map(\.label).joined(separator: ", "))
+    }
+
+    private var rollKeyEntries: [(label: String, colour: Color, dash: [CGFloat])] {
+        [("chord tone", theme.accent, []),
+         ("colour note", theme.accent.opacity(0.62), []),
+         ("to review", theme.warning, [2, 2]),
+         ("off scale", theme.text.opacity(0.55), [4, 3])]
+    }
+
+    /// The take's own caption, which announces.
+    private var takeCaption: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let take = state.currentTake {
+                HStack(spacing: 6) {
+                    Text(take.displayName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .lineLimit(1)
+                    Text(captionDetail(for: take))
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .lineLimit(1)
+                }
                 Text(takeSummary)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(theme.textMuted)
-
-                if let analysis = state.currentTake?.analysis {
+                if let analysis = take.analysis {
                     Text(analysis.summary)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(theme.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(MelGenMetrics.space2)
-            .background(
-                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                    .fill(theme.raised)
-            )
-
-            if let take = state.currentTake {
-                curationControls(for: take)
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(MelGenMetrics.space2)
+        .background(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .fill(theme.raised)
+        )
+        // Polite, so a new take is spoken rather than silently swapped in.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
+    }
 
-            if let take = state.currentTake {
-                let saved = savedExampleIDs.contains(take.id)
-                Button {
-                    PatternLibrary.addUserExample(progression: take.progressionText, notes: take.notes)
-                    savedExampleIDs.insert(take.id)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: saved ? "checkmark" : "square.and.arrow.down")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(saved ? "Saved as example" : "Save as example")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .padding(.horizontal, MelGenMetrics.space3)
-                    .frame(height: MelGenMetrics.controlHeight)
-                    .foregroundStyle(saved ? theme.textMuted : theme.text)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(theme.raised)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .strokeBorder(theme.borderStrong, lineWidth: 1.5)
-                    )
+    private func captionDetail(for take: GenerationRecord) -> String {
+        var parts = ["from the \(take.source.label)"]
+        if take.generationSeconds > 0 {
+            parts.append("took \(take.generationSeconds.formatted(.number.precision(.fractionLength(1))))s")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The roll, as a table.
+    ///
+    /// Not a fallback — the roll is a picture and a picture of sixteen notes is
+    /// not readable by everyone, nor copyable into a note. Same information,
+    /// same order, role included.
+    private func noteTable(for take: GenerationRecord) -> some View {
+        let progression = try? ChordProgression.parse(take.progressionText)
+        let notes = state.renderedMelody.sorted { $0.startBeat < $1.startBeat }
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Text("Beat").frame(width: 44, alignment: .leading)
+                Text("Note").frame(width: 44, alignment: .leading)
+                Text("Length").frame(width: 52, alignment: .leading)
+                Text("Chord").frame(width: 60, alignment: .leading)
+                Text("Role")
+            }
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundStyle(theme.textSecondary)
+
+            ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                let chord = progression?.chord(at: note.startBeat)
+                let role = progression.map { MelodyAnalyser.role(of: note, in: $0) }
+                HStack(spacing: MelGenMetrics.space2) {
+                    Text(note.startBeat.formatted(.number.precision(.fractionLength(1))))
+                        .frame(width: 44, alignment: .leading)
+                    Text(ChordProgression.noteName(forMIDINote: Int(note.note)))
+                        .frame(width: 44, alignment: .leading)
+                    Text(note.durationBeats.formatted(.number.precision(.fractionLength(1))))
+                        .frame(width: 52, alignment: .leading)
+                    Text(chord?.symbol.text ?? "—")
+                        .frame(width: 60, alignment: .leading)
+                    Text(roleName(role))
                 }
-                .buttonStyle(.plain)
-                .disabled(saved)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(theme.textMuted)
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func roleName(_ role: HarmonicRole?) -> String {
+        switch role {
+        case .chordTone: return "chord tone"
+        case .colour: return "colour"
+        case .avoid: return "to review"
+        case .offScale: return "off scale"
+        case nil: return "—"
         }
     }
 
@@ -2200,10 +2353,13 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(theme.textSecondary)
                     // The number that says whether there's enough material for
-                    // the long context to mean anything. Low is not a bug.
-                    Text("order-2 usable: \(Int(chain.trustedShare * 100))%")
-                        .font(.system(size: 10, design: .monospaced))
+                    // the long context to mean anything. Low is not a bug — and
+                    // "order-2 usable: 34%" is a fact about the implementation
+                    // rather than about the music, so it says what it means.
+                    Text(chainConfidence(chain.trustedShare))
+                        .font(.system(size: 10))
                         .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

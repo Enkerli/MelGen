@@ -85,6 +85,11 @@ struct MelGenTheme: Equatable {
 /// on an iPad is a touch target, never a pointer one.
 enum MelGenMetrics {
     /// Minimum touch target per WCAG 2.5.5 / the suite's coarse-pointer token.
+    ///
+    /// Every *interactive* thing uses this. `smallControlHeight` is for rows
+    /// that aren't targets — a disclosure label's own height, a spacer — and
+    /// reaching for it on a control is how chips ended up at 34pt in a design
+    /// whose own token said 44.
     static let controlHeight: CGFloat = 44
     static let smallControlHeight: CGFloat = 34
 
@@ -248,7 +253,11 @@ struct ChipPicker<Value: Hashable>: View {
                         .minimumScaleFactor(0.85)
                         .padding(.horizontal, MelGenMetrics.space2)
                         .frame(maxWidth: .infinity)
-                        .frame(height: MelGenMetrics.smallControlHeight)
+                        // The theme's own touch-target token, not a smaller one.
+                        // Segmented rows were at 34pt, which is under WCAG
+                        // 2.5.5's floor and under the size the rest of this
+                        // interface already meets.
+                        .frame(height: MelGenMetrics.controlHeight)
                         .foregroundStyle(isSelected ? theme.accentText : theme.text)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
@@ -333,7 +342,7 @@ struct FlowChips: View {
                     }
                     .lineLimit(1)
                     .padding(.horizontal, MelGenMetrics.space2)
-                    .frame(height: MelGenMetrics.smallControlHeight)
+                    .frame(height: MelGenMetrics.controlHeight)
                     .foregroundStyle(selected ? theme.accentText : theme.textSecondary)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
