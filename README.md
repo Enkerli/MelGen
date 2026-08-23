@@ -24,7 +24,11 @@ or locked to the host's playhead.
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
 | **Style briefs** | Nine rotating rhythmic/contour briefs so successive takes actually differ |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
-| **Take history** | The last 24 takes, logged with their brief and settings; tap to reload one |
+| **Take history** | The last 24 unjudged takes, logged with their brief, settings and measurements; tap to reload one |
+| **Curation** | One tap per take — keep, tweak, try again, right elsewhere, partly, later, skip — in passes, so the same take can be answered differently next time |
+| **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
+| **Lines from takes** | Keep a take as a degree-relative line and it plays over any changes, instantly, with no model |
+| **Learned style** | What you kept, measured, and shown in the words the model is given |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Themes** | Light (default) and Dark, MelGen's own setting rather than the host's |
@@ -35,7 +39,7 @@ or locked to the host's playhead.
 
 | Requirement | Version |
 |---|---|
-| Xcode | 26 or later |
+| Xcode | 26 or later — **27 to open the project file**, which is format 110 |
 | iOS / macOS deployment target | 26.0+ |
 | Apple Intelligence | Enabled, with a supported system language |
 
@@ -77,6 +81,8 @@ Scripts/verify.sh chords     # one suite
 |---|---|
 | `chords` | Every chord symbol's quality, scale, tensions and avoid notes against Music Suite's TypeScript, plus a drift check on the generated dictionary |
 | `state` | Session-state round-trip, and the expression / density / note-length passes |
+| `extraction` | Takes read back as degree-relative lines, round-tripped by replaying, plus the fit report |
+| `curation` | Dispositions, passes, eviction, facets, the tag vocabulary, the rotation, and what gets learned |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 
@@ -144,10 +150,11 @@ the vocabulary in music-suite and regenerate.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned work — selectable templates, polyphonic
-comping, styles learned from MIDI input, MIDI export with embedded chord
-information, applying a pattern to a different progression, and the pattern
-library that ties those together.
+See [ROADMAP.md](ROADMAP.md) for planned work — generating from the learned
+distributions, mutation and morphing, polyphonic comping, MIDI export with
+embedded chord information, and the library that ties those together.
+[TRAINING.md](TRAINING.md) works out what "learning from your material" can
+actually mean on device, and what it can't.
 
 ---
 
