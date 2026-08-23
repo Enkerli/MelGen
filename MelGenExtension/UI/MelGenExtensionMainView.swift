@@ -308,37 +308,48 @@ struct MelGenExtensionMainView: View {
 
     @ViewBuilder
     private var sampleStyleButton: some View {
-        let model = MelodyStyleModel.learn(from: state.curatedTakes)
-        let ready = !model.isEmpty && model.takes >= 3
-        Button {
-            sampleLearnedStyle()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Sample your style")
-                    .font(.system(size: 13, weight: .medium))
-                Text(ready
-                     ? "from \(model.takes) kept takes"
-                     : "keep three takes first")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .lineLimit(1)
+        let kept = state.curatedTakes.count
+        let ready = kept >= 3
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Button {
+                    sampleLearnedStyle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Draw from your style")
+                            .font(.system(size: 13, weight: .medium))
+                        Text(ready ? "from \(kept) kept takes" : "keep three takes first")
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.textMuted)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, MelGenMetrics.space3)
+                    .frame(height: MelGenMetrics.controlHeight)
+                    .foregroundStyle(ready ? theme.text : theme.textMuted)
+                    .background(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .fill(theme.raised)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                            .strokeBorder(ready ? theme.borderStrong : theme.border,
+                                          lineWidth: ready ? 1.5 : 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!ready || state.progressionText.isEmpty)
+
+                ChipPicker(options: LearnedDraw.allCases.map { ($0, $0.label) },
+                           selection: binding(\.learnedDraw, reloadKernel: false),
+                           theme: theme)
+                    .frame(maxWidth: 160)
             }
-            .padding(.horizontal, MelGenMetrics.space3)
-            .frame(height: MelGenMetrics.controlHeight)
-            .foregroundStyle(ready ? theme.text : theme.textMuted)
-            .background(
-                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                    .fill(theme.raised)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                    .strokeBorder(ready ? theme.borderStrong : theme.border, lineWidth: ready ? 1.5 : 1)
-            )
+            Text(state.learnedDraw.explanation)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
         }
-        .buttonStyle(.plain)
-        .disabled(!ready || state.progressionText.isEmpty)
     }
 
     private var generateEnabled: Bool {
@@ -954,6 +965,17 @@ struct MelGenExtensionMainView: View {
                             .foregroundStyle(theme.textMuted)
                     }
                 }
+                let chain = MelodyChain.learn(from: state.curatedTakes)
+                if !chain.isEmpty {
+                    Text(chain.summary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(theme.textSecondary)
+                    // The number that says whether there's enough material for
+                    // the long context to mean anything. Low is not a bug.
+                    Text("order-2 usable: \(Int(chain.trustedShare * 100))%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(theme.textMuted)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1332,16 +1354,28 @@ struct MelGenExtensionMainView: View {
             return nil
         }
 
-        let model = MelodyStyleModel.learn(from: current.curatedTakes)
-        guard !model.isEmpty else {
-            statusMessage = "Nothing kept yet — mark a few takes and this learns from them."
-            return nil
-        }
-
         let seed = UInt64(bitPattern: Int64(current.patternCursor &* 40_503))
             ^ UInt64(truncatingIfNeeded: abs(current.progressionText.hashValue))
-        guard let pattern = model.sample(seed: seed, pass: current.patternCursor % 4) else {
-            statusMessage = "The model didn't draw anything — it needs more material."
+        let bars = max(2, min(8, Int(ceil(progression.totalBeats / 4))))
+
+        let pattern: MelodyPattern?
+        let learnedFrom: Int
+        switch current.learnedDraw {
+        case .slots:
+            let model = MelodyStyleModel.learn(from: current.curatedTakes)
+            learnedFrom = model.takes
+            pattern = model.isEmpty ? nil : model.sample(seed: seed, pass: current.patternCursor % 4)
+        case .chain:
+            let chain = MelodyChain.learn(from: current.curatedTakes)
+            learnedFrom = chain.takes
+            pattern = chain.isEmpty ? nil : chain.generate(bars: bars, seed: seed,
+                                                           temperature: 0.6 + current.temperature)
+        }
+
+        guard let pattern else {
+            statusMessage = learnedFrom == 0
+                ? "Nothing kept yet — mark a few takes and this learns from them."
+                : "The \(current.learnedDraw.label.lowercased()) model didn't draw anything — it needs more material."
             return nil
         }
 
@@ -1357,7 +1391,7 @@ struct MelGenExtensionMainView: View {
             briefName: pattern.name,
             density: current.expression.density,
             durationPalette: current.durationPalette,
-            source: .sampled,
+            source: current.learnedDraw == .slots ? .sampled : .chained,
             analysis: MelodyAnalyser.analyse(notes, over: progression),
             lengthBeats: progression.totalBeats,
             notes: notes
@@ -1368,7 +1402,7 @@ struct MelGenExtensionMainView: View {
                 $0.add(record)
                 $0.patternCursor += 1
             }
-            statusMessage = "Drawn from your own \(model.takes) kept takes — \(pattern.summary)."
+            statusMessage = "Drawn from your own \(learnedFrom) kept takes — \(pattern.summary)."
         } else {
             commit(reloadKernel: false) { $0.patternCursor += 1 }
         }

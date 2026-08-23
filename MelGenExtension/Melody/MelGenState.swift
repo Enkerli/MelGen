@@ -24,6 +24,10 @@ enum TakeSource: String, Codable, Sendable {
     /// only one of the four that sounds like *your* material rather than like a
     /// vocabulary somebody wrote down.
     case sampled
+    /// Walked through the variable-order model of what follows what in that same
+    /// material. Also yours, and — unlike the slot draw — it has phrases, because
+    /// it remembers what it just played.
+    case chained
 
     var label: String {
         switch self {
@@ -31,6 +35,7 @@ enum TakeSource: String, Codable, Sendable {
         case .pattern: return "line"
         case .composed: return "phrase"
         case .sampled: return "learned"
+        case .chained: return "chained"
         }
     }
 }
@@ -302,6 +307,11 @@ struct MelGenState: Codable, Sendable {
     /// The stored line the rotation is pinned to, in lock mode.
     var lockedLineName: String?
 
+    /// Which model a draw from your own material comes out of. They learn
+    /// different things from the same takes and sound different because of it,
+    /// so this is a choice rather than something to pick automatically.
+    var learnedDraw: LearnedDraw = .chain
+
     /// Newest first. The take at `currentTakeID` is the one loaded in the kernel.
     var history: [GenerationRecord] = []
     var currentTakeID: UUID?
@@ -339,6 +349,7 @@ struct MelGenState: Codable, Sendable {
         lockedBriefName = try container.decodeIfPresent(String.self, forKey: .lockedBriefName)
         lineMode = try container.decodeIfPresent(SelectionMode.self, forKey: .lineMode) ?? .cycle
         lockedLineName = try container.decodeIfPresent(String.self, forKey: .lockedLineName)
+        learnedDraw = try container.decodeIfPresent(LearnedDraw.self, forKey: .learnedDraw) ?? .chain
         history = try container.decodeIfPresent([GenerationRecord].self, forKey: .history) ?? []
         currentTakeID = try container.decodeIfPresent(UUID.self, forKey: .currentTakeID)
         curationPass = try container.decodeIfPresent(Int.self, forKey: .curationPass) ?? 1
