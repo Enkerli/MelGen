@@ -1,6 +1,6 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-23 (branch `curation-and-training`)*
+*Last updated: 2026-08-23 (branch `curation-and-training`), after the second device session*
 
 A consolidated inventory of planned work, backlog items and exploratory ideas.
 Items are split between **this plug-in**, **shared suite infrastructure** (things
@@ -200,7 +200,7 @@ capture path.
 | F17 | **Host app uses a deprecated AU accessor** | Trivial | Open — `AudioUnitHostModel.swift:108` uses `auAudioUnit`, deprecated in iOS 27 in favour of `withAUAudioUnit`. Template code, host app only, doesn't affect the plug-in |
 | F18 | **Density asked for more notes than the bar has slots** — so rests were impossible no matter what the prompt said | Trivial | ✅ fixed 2026-08-22. A 4/4 bar has 8 eighth slots; the mapping ran 3→14 notes/bar, so the *default* of 0.5 asked for 8 (every slot) and anything above it asked for the impossible. Now 2→8, default 5. This, not the rest logic, is why G2 wasn't audible |
 | F19 | **A take's notation showed neither rests nor note lengths** — "note@beat" pairs made a line with rests look identical to one without | S | ✅ fixed 2026-08-22 — `MelodyNotation` renders a bar-per-row grid, one column per eighth, with a symbol for a rest and one for a sustained note, plus a summary line carrying the rest count and the actual gate range |
-| F11 | **Generation errors are all reported the same way** | S | Open — `exceededContextWindowSize`, `rateLimited` and `guardrailViolation` all surface as "Generation failed: …". The context one especially deserves "that progression is too long, try 8 bars" |
+| F11 | **Generation errors are all reported the same way** | S | ✅ fixed 2026-08-23, after a device session where the model failed with `SensitiveContentAnalysisML error 15` and the interface said "Generation failed: the operation couldn't be completed". That error is Apple's content scanner falling over *underneath* the model — not a refusal and nothing to do with the progression, which is the opposite of what the message implied. Failures are now told apart, transient ones retry once quietly, and if it still fails a phrase is composed instead |
 | F1 | **Slider end labels read as belonging to the next control** — they sat under the track, directly above the next row's name and value | Trivial | ✅ fixed 2026-08-22 — labels now flank the track inline (`LabelledSlider`) |
 | F2 | **Gate length looked like a discrete control** — five text buckets on a continuous slider | Trivial | ✅ fixed 2026-08-22 — continuous 2-decimal read-out; genuinely discrete settings use `ChipPicker` instead |
 | F3 | **Note duration and gate length were conflated** under one "Note length" control | S | ✅ fixed 2026-08-22 — "Note duration" (written rhythm, generation-time) vs "Gate length" (staccato–legato, live) |
@@ -256,7 +256,7 @@ to become first-class, selectable things.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| D1 | **Finer grid — 16ths and triplets** | L | The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
+| D1 | **Finer grid — 16ths and triplets** | L | **Now the binding constraint**, and everything that would have to change is in one place at last: the grid constant in `MelodyStyleModel`, the eighth arithmetic in the pattern format, and `GestureRhythm`'s lengths. Gestures bought back most of what triplets would with dotted and 3+3+2 figures, but a swung triplet feel is still unrepresentable. Original note: The model writes to an eighth-note grid (`startEighth`, `lengthEighths`), so triplets are currently *unrepresentable*. This is why the Note duration control offers no triplet option. Moving to a 24-per-bar grid (divisible by 8 and 3) covers both; touches `MelodyIdeaNote`, the prompt's grid explanation, `PatternLibrary`'s text format and every seed example. Do it before promising triplet feels. |
 | D2 | **Duration patterns beyond pairs** | M | ✅ **done 2026-08-23**. The gesture vocabulary has 3+3+2, dotted figures, ties over the bar line, uneven pairs and pushed anticipations — twelve rhythms, none of which reads as another played at a different speed. Original note: Long–short and short–long are pair figures. Real rhythmic identity often lives in longer cells (3+3+2). Express as a selectable cell that the model is asked to repeat and vary. Related: T5. |
 | D3 | **Per-note gate** | M | Promoted to Wave 1 as **G3** — playing it confirmed a single number can't give staccato notes with legato transitions. |
 | D4 | **Feel presets** | L | Raised 2026-08-22, and probably the right answer to "I'm unclear on the gate variability". Accents, swing, gate shape, gate *variability* and micro-timing are five knobs describing one thing: a feel. Named feels (straight, swung, laid back, pushed, clipped funk, rubato) would bundle them, with the individual sliders demoted to an advanced disclosure — you pick a feel and adjust, rather than assembling one from five numbers. Needs: a per-feel curve for each axis, a variability amount per axis (currently the gate shape's spread is fixed), and micro-timing beyond the current uniform jitter — probably per-metric-position offsets, which is also what a groove template is. Shareable with the rest of the suite. Do it *after* U1: choosing between feels you can't see is guesswork |
@@ -367,9 +367,23 @@ cables.
 
 ### Interface
 
+**Reviewed 2026-08-23, after the second device session.** The verdict was that
+capability had outrun legibility: "harder to know what control does what". Three
+causes, all fixed. Style briefs and comping figures did the same job from
+opposite ends and had two rotations and two selection controls between them —
+merged into one template list, with the mode choosing which half is in play.
+"Slots" and "Chain" were named for their implementations — now "Groove" and
+"Phrasing", which is what they give you. And generating a progression was three
+screens below the field it fills in, under a heading that read as "edit
+something" — now "New changes", directly under it.
+
+The standing lesson: a new source of material is cheap, and a new *control* is
+not. Six ways to make a take is only an improvement if the interface says what
+each one is for.
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| U1 | **Piano-roll display of the take** | L | The take summary is a text list of note names, so density, gate and contour have to be *understood* rather than seen — and gate length in particular is invisible as text. MIDIcurator and other parts of the suite already have a piano-roll idiom; reuse its visual language (and ideally its geometry code) rather than inventing a third one. Should show the chord regions behind the notes, since that's what makes a wrong note legible. Overlaps U2: the same view is where a playhead belongs. |
+| U1 | **Piano-roll display of the take** | L | ✅ **done 2026-08-23**. Chord regions behind the notes with each chord's scale shaded and its chord tones shaded harder, notes coloured by the same `MelodyAnalyser.role` that scores takes, velocity as a cap on the bar. Shows what the text grid can't: gate length below an eighth, and two voices at once. The grid stays behind a disclosure — it survives being copied into a note. Original note: The take summary is a text list of note names, so density, gate and contour have to be *understood* rather than seen — and gate length in particular is invisible as text. MIDIcurator and other parts of the suite already have a piano-roll idiom; reuse its visual language (and ideally its geometry code) rather than inventing a third one. Should show the chord regions behind the notes, since that's what makes a wrong note legible. Overlaps U2: the same view is where a playhead belongs. |
 | U2 | **Playhead position in the UI** | M | The kernel already publishes a loop-pass counter; a within-loop phase readout would let the UI show where playback is, and make the auto-regeneration boundary visible. |
 | U3 | **Chord progression editor beyond a text field** | L | Typing leadsheet text is fast for people who know the notation and opaque for everyone else. Chord chips with a picker, backed by the shared chord dictionary. |
 | U4 | **Dynamic Type support** | M | Fonts are fixed point sizes. Should scale with the accessibility text size; the 44pt control heights already give room to grow. Audit with the Dynamic Type nutrition label. |
@@ -411,7 +425,7 @@ Things MelGen needs that shouldn't live only in MelGen.
 
 | # | Project | Effort | Notes |
 |---|---------|--------|-------|
-| B1 | **Progression generator** | XL | ✅ **done 2026-08-23**, inside MelGen as Open Question 3 decided. ProgGenie's corpus transition tables, generated from music-suite rather than transcribed, walked at order two with a blended backoff to order one. Every emitted label is checked against MelGen's own dictionary before it's used, because the corpus vocabulary is larger than the dictionary's. Original note: Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
+| B1 | **Progression generator** | XL | ✅ **done 2026-08-23**, inside MelGen as Open Question 3 decided, and **extended the same day** after it was judged too generic: its own Adventurousness rather than borrowing the melodic temperature, and a substitution pass — tritone subs, secondary dominants that resolve into whatever follows, relative swaps, borrowed-mode chords, extensions. Applied after the walk rather than folded into it, so the numerals still say what the corpus proposed and the substitution says what was done to it. ProgGenie's corpus transition tables, generated from music-suite rather than transcribed, walked at order two with a blended backoff to order one. Every emitted label is checked against MelGen's own dictionary before it's used, because the corpus vocabulary is larger than the dictionary's. Original note: Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
 | B2 | **Comping instrument** | XL | If P1's mode switch makes MelGen incoherent, comping becomes its own plug-in sharing the theory, library and realization code. Decide after P1's design, not before. |
 | B3 | **Pattern librarian** | L | If L5 wins (curating incoming material as well as generated), the library outgrows a plug-in panel and wants to be an app — at which point it is either a MIDIcurator feature or its replacement. |
 

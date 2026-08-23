@@ -94,37 +94,45 @@ Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
 
 Ordered by how likely they are to bite.
 
-1. **Nothing has been heard.** Every claim about how this *sounds* is inference
-   from a text grid. In particular: do gesture phrases actually breathe? Does a
-   comp at a real tempo sit right? Does the chain's output hold together over
-   sixteen bars, or does it wander once the order-2 contexts run out?
+1. **Heard once, on 2026-08-23, and it moved a lot.** What came back: comping is
+   the best recent addition; phrasing improved but has room; the model failed
+   with a content-scanner error and said nothing useful about it; the interface
+   had outrun legibility. All of that is addressed. What is *still* unheard: the
+   two-axis morph, the piano roll, the substitutions, and whether the composed
+   lines' new architectures actually read as different pieces rather than
+   different figures.
 2. **The learned models are recomputed on every draw.** `MelodyStyleModel.learn`
    and `MelodyChain.learn` run over the whole kept history each time a button is
    pressed, and again for each interface refresh that shows their summary. That
    is O(takes × notes) on the main thread. It is fine at fifty takes and will not
    be at five hundred. They accumulate by design — storing them (S4) fixes this
    and is the same work as making styles savable.
-3. **Two buttons that overlap.** "Save as example" (old, absolute-pitch text for
+3. **The model's failure mode is now handled, not diagnosed.** A transient
+   failure retries once and then falls back to composing. Nobody has established
+   *why* `SensitiveContentAnalysisML error 15` fires on this device — whether
+   it's the prompt, the locale, or the OS build. Worth a session with the
+   Console open before assuming the retry is enough.
+4. **Two buttons that overlap.** "Save as example" (old, absolute-pitch text for
    the prompt) and "Keep as a line" (degree-relative, plays back) do different
    things with the same intent. The old one is probably subsumed now that curated
    takes are quoted automatically — but deleting it wants a device session first.
-4. **Takes still can't be named.** `retitle` exists and nothing calls it.
-5. **`partial` aspects are still recorded and unused.** Marking "the rhythm
+5. **Takes still can't be named.** `retitle` exists and nothing calls it.
+6. **`partial` aspects are still recorded and unused.** Marking "the rhythm
    works" should now be a one-line call into `MelodyTransforms` — keep the
    rhythm, redraw the degrees. The vocabulary was chosen for this and the
    machinery now exists.
-6. **The fit report still isn't shown.** Computed, tested, invisible.
-7. **Capture listens to everything on the one input.** N2's channel split is what
+7. **The fit report still isn't shown.** Computed, tested, invisible.
+8. **Capture listens to everything on the one input.** N2's channel split is what
    would let chords and melody arrive at the same time.
-8. **The library is `UserDefaults`, not an App Group.** Right side of the
+9. **The library is `UserDefaults`, not an App Group.** Right side of the
    session/library line, wrong container (I5/L4). Decide before more library UI.
-9. **`PatternStore` has no export or import**, and neither do the learned models.
-10. **The eighth-note grid is now the binding constraint.** Gestures buy back
+10. **`PatternStore` has no export or import**, and neither do the learned models.
+11. **The eighth-note grid is now the binding constraint.** Gestures buy back
     most of what triplets would with dotted and 3+3+2 figures, but a swung
     triplet feel is still unrepresentable (D1). Everything that would have to
     change is now in one place — the grid constant in `MelodyStyleModel`, the
     eighth arithmetic in the pattern format — which it wasn't before.
-11. **`previousTakeID` is encoded but not decoded.** Deliberate, inconsistent.
+12. **`previousTakeID` is encoded but not decoded.** Deliberate, inconsistent.
 
 ---
 
