@@ -191,6 +191,10 @@ public:
         } else if (!mPlayMelody && mMelodyPlaying) {
             releaseAllNotes(bufferStartTime);
             mMelodyPlaying = false;
+            // Publish the stop here: the early return below means
+            // publishPassIndex never runs again, so a playhead left to the last
+            // value would sit frozen mid-loop instead of disappearing.
+            mShared.phaseBeats.store(-1.0, std::memory_order_relaxed);
         }
 
         if (!mMelodyPlaying) { return; }
@@ -260,6 +264,17 @@ public:
         mShared.loopBeats.store(loopLength, std::memory_order_relaxed);
         mShared.passIndex.store((int64_t)std::floor(timelineBeats / loopLength),
                                 std::memory_order_relaxed);
+        // Where in the loop the last buffer ended. The pass counter says which
+        // time round we are; this says where, which is what a playhead needs.
+        double phase = std::fmod(timelineBeats, loopLength);
+        if (phase < 0) { phase += loopLength; }
+        mShared.phaseBeats.store(mMelodyPlaying ? phase : -1.0, std::memory_order_relaxed);
+    }
+
+    /// Position within the loop in beats, or a negative value when nothing is
+    /// playing — so the interface can tell "at beat zero" from "stopped".
+    double currentPhaseBeats() const {
+        return mShared.phaseBeats.load(std::memory_order_relaxed);
     }
 
     // MARK: - Capture
@@ -578,6 +593,8 @@ public:
         std::atomic<double> tempo{120.0};
         /// Loop length in beats, for the same reason.
         std::atomic<double> loopBeats{0};
+        /// Position within the current pass, or negative when stopped.
+        std::atomic<double> phaseBeats{-1.0};
         /// How many MIDI events have been captured, ever. The render thread
         /// writes; the UI reads forward from its own cursor.
         std::atomic<uint64_t> captureWrite{0};
@@ -588,12 +605,14 @@ public:
           passIndex{other.passIndex.load(std::memory_order_acquire)},
           tempo{other.tempo.load(std::memory_order_relaxed)},
           loopBeats{other.loopBeats.load(std::memory_order_relaxed)},
+          phaseBeats{other.phaseBeats.load(std::memory_order_relaxed)},
           captureWrite{other.captureWrite.load(std::memory_order_acquire)} {}
         SharedFields &operator=(const SharedFields &other) {
             activeIndex.store(other.activeIndex.load(std::memory_order_acquire), std::memory_order_release);
             passIndex.store(other.passIndex.load(std::memory_order_acquire), std::memory_order_release);
             tempo.store(other.tempo.load(std::memory_order_relaxed), std::memory_order_relaxed);
             loopBeats.store(other.loopBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            phaseBeats.store(other.phaseBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
             captureWrite.store(other.captureWrite.load(std::memory_order_acquire), std::memory_order_release);
             return *this;
         }

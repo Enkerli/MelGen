@@ -59,6 +59,17 @@ enum TakeDisposition: String, Codable, CaseIterable, Sendable {
     /// Skip — this pass. Still comes back around, just last.
     case skip
 
+    /// The ones a fast sweep needs, in the order a sweep uses them.
+    ///
+    /// Seven equal buttons is the right *model* and the wrong *default*: it
+    /// makes an ordinary yes/no/not-yet decision cost a scan of seven labels.
+    /// These three answer most takes; the rest are there when one of them
+    /// doesn't fit, behind a disclosure. Still not a scale — `keep` and `tweak`
+    /// are different actions, not better and worse.
+    static let primary: [TakeDisposition] = [.keep, .tweak, .skip]
+
+    var isPrimary: Bool { Self.primary.contains(self) }
+
     /// A single key, so a sweep is a keystroke per take rather than a menu.
     var shortcut: Character {
         switch self {

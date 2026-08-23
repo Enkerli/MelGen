@@ -63,17 +63,20 @@ struct MelGenExtensionMainView: View {
     /// The store keeps hundreds of takes; the list shows a page of them. Bounding
     /// the store to what fits on screen was the actual mistake.
     @State private var historyRowLimit = 40
-    /// The model diagnostic's results, when it has been run.
-    @State private var probes: [MelodyGenerator.Probe] = []
-    @State private var isProbing = false
-    /// Whether the last thing that went wrong was the model, so the diagnostic
-    /// appears when it's relevant and not before.
-    @State private var lastFailureWasModel = false
     /// Set when a failure says the framework itself is down. Once it is, the
     /// plug-in stops asking: retrying a missing safety model produces the same
     /// answer every time, three seconds later, and the deterministic sources are
-    /// right there. Cleared by a successful probe.
+    /// right there. Cleared by the banner's "Try again".
+    ///
+    /// The four-probe diagnostic that used to sit alongside this is gone: it
+    /// existed to find out *which* part of the framework was broken, and that
+    /// question has been answered. The banner stays because it still does
+    /// something the answer doesn't — it stops the plug-in spending three seconds
+    /// per take rediscovering that the model is unavailable.
     @State private var modelIsDown = false
+    /// Where the loop is, polled while the transport runs. Nil when stopped,
+    /// which is what makes the playhead disappear rather than freeze.
+    @State private var playheadBeat: Double?
     @State private var showRotationPicker = false
     @State private var showDrift = true
     /// Which loop is showing. Not session state: it's about what you're doing
@@ -93,6 +96,12 @@ struct MelGenExtensionMainView: View {
     /// Mutations of the current take, and the morph between it and one of them.
     /// Not session state: they're a working surface, regenerated on demand.
     @State private var variants: [MelodyVariant] = []
+    /// What's been said about each variant on screen, keyed by variant.
+    ///
+    /// Not part of the session state: a variant is a candidate, and the durable
+    /// record of a judgement is the take that judging one creates. This is only
+    /// so the row can show a tick rather than forgetting the moment it redraws.
+    @State private var variantMarks: [MelodyVariant.ID: TakeDisposition] = [:]
     @State private var variantParent: MelodyPattern?
     @State private var morphTarget: MelodyPattern?
     @State private var morphRhythm: Double = 0.5
@@ -135,7 +144,6 @@ struct MelGenExtensionMainView: View {
                 // line — except while the model is down, where it's about the
                 // whole panel rather than about a take.
                 if modelIsDown { modelDownBanner }
-                modelDiagnostics
 
                 switch panelTab {
                 case .play: playTab
@@ -159,6 +167,9 @@ struct MelGenExtensionMainView: View {
         }
         .task(id: state.autoRegenerate) {
             await runAutoRegeneration()
+        }
+        .task(id: playParameter.boolValue) {
+            await followPlayhead()
         }
         .task(id: isListening) {
             await collectPlaying()
@@ -484,70 +495,6 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Diagnosing the model
 
-    /// Offered only once the model has actually failed, and then insistently.
-    ///
-    /// "The model doesn't work any more" is a claim about a path with four
-    /// independent parts, and which part broke can't be read off an error
-    /// message. This asks the model four progressively larger questions and says
-    /// which it can answer, so the answer is evidence rather than a guess.
-    @ViewBuilder
-    private var modelDiagnostics: some View {
-        if lastFailureWasModel || !probes.isEmpty {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-                Button {
-                    runDiagnostics()
-                } label: {
-                    findLabel(isProbing ? "Testing…" : "Test the model",
-                              systemImage: "stethoscope",
-                              detail: "four questions, smallest first")
-                }
-                .buttonStyle(.plain)
-                .disabled(isProbing)
-
-                if !probes.isEmpty {
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(probes.enumerated()), id: \.offset) { _, probe in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: probe.succeeded ? "checkmark.circle" : "xmark.circle")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(probe.succeeded ? theme.accent : theme.warning)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(probe.name)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(theme.text)
-                                    Text(probe.detail)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(theme.textMuted)
-                                    if !probe.succeeded {
-                                        // The short form: the same paragraph under
-                                        // every probe buried the one thing the
-                                        // list is for, which is *which* failed.
-                                        Text(probe.short)
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(theme.warning)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(MelodyGenerator.verdict(for: probes,
-                                                     hasWorkedHere: state.modelHasWorkedHere))
-                            .font(.system(size: 11))
-                            .foregroundStyle(theme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 2)
-                    }
-                    .padding(MelGenMetrics.space2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
-                            .fill(theme.raised)
-                    )
-                }
-            }
-        }
-    }
 
     /// Says once, quietly, what would otherwise be said after every attempt.
     private var modelDownBanner: some View {
@@ -602,22 +549,6 @@ struct MelGenExtensionMainView: View {
         }
         return "It can predict two notes ahead \(howOften) — "
              + (share < 0.3 ? "not enough material yet." : "enough to be worth drawing from.")
-    }
-
-    private func runDiagnostics() {
-        isProbing = true
-        probes = []
-        Task {
-            let progression = try? ChordProgression.parse(liveState.progressionText)
-            probes = await MelodyGenerator.diagnose(progression: progression,
-                                                    hasWorkedHere: liveState.modelHasWorkedHere)
-            modelIsDown = MelodyGenerator.isSystemwideFailure(probes)
-            if !modelIsDown, probes.allSatisfy(\.succeeded) {
-                lastFailureWasModel = false
-                statusMessage = "The model answered everything. Try generating again."
-            }
-            isProbing = false
-        }
     }
 
     /// A label and a control on one line, which the settings needed and the
@@ -882,11 +813,15 @@ struct MelGenExtensionMainView: View {
     ///
     /// No model involved, and none wanted: comping is a voicing policy and a
     /// rhythm, both of which are decisions rather than guesses.
-    private func compChanges() {
+    /// - Parameter commitNow: `false` returns the comp instead of loading it, so
+    ///   the auto loop can hold it for a loop boundary — the same shape
+    ///   `composeLine` and `adaptStoredLine` use.
+    @discardableResult
+    private func compChanges(commitNow: Bool = true) -> GenerationRecord? {
         let current = liveState
         guard let progression = try? ChordProgression.parse(current.progressionText) else {
             statusMessage = "That progression doesn't parse."
-            return
+            return nil
         }
         let template = current.nextTemplate
         let figure = template.figure ?? CompingFigure.charleston
@@ -895,7 +830,7 @@ struct MelGenExtensionMainView: View {
                                        seed: UInt64(bitPattern: Int64(current.briefCursor &* 2_246_822_519)))
         guard !notes.isEmpty else {
             statusMessage = "Nothing to comp — check the progression."
-            return
+            return nil
         }
 
         let record = GenerationRecord(
@@ -909,12 +844,19 @@ struct MelGenExtensionMainView: View {
             lengthBeats: progression.totalBeats,
             notes: notes
         )
-        commit {
-            $0.add(record)
-            $0.briefCursor += 1
+        // The cursor advances either way: it's what moves the rotation on to the
+        // next figure, so a held comp still leaves the next one different.
+        if commitNow {
+            commit {
+                $0.add(record)
+                $0.briefCursor += 1
+            }
+            statusMessage = "\(figure.name): \(notes.count) notes, up to "
+                + "\(MelodyComping.maximumPolyphony(of: notes)) voices. \(figure.summary)."
+        } else {
+            commit(reloadKernel: false) { $0.briefCursor += 1 }
         }
-        statusMessage = "\(figure.name): \(notes.count) notes, up to "
-            + "\(MelodyComping.maximumPolyphony(of: notes)) voices. \(figure.summary)."
+        return record
     }
 
     private var nextTakeEnabled: Bool {
@@ -1031,7 +973,6 @@ struct MelGenExtensionMainView: View {
                 }
             } catch {
                 let failure = MelodyGenerator.describe(error)
-                lastFailureWasModel = true
                 if failure.isSystemwide { modelIsDown = true }
                 statusMessage = failure.message
             }
@@ -1156,7 +1097,6 @@ struct MelGenExtensionMainView: View {
                     + timingNote(for: record)
             } catch {
                 let failure = MelodyGenerator.describe(error)
-                lastFailureWasModel = true
                 if failure.isSystemwide { modelIsDown = true }
                 compChanges()
                 statusMessage = failure.message + " Comped it here instead."
@@ -1399,7 +1339,8 @@ struct MelGenExtensionMainView: View {
                 PianoRoll(notes: state.renderedMelody,
                           progression: changes,
                           lengthBeats: state.currentTake?.lengthBeats ?? 0,
-                          theme: theme)
+                          theme: theme,
+                          playheadBeat: playheadBeat)
             }
 
             rollKey
@@ -1587,7 +1528,7 @@ struct MelGenExtensionMainView: View {
                 Spacer(minLength: 0)
             }
 
-            DispositionBar(current: mark?.disposition, theme: theme) { disposition in
+            DispositionBar(current: mark?.disposition, theme: theme, onSelect: { disposition in
                 commit(reloadKernel: false) { state in
                     if let disposition {
                         state.mark(take.id, as: disposition, aspects: mark?.aspects ?? [])
@@ -1596,7 +1537,7 @@ struct MelGenExtensionMainView: View {
                     }
                 }
                 statusMessage = disposition.map { "\($0.label) — pass \(state.curationPass)." }
-            }
+            }, startExpanded: true)
 
             // Only asked when it's the question: "part of it works" is the one
             // disposition that's incomplete on its own.
@@ -1851,17 +1792,23 @@ struct MelGenExtensionMainView: View {
                 } else {
                     VStack(spacing: 3) {
                         ForEach(variants.prefix(8)) { variant in
-                            VariantRow(variant: variant, theme: theme) {
-                                play(variant)
-                            } onMorphTarget: {
-                                // Only a line has a degree-relative form to morph
-                                // through; a comp's variants are the morph.
-                                if let pattern = variant.material.patternIfLine {
-                                    morphTarget = pattern
-                                    morphRhythm = 0.5
-                                    morphPitch = 0.5
-                                }
-                            }
+                            VariantRow(
+                                variant: variant,
+                                theme: theme,
+                                onAudition: { play(variant) },
+                                onMorphTarget: {
+                                    // Only a line has a degree-relative form to
+                                    // morph through; a comp's variants are the
+                                    // morph.
+                                    if let pattern = variant.material.patternIfLine {
+                                        morphTarget = pattern
+                                        morphRhythm = 0.5
+                                        morphPitch = 0.5
+                                    }
+                                },
+                                onJudge: { judge(variant, as: $0) },
+                                disposition: variantMarks[variant.id]
+                            )
                         }
                     }
                     morphControl
@@ -1983,6 +1930,30 @@ struct MelGenExtensionMainView: View {
     }
 
     /// Plays a variant, whichever kind it is.
+    /// Judges a variant, which first has to make it a take.
+    ///
+    /// A disposition is recorded against a take, and until it's judged a variant
+    /// is only a candidate — so answering one commits it (the same commit
+    /// auditioning does) and marks that. Keeping a transform that improved a
+    /// pattern is how the improvement reaches the library instead of being lost
+    /// when the variant list is regenerated.
+    private func judge(_ variant: MelodyVariant, as disposition: TakeDisposition?) {
+        guard let disposition else {
+            variantMarks[variant.id] = nil
+            if let existing = liveState.currentTake?.id {
+                commit(reloadKernel: false) { $0.unmark(existing) }
+            }
+            return
+        }
+
+        play(variant)
+        variantMarks[variant.id] = disposition
+        guard let take = liveState.currentTake else { return }
+        commit(reloadKernel: false) { $0.mark(take.id, as: disposition, aspects: []) }
+        statusMessage = "\(variant.transform): \(disposition.label.lowercased())"
+            + " — kept as a take, so it counts toward what's learned."
+    }
+
     private func play(_ variant: MelodyVariant) {
         switch variant.material {
         case .line(let pattern):
@@ -2812,9 +2783,12 @@ struct MelGenExtensionMainView: View {
         guard state.autoRegenerate else { return }
 
         // Nothing to loop yet: put music under the changes within a beat, rather
-        // than half a minute of silence while the model thinks.
+        // than half a minute of silence while the model thinks. Which *kind* of
+        // music depends on the mode — this loop used to compose a line whatever
+        // the mode said, so an unattended session in chord mode played melodies
+        // and never touched a comping figure.
         if liveState.currentTake == nil {
-            composeLine()
+            if liveState.mode == .comping { compChanges() } else { composeLine() }
         }
         var lastStartedPass = audioUnit?.currentPass ?? 0
         var lastFilledPass = audioUnit?.currentPass ?? 0
@@ -2840,14 +2814,24 @@ struct MelGenExtensionMainView: View {
                 lastFilledPass = pass
             } else if due, pass > lastFilledPass {
                 // Nothing from the model yet. Rather than repeat the same take
-                // until it arrives, put a new line under the changes — instant,
-                // and it keeps them moving while the model works. Alternating
-                // between a fresh phrase and a stored one is what stops an
-                // unattended session settling into either the same six lines or
-                // the same one grammar.
-                let filler = liveState.patternCursor.isMultiple(of: 2)
-                    ? composeLine(commitNow: false)
-                    : adaptStoredLine(commitNow: false)
+                // until it arrives, put something new under the changes —
+                // instant, and it keeps them moving while the model works.
+                //
+                // In chord mode that's the next comping figure, which is how
+                // chord mode cycles its templates at all: comping needs no model,
+                // so this path is the one that runs, and each pass through it
+                // advances the rotation. In line mode, alternating between a
+                // fresh phrase and a stored one is what stops an unattended
+                // session settling into either the same six lines or the same one
+                // grammar.
+                let filler: GenerationRecord?
+                if liveState.mode == .comping {
+                    filler = compChanges(commitNow: false)
+                } else {
+                    filler = liveState.patternCursor.isMultiple(of: 2)
+                        ? composeLine(commitNow: false)
+                        : adaptStoredLine(commitNow: false)
+                }
                 if let filler {
                     commit { $0.add(filler) }
                     statusMessage = "\(filler.briefName) (\(filler.source.label)) — model still working…"
@@ -2857,9 +2841,33 @@ struct MelGenExtensionMainView: View {
 
             if due, !isGenerating, pendingTake == nil {
                 lastStartedPass = pass
-                generate(auto: true, holdForLoopPoint: true)
+                // Comping is instant and needs no model, so the filler above has
+                // already produced this loop's comp. Asking the model for one as
+                // well would queue a take that lands a loop later and silently
+                // overwrite a figure the rotation had already moved past.
+                if liveState.mode != .comping {
+                    generate(auto: true, holdForLoopPoint: true)
+                }
             }
         }
+    }
+
+    /// Moves the playhead while the transport runs, and clears it when it stops.
+    ///
+    /// Twenty times a second is enough to read as continuous at any tempo the
+    /// plug-in is useful at, and the task only exists while playing — a stopped
+    /// transport costs nothing. The position comes from the render thread rather
+    /// than being counted here, so it can't drift away from what's sounding.
+    private func followPlayhead() async {
+        guard playParameter.boolValue else {
+            playheadBeat = nil
+            return
+        }
+        while !Task.isCancelled {
+            playheadBeat = audioUnit?.loopPhaseBeats
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        playheadBeat = nil
     }
 
     /// Says whether generation actually fits inside a loop, which is the only
@@ -3033,7 +3041,6 @@ struct MelGenExtensionMainView: View {
                 // compose a phrase: the whole point of having sources that need
                 // no model is that the model failing is an inconvenience rather
                 // than a dead end.
-                lastFailureWasModel = true
                 if composeLine() != nil {
                     statusMessage = failure.message + " Composed a phrase instead."
                 } else {

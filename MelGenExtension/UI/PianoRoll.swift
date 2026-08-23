@@ -36,6 +36,9 @@ struct PianoRoll: View {
     /// a gate difference of a sixteenth is visible.
     var beatWidth: CGFloat = 34
     var height: CGFloat = 170
+    /// Where the loop is now, in beats, or nil when nothing is playing. Drawn on
+    /// top of everything, because its whole job is to be findable while moving.
+    var playheadBeat: Double?
 
     /// The pitches on show, padded so a one-note take doesn't fill the view with
     /// a single enormous bar and a busy one still has air above and below.
@@ -59,6 +62,7 @@ struct PianoRoll: View {
                 draw(chords: context, size: size, rowHeight: rowHeight)
                 draw(grid: context, size: size, rowHeight: rowHeight)
                 draw(notes: context, size: size, rowHeight: rowHeight)
+                draw(playhead: context, size: size)
             }
             .frame(width: width, height: height)
             .background(
@@ -73,6 +77,20 @@ struct PianoRoll: View {
     }
 
     // MARK: - Layers
+
+    /// The playhead: one vertical line at the current position.
+    ///
+    /// Deliberately the accent colour and deliberately thin — it crosses every
+    /// note in the take, so anything heavier competes with the material it's
+    /// supposed to be pointing at.
+    private func draw(playhead context: GraphicsContext, size: CGSize) {
+        guard let playheadBeat, lengthBeats > 0 else { return }
+        let x = CGFloat(min(max(playheadBeat, 0), lengthBeats)) * beatWidth
+        var line = Path()
+        line.move(to: CGPoint(x: x, y: 0))
+        line.addLine(to: CGPoint(x: x, y: size.height))
+        context.stroke(line, with: .color(theme.accent), lineWidth: 1.5)
+    }
 
     /// The harmony, behind everything. Each chord's own scale is shaded, so a
     /// note outside it reads as outside without any colour being needed.

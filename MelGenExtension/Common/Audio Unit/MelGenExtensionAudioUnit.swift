@@ -121,6 +121,13 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
         kernel.currentPass()
     }
 
+    /// Where the loop is now, in beats from its start, or nil when nothing is
+    /// playing. What the piano roll's playhead follows.
+    var loopPhaseBeats: Double? {
+        let phase = kernel.currentPhaseBeats()
+        return phase < 0 ? nil : phase
+    }
+
     /// How long one pass through the loop lasts, in seconds, at the tempo the
     /// render thread is actually using — so the UI can say whether generating a
     /// take fits inside a loop. Nil until something has played.

@@ -19,15 +19,36 @@ import SwiftUI
 ///
 /// Deliberately all one size and one weight: the moment one of them is drawn as
 /// the good one, the row becomes a rating again.
+///
+/// Compact by default. Seven buttons is the honest model but a costly default —
+/// it turns an ordinary keep/tweak/skip decision into a scan of seven labels,
+/// and a sweep over a long history is exactly where that cost lands. So three
+/// show, the rest are a tap away, and a disposition already set is always
+/// visible even when it's one of the four that are folded away.
 struct DispositionBar: View {
     let current: TakeDisposition?
     let theme: MelGenTheme
     /// Tapping the disposition already set clears it — un-judging is normal.
     let onSelect: (TakeDisposition?) -> Void
+    /// Start expanded where there's room, such as a single take's own panel.
+    var startExpanded = false
+
+    @State private var isExpanded = false
+
+    /// What's on show: the three primaries, plus whatever is already set, plus
+    /// everything once expanded.
+    private var visible: [TakeDisposition] {
+        if isExpanded || startExpanded { return TakeDisposition.allCases }
+        return TakeDisposition.allCases.filter { $0.isPrimary || $0 == current }
+    }
+
+    private var showsDisclosure: Bool {
+        !startExpanded && visible.count < TakeDisposition.allCases.count
+    }
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(TakeDisposition.allCases, id: \.self) { disposition in
+            ForEach(visible, id: \.self) { disposition in
                 let isSelected = current == disposition
                 Button {
                     onSelect(isSelected ? nil : disposition)
@@ -59,6 +80,34 @@ struct DispositionBar: View {
                 .accessibilityLabel(disposition.label)
                 .accessibilityHint("Marks this take on pass in progress")
                 .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+
+            if showsDisclosure {
+                Button {
+                    isExpanded = true
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("more")
+                            .font(.system(size: 9))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: MelGenMetrics.controlHeight)
+                    .foregroundStyle(theme.textMuted)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(theme.raised)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(theme.border, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("More ways to answer")
+                .accessibilityHint("Shows context, partly, later and again")
             }
         }
     }
@@ -283,11 +332,23 @@ struct ReviewRow: View {
 /// them into one score would decide in advance what "good" means, and that
 /// decision belongs to whoever is listening. The order they're offered in is a
 /// default, not a verdict.
+/// A variant, with a way to judge it.
+///
+/// Variants were auditionable but not answerable, which left the best material
+/// the system produces outside the loop that decides what's good: a transform
+/// that improves a pattern *is* the tweak the disposition vocabulary already has
+/// a word for, and there was no way to say so. Keeping one records it as its own
+/// take, so it joins the library and conditions what comes next, exactly as a
+/// generated line does.
 struct VariantRow: View {
     let variant: MelodyVariant
     let theme: MelGenTheme
     let onAudition: () -> Void
     let onMorphTarget: () -> Void
+    /// Records a judgement about this variant. Nil disposition clears it.
+    var onJudge: ((TakeDisposition?) -> Void)?
+    /// What's already been said about it, if anything.
+    var disposition: TakeDisposition?
 
     var body: some View {
         HStack(spacing: MelGenMetrics.space2) {
@@ -334,6 +395,19 @@ struct VariantRow: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(theme.raised)
         )
+        .overlay(alignment: .topTrailing) {
+            if disposition != nil {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(theme.accent)
+                    .padding(3)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 2) {
+            if let onJudge {
+                DispositionBar(current: disposition, theme: theme, onSelect: onJudge)
+            }
+        }
     }
 
     private func scoreChip(_ label: String, _ value: Double) -> some View {
