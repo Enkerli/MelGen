@@ -46,6 +46,14 @@ melody_sources() {
     find "$MELODY" -name "*.swift" ! -name "MelodyGenerator.swift" | sort
 }
 
+# The Swift suites build unoptimized, and the reason is measured rather than
+# assumed. With every suite compiling every Melody source, -O costs about 64
+# seconds per suite and saves about 0.6 seconds of run time: a quarter of an hour
+# of optimizer to save nine seconds. -Onone builds the same suite in 18 seconds.
+# A test harness is a thing you run constantly, so it optimizes for the loop you
+# are actually in.
+SWIFT_OPT="-Onone"
+
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 
@@ -100,7 +108,7 @@ run_state() {
     echo "── state ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/state-expression-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
     "$BUILD/state" || status=1
 }
 
@@ -122,7 +130,7 @@ run_patterns() {
     echo "── patterns ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/patterns-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
     "$BUILD/patterns" || status=1
 }
 
@@ -130,7 +138,7 @@ run_extraction() {
     echo "── extraction ────────────────────────────────────"
     cp "$REPO/Scripts/tests/extraction-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
     "$BUILD/extraction" || status=1
 }
 
@@ -138,7 +146,7 @@ run_curation() {
     echo "── curation ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/curation-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
     "$BUILD/curation" || status=1
 }
 
@@ -146,7 +154,7 @@ run_phrases() {
     echo "── phrases ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/phrases-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/phrases" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/phrases" || { status=1; return 0; }
     "$BUILD/phrases" || status=1
 }
 
@@ -154,7 +162,7 @@ run_stylemodel() {
     echo "── stylemodel ────────────────────────────────────"
     cp "$REPO/Scripts/tests/stylemodel-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/stylemodel" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/stylemodel" || { status=1; return 0; }
     "$BUILD/stylemodel" || status=1
 }
 
@@ -162,7 +170,7 @@ run_chain() {
     echo "── chain ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/chain-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/chain" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/chain" || { status=1; return 0; }
     "$BUILD/chain" || status=1
 }
 
@@ -170,7 +178,7 @@ run_mutation() {
     echo "── mutation ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/mutation-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/mutation" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/mutation" || { status=1; return 0; }
     "$BUILD/mutation" || status=1
 }
 
@@ -178,7 +186,7 @@ run_retrieval() {
     echo "── retrieval ─────────────────────────────────────"
     cp "$REPO/Scripts/tests/retrieval-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/retrieval" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/retrieval" || { status=1; return 0; }
     "$BUILD/retrieval" || status=1
 }
 
@@ -186,7 +194,7 @@ run_topics() {
     echo "── topics ────────────────────────────────────────"
     cp "$REPO/Scripts/tests/topics-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/topics" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/topics" || { status=1; return 0; }
     "$BUILD/topics" || status=1
 }
 
@@ -194,7 +202,7 @@ run_steps() {
     echo "── steps ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/steps-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/steps" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/steps" || { status=1; return 0; }
     "$BUILD/steps" || status=1
 }
 
@@ -202,7 +210,7 @@ run_capture() {
     echo "── capture ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/capture-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/capture" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/capture" || { status=1; return 0; }
     "$BUILD/capture" || status=1
 }
 
@@ -210,7 +218,7 @@ run_comping() {
     echo "── comping ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/comping-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/comping" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/comping" || { status=1; return 0; }
     "$BUILD/comping" || status=1
 }
 
@@ -219,7 +227,7 @@ run_progression() {
     python3 "$REPO/Scripts/generate-progression-tables.py" --music-suite "$MUSIC_SUITE" --check || status=1
     cp "$REPO/Scripts/tests/progression-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/progression" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/progression" || { status=1; return 0; }
     "$BUILD/progression" || status=1
 }
 
@@ -227,7 +235,7 @@ run_analysis() {
     echo "── analysis ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc -O $(melody_sources) "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
     "$BUILD/analysis" || status=1
 }
 
