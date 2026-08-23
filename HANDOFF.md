@@ -107,16 +107,14 @@ Ordered by how likely they are to bite.
    is O(takes × notes) on the main thread. It is fine at fifty takes and will not
    be at five hundred. They accumulate by design — storing them (S4) fixes this
    and is the same work as making styles savable.
-3. **The model is unavailable on the test device, and it is not this branch's
-   doing.** The diagnostic was run on 2026-08-23: all five probes failed,
-   including plain text with no instructions and no schema. `SensitiveContentAnalysisML`
-   error 15 is the on-device *safety model's* assets being absent — a known
-   Foundation Models fault, not a refusal and not a configuration. Remedy is
-   Settings ▸ Apple Intelligence & Siri on Wi-Fi. The plug-in now latches on it,
-   routes to the deterministic sources, and says so once rather than after every
-   attempt. **Nothing about the model path has been exercised on hardware since
-   this branch began** — the retry, the fallback, the model comping and the
-   learned-style conditioning are all unverified in the only way that counts.
+3. **The model works. A third-party Apple Intelligence extension was breaking
+   it**, and the first diagnosis of that was wrong — see F12b in the roadmap for
+   the mistake and what it cost. The diagnostic now uses
+   `MelGenState.modelHasWorkedHere` rather than reasoning from the error alone.
+   What remains unverified on hardware is *most of the model path on this
+   branch*: the learned-style conditioning, the retry, the fallback, and model
+   comping in its corrected form. Lines generate; nothing else about the model
+   has been heard.
 4. **Two buttons that overlap.** "Save as example" (old, absolute-pitch text for
    the prompt) and "Keep as a line" (degree-relative, plays back) do different
    things with the same intent. The old one is probably subsumed now that curated
