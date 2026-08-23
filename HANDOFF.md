@@ -107,13 +107,16 @@ Ordered by how likely they are to bite.
    is O(takes × notes) on the main thread. It is fine at fifty takes and will not
    be at five hundred. They accumulate by design — storing them (S4) fixes this
    and is the same work as making styles savable.
-3. **The model's failure is now diagnosable, and still not diagnosed.** "Test
-   the model" (under the status line, once generation has failed) asks four
-   progressively larger questions — plain text, our schema, our instructions,
-   our examples, this progression — and names which one broke. Run it. A failure
-   at step one is Apple Intelligence on the device and nothing MelGen sends; a
-   failure only at step five is the progression. Until it's been run, nobody
-   knows which, including this branch's author.
+3. **The model is unavailable on the test device, and it is not this branch's
+   doing.** The diagnostic was run on 2026-08-23: all five probes failed,
+   including plain text with no instructions and no schema. `SensitiveContentAnalysisML`
+   error 15 is the on-device *safety model's* assets being absent — a known
+   Foundation Models fault, not a refusal and not a configuration. Remedy is
+   Settings ▸ Apple Intelligence & Siri on Wi-Fi. The plug-in now latches on it,
+   routes to the deterministic sources, and says so once rather than after every
+   attempt. **Nothing about the model path has been exercised on hardware since
+   this branch began** — the retry, the fallback, the model comping and the
+   learned-style conditioning are all unverified in the only way that counts.
 4. **Two buttons that overlap.** "Save as example" (old, absolute-pitch text for
    the prompt) and "Keep as a line" (degree-relative, plays back) do different
    things with the same intent. The old one is probably subsumed now that curated
