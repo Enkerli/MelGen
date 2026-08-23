@@ -50,10 +50,47 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     /// Measured after the notes were settled, so curation has something to sort
     /// by and non-chord tones are flagged for a human rather than judged here.
     var analysis: MelodyAnalysis?
+    /// Every judgement ever made about this take, not just the latest one.
+    /// A take skipped on the first pass and kept on the third isn't a
+    /// correction — the disagreement is the most interesting thing in the record.
+    var marks: [CurationMark] = []
+    /// Free text, the emergent half of the vocabulary.
+    var tags: [String] = []
+    /// A name, when it has earned one.
+    var title: String = ""
     var lengthBeats: Double
     var notes: [SequencedNote]
 
     var noteCount: Int { notes.count }
+
+    /// The most recent judgement, whichever pass it was made on.
+    var latestMark: CurationMark? {
+        marks.max { ($0.pass, $0.date) < ($1.pass, $1.date) }
+    }
+
+    /// What was decided on a particular sweep, if anything was.
+    func mark(onPass pass: Int) -> CurationMark? {
+        marks.filter { $0.pass == pass }.max { $0.date < $1.date }
+    }
+
+    /// Whether the history ring is allowed to drop this.
+    var survivesEviction: Bool {
+        guard let latest = latestMark else { return false }
+        return latest.disposition.protectsFromEviction
+    }
+
+    /// The structural facets, derived rather than typed.
+    var facets: TakeFacets {
+        TakeFacetting.facets(for: notes,
+                             lengthBeats: lengthBeats,
+                             analysis: analysis,
+                             source: source)
+    }
+
+    /// What to call this in a list.
+    var displayName: String {
+        title.isEmpty ? "\(progressionText) · \(briefName)" : title
+    }
 
     // Decoded field by field so a session saved by an older build still opens:
     // synthesized Codable throws on a missing key even when the property has a
@@ -71,6 +108,9 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         requestCount = try container.decodeIfPresent(Int.self, forKey: .requestCount) ?? 1
         source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
         analysis = try container.decodeIfPresent(MelodyAnalysis.self, forKey: .analysis)
+        marks = try container.decodeIfPresent([CurationMark].self, forKey: .marks) ?? []
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -86,6 +126,9 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          requestCount: Int = 1,
          source: TakeSource = .model,
          analysis: MelodyAnalysis? = nil,
+         marks: [CurationMark] = [],
+         tags: [String] = [],
+         title: String = "",
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -99,6 +142,9 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.requestCount = requestCount
         self.source = source
         self.analysis = analysis
+        self.marks = marks
+        self.tags = tags
+        self.title = title
         self.lengthBeats = lengthBeats
         self.notes = notes
     }
@@ -198,7 +244,12 @@ enum MelGenAppearance: String, Codable, CaseIterable, Sendable {
 }
 
 struct MelGenState: Codable, Sendable {
+    /// How many unjudged takes the ring holds before it starts dropping them.
     static let historyLimit = 24
+    /// And the hard ceiling, past which even judged takes go. Far above the ring
+    /// because keeping a take costs a few hundred bytes and losing one you marked
+    /// is unrecoverable.
+    static let historyCeiling = 128
 
     var progressionText: String = "E♭7 Gm9|D∆|A♭6"
     var temperature: Double = 0.6
@@ -226,6 +277,18 @@ struct MelGenState: Codable, Sendable {
     /// Newest first. The take at `currentTakeID` is the one loaded in the kernel.
     var history: [GenerationRecord] = []
     var currentTakeID: UUID?
+    /// The take that was playing before this one, so a judgement can record what
+    /// it was heard against — "dull after that, perfect after this" is a fact
+    /// about the pair. Not restored when a session reopens: it describes a
+    /// listening session, not a document.
+    var previousTakeID: UUID?
+
+    /// Which curation sweep we're on. Marks are stamped with it, so the same take
+    /// judged twice keeps both answers rather than overwriting the first.
+    var curationPass: Int = 1
+    /// The tags actually in use, so the interface can offer the vocabulary that
+    /// emerged rather than one somebody guessed at.
+    var tagVocabulary = TagVocabulary()
 
     init() {}
 
@@ -245,6 +308,8 @@ struct MelGenState: Codable, Sendable {
         patternCursor = try container.decodeIfPresent(Int.self, forKey: .patternCursor) ?? 0
         history = try container.decodeIfPresent([GenerationRecord].self, forKey: .history) ?? []
         currentTakeID = try container.decodeIfPresent(UUID.self, forKey: .currentTakeID)
+        curationPass = try container.decodeIfPresent(Int.self, forKey: .curationPass) ?? 1
+        tagVocabulary = try container.decodeIfPresent(TagVocabulary.self, forKey: .tagVocabulary) ?? TagVocabulary()
     }
 
     var currentTake: GenerationRecord? {
@@ -266,10 +331,135 @@ struct MelGenState: Codable, Sendable {
 
     mutating func add(_ record: GenerationRecord) {
         history.insert(record, at: 0)
-        if history.count > Self.historyLimit {
-            history.removeLast(history.count - Self.historyLimit)
-        }
+        evict()
+        previousTakeID = currentTakeID
         currentTakeID = record.id
+    }
+
+    /// Drops the oldest take the ring is allowed to drop.
+    ///
+    /// "Allowed" is the whole rule: anything you marked survives, including
+    /// things you set aside for a later pass, because setting something aside is
+    /// a promise to come back to it and a ring that quietly ate it would break
+    /// that promise. Only a plain skip, or a take nobody has heard yet, is
+    /// eligible — and past the ceiling, everything is, oldest first.
+    private mutating func evict() {
+        while history.count > Self.historyLimit {
+            guard let index = history.lastIndex(where: { !$0.survivesEviction && $0.id != currentTakeID })
+            else { break }
+            history.remove(at: index)
+        }
+        while history.count > Self.historyCeiling {
+            guard let index = history.lastIndex(where: { $0.id != currentTakeID }) else { break }
+            history.remove(at: index)
+        }
+    }
+}
+
+// MARK: - Curation
+
+extension MelGenState {
+
+    /// Records a judgement about a take, on the current pass.
+    ///
+    /// Appends rather than replaces: a take judged on pass 1 and again on pass 3
+    /// keeps both answers. Re-marking on the *same* pass does replace, because
+    /// that's a correction rather than a second opinion.
+    mutating func mark(_ takeID: UUID,
+                       as disposition: TakeDisposition,
+                       aspects: [TakeAspect] = [],
+                       note: String = "",
+                       now: Date = Date()) {
+        guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
+        history[index].marks.removeAll { $0.pass == curationPass }
+        history[index].marks.append(CurationMark(
+            disposition: disposition,
+            pass: curationPass,
+            date: now,
+            aspects: aspects,
+            heardAfter: takeID == currentTakeID ? previousTakeID : currentTakeID,
+            note: note
+        ))
+    }
+
+    /// Takes back what was said about a take on this pass, leaving earlier passes
+    /// alone. Un-judging is a normal thing to want.
+    mutating func unmark(_ takeID: UUID) {
+        guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
+        history[index].marks.removeAll { $0.pass == curationPass }
+    }
+
+    /// Loads a take, remembering what it displaced.
+    mutating func select(_ takeID: UUID) {
+        guard takeID != currentTakeID else { return }
+        previousTakeID = currentTakeID
+        currentTakeID = takeID
+    }
+
+    mutating func setTags(_ tags: [String], for takeID: UUID) {
+        guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
+        let normalized = tags
+            .map(TagVocabulary.normalize)
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let unique = normalized.filter { seen.insert($0).inserted }
+        tagVocabulary.forget(history[index].tags)
+        tagVocabulary.record(unique)
+        history[index].tags = unique
+    }
+
+    mutating func retitle(_ takeID: UUID, to title: String) {
+        guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
+        history[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Opens the next sweep. Everything becomes reviewable again — that's the
+    /// point of a pass rather than a verdict.
+    mutating func beginNextPass() {
+        curationPass += 1
+    }
+
+    /// What's up for review, in the order it's worth hearing.
+    ///
+    /// Things you explicitly deferred come first, because deferring is a promise.
+    /// Then what you haven't heard. Then, last but present, what you skipped —
+    /// a second pass over the discards is where the surprises are. Anything
+    /// already answered *on this pass* sinks to the bottom.
+    var reviewQueue: [GenerationRecord] {
+        history
+            .map { take -> (take: GenerationRecord, answered: Bool, priority: Int, date: Date) in
+                let thisPass = take.mark(onPass: curationPass)
+                let priority = take.latestMark?.disposition.reviewPriority
+                    ?? TakeDisposition.unmarkedPriority
+                return (take, thisPass != nil, priority, take.date)
+            }
+            .sorted { left, right in
+                if left.answered != right.answered { return !left.answered }
+                if left.priority != right.priority { return left.priority < right.priority }
+                return left.date > right.date
+            }
+            .map(\.take)
+    }
+
+    /// How much of this pass is done, for a progress read-out that means something.
+    var reviewProgress: (answered: Int, total: Int) {
+        let answered = history.filter { $0.mark(onPass: curationPass) != nil }.count
+        return (answered, history.count)
+    }
+
+    /// Every take carrying a given disposition as its latest word.
+    func takes(dispositioned disposition: TakeDisposition) -> [GenerationRecord] {
+        history.filter { $0.latestMark?.disposition == disposition }
+    }
+
+    /// The material worth learning from: what you kept, plus what you said had a
+    /// version that works. Deliberately not everything marked — a library that
+    /// includes what you set aside teaches the model to write what you set aside.
+    var curatedTakes: [GenerationRecord] {
+        history.filter { take in
+            guard let disposition = take.latestMark?.disposition else { return false }
+            return disposition == .keep || disposition == .tweak || disposition == .partial
+        }
     }
 }
 
