@@ -901,6 +901,7 @@ struct MelGenExtensionMainView: View {
                            isExpanded: $showRotation,
                            theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                findRow
                 briefSelection
                 lineSelection
             }
@@ -911,6 +912,109 @@ struct MelGenExtensionMainView: View {
     private var rotationSummary: String {
         let briefs = state.selectedBriefNames.isEmpty ? StyleBriefs.all.count : state.selectedBriefNames.count
         return "\(briefs) briefs · \(PatternStore.library.count) lines · \(state.briefMode.label.lowercased())"
+    }
+
+    /// The two ways of reaching into a library: on purpose, and not.
+    ///
+    /// Kept side by side and labelled differently because they answer different
+    /// needs. One is "give me the thing that fits"; the other is "show me
+    /// something I've been ignoring, or have changed my mind about".
+    private var findRow: some View {
+        HStack(spacing: MelGenMetrics.space2) {
+            Button {
+                playBestFittingLine()
+            } label: {
+                findLabel("Fits these changes", systemImage: "target")
+            }
+            .buttonStyle(.plain)
+            .disabled(state.progressionText.isEmpty)
+
+            Button {
+                surpriseMe()
+            } label: {
+                findLabel("Surprise me", systemImage: "dice")
+            }
+            .buttonStyle(.plain)
+            .disabled(state.progressionText.isEmpty)
+        }
+    }
+
+    private func findLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, MelGenMetrics.space3)
+        .frame(maxWidth: .infinity)
+        .frame(height: MelGenMetrics.controlHeight)
+        .foregroundStyle(theme.text)
+        .background(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .fill(theme.raised)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+        )
+    }
+
+    /// Everything the library can offer: the stored lines, plus what's been kept.
+    private func searchableLines() -> [MelodyPattern] {
+        var lines = PatternStore.library
+        for take in liveState.curatedTakes {
+            guard let progression = try? ChordProgression.parse(take.progressionText),
+                  let pattern = MelodyPatterns.extract(from: take.notes,
+                                                       over: progression,
+                                                       name: take.displayName,
+                                                       lengthBeats: take.lengthBeats)
+            else { continue }
+            lines.append(pattern)
+        }
+        return lines
+    }
+
+    private func playBestFittingLine() {
+        guard let progression = try? ChordProgression.parse(liveState.progressionText) else {
+            statusMessage = "That progression doesn't parse."
+            return
+        }
+        guard let best = MelodyRetrieval.fitting(searchableLines(), progression).first else {
+            statusMessage = "Nothing in the library to search."
+            return
+        }
+        play(best.pattern, describedAs: "\(best.pattern.name) — \(best.reason)")
+    }
+
+    private func surpriseMe() {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else {
+            statusMessage = "That progression doesn't parse."
+            return
+        }
+        let contested = Set(current.contestedTakes.map(\.displayName))
+        let recent = current.recentlyHeard().map(\.displayName)
+        let keptPatterns = current.curatedTakes.compactMap { take -> MelodyPattern? in
+            guard let progression = try? ChordProgression.parse(take.progressionText) else { return nil }
+            return MelodyPatterns.extract(from: take.notes, over: progression,
+                                          name: take.displayName, lengthBeats: take.lengthBeats)
+        }
+
+        guard let surprise = MelodyRetrieval.surprise(
+            searchableLines(),
+            heardRecently: recent,
+            keptBuckets: MelodyRetrieval.buckets(of: keptPatterns),
+            contested: contested,
+            seed: UInt64(bitPattern: Int64(current.patternCursor &* 7919)) ^ 0xA5A5,
+            over: progression
+        ) else {
+            statusMessage = "Nothing in the library to be surprised by yet."
+            return
+        }
+        commit(reloadKernel: false) { $0.patternCursor += 1 }
+        play(surprise.pattern, describedAs: "\(surprise.pattern.name) — \(surprise.reason)")
     }
 
     private var briefSelection: some View {
@@ -1131,6 +1235,23 @@ struct MelGenExtensionMainView: View {
                             .foregroundStyle(theme.textMuted)
                     }
                 }
+                let grouping = MelodyTopics.group(state.curatedTakes.compactMap { take in
+                    guard let progression = try? ChordProgression.parse(take.progressionText) else { return nil }
+                    return MelodyPatterns.extract(from: take.notes, over: progression,
+                                                  name: take.displayName, lengthBeats: take.lengthBeats)
+                })
+                if grouping.confidence.isWorthShowing {
+                    Text("Groups the material falls into — \(grouping.confidence.verdict)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(grouping.topics) { topic in
+                        Text("· \(topic.suggestedName) — \(topic.summary)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(theme.textMuted)
+                    }
+                }
+
                 let chain = MelodyChain.learn(from: state.curatedTakes)
                 if !chain.isEmpty {
                     Text(chain.summary)
