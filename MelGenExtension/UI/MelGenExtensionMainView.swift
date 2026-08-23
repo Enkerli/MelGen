@@ -688,9 +688,75 @@ struct MelGenExtensionMainView: View {
     /// The one "what comes next" action, which does whichever thing the mode says.
     private func nextTake() {
         if liveState.mode == .comping {
-            compChanges()
+            generateComp()
         } else {
             generate()
+        }
+    }
+
+    /// Asks the model for a comping part, and falls back to the deterministic one.
+    ///
+    /// The model chooses when the chords land and which tones are in them; the
+    /// voicing layer does register, spacing and voice leading. If it can't
+    /// answer, `compChanges` produces a comp anyway — the same arrangement as the
+    /// melodic path, where the model failing costs quality rather than music.
+    private func generateComp() {
+        let current = liveState
+        guard let progression = try? ChordProgression.parse(current.progressionText) else {
+            statusMessage = "That progression doesn't parse."
+            return
+        }
+
+        guard #available(iOS 26.0, macOS 26.0, *),
+              case .available = MelodyGenerator.availability else {
+            compChanges()
+            return
+        }
+
+        let template = current.nextTemplate
+        let figure = template.figure ?? CompingFigure.charleston
+        let temperature = current.temperature
+        statusMessage = "Asking for a \(figure.name.lowercased()) comp over \(progression.text)…"
+        isGenerating = true
+
+        Task {
+            let startedAt = Date()
+            do {
+                let notes = try await MelodyGenerator.comp(for: progression,
+                                                           temperature: temperature,
+                                                           figure: figure)
+                guard !notes.isEmpty else {
+                    compChanges()
+                    isGenerating = false
+                    return
+                }
+                let record = GenerationRecord(
+                    progressionText: progression.text,
+                    temperature: temperature,
+                    briefName: "\(figure.name) · model",
+                    density: current.expression.density,
+                    durationPalette: current.durationPalette,
+                    generationSeconds: Date().timeIntervalSince(startedAt),
+                    requestCount: MelodyChunker.chunks(for: progression).count,
+                    source: .comping,
+                    analysis: MelodyAnalyser.analyse(notes, over: progression),
+                    lengthBeats: progression.totalBeats,
+                    notes: notes
+                )
+                commit {
+                    $0.add(record)
+                    $0.briefCursor += 1
+                }
+                statusMessage = "\(figure.name): \(notes.count) notes, up to "
+                    + "\(MelodyComping.maximumPolyphony(of: notes)) voices"
+                    + timingNote(for: record)
+            } catch {
+                let failure = MelodyGenerator.describe(error)
+                lastFailureWasModel = true
+                compChanges()
+                statusMessage = failure.message + " Comped it here instead."
+            }
+            isGenerating = false
         }
     }
 

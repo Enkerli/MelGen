@@ -112,6 +112,98 @@ enum MelodyGenerator {
         return sequence(from: collected, progression: progression)
     }
 
+    // MARK: - Comping
+
+    /// Asks the model for a comping part.
+    ///
+    /// It chooses when the chords land and which tones are in them; the voicing
+    /// layer decides register, spacing and how each voicing moves to the next.
+    /// That split is the point: a model asked for MIDI notes produces voicings
+    /// that jump register between chords, because keeping them near each other
+    /// is arithmetic and it is not doing arithmetic.
+    static func comp(for progression: ChordProgression,
+                     temperature: Double = 0.6,
+                     figure: CompingFigure,
+                     centre: Int = ChordVoicings.defaultCentre,
+                     progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
+        let chunks = MelodyChunker.chunks(for: progression)
+        let options = GenerationOptions(samplingMode: nil, temperature: min(max(temperature, 0), 1))
+
+        var collected: [CompingHit] = []
+        for (index, chunk) in chunks.enumerated() {
+            progress?(index, chunks.count)
+            let session = LanguageModelSession(instructions: compingInstructions())
+            let response = try await session.respond(
+                to: compingPrompt(for: chunk.progression, figure: figure),
+                generating: CompingIdea.self,
+                options: options
+            )
+            for hit in response.content.hits {
+                var shifted = hit
+                shifted.startEighth += chunk.startEighth
+                collected.append(shifted)
+            }
+        }
+
+        return voice(collected, over: progression, centre: centre)
+    }
+
+    static func compingInstructions() -> String {
+        var text = "You are MelGen, writing the comping part for a MIDI plug-in — the chords a "
+        text += "pianist or guitarist plays behind a soloist, not the melody.\n\n"
+        text += "You choose two things and only two: when each chord lands, and which of its "
+        text += "tones are in it. Register, spacing and voice leading are handled after you, so "
+        text += "do not think about octaves at all.\n\n"
+        text += "Rhythm:\n"
+        text += "- Comping is mostly space. Two to four chords per bar, often fewer.\n"
+        text += "- Land off the beat at least as often as on it. The and-of-two is the single "
+        text += "most idiomatic place for a chord.\n"
+        text += "- Anticipate: a chord an eighth before the bar line, held through it, is worth "
+        text += "more than one on the downbeat.\n"
+        text += "- Vary it. Four bars of the same rhythm is a drum machine.\n\n"
+        text += "Tones, given as degrees of the sounding chord (0 root, 1 ninth, 2 third, "
+        text += "3 eleventh, 4 fifth, 5 thirteenth, 6 seventh):\n"
+        text += "- Three or four per chord. Five is muddy.\n"
+        text += "- Include the third and the seventh — degrees 2 and 6 — nearly always. They are "
+        text += "what name the chord.\n"
+        text += "- Leave the root out most of the time. Something else has the bass.\n"
+        text += "- The ninth and the thirteenth are colour. Use them; a comp of nothing but "
+        text += "chord tones is an exercise.\n"
+        text += "- Vary which tones you use between chords, not only which chords they're on.\n"
+        return text
+    }
+
+    static func compingPrompt(for progression: ChordProgression, figure: CompingFigure) -> String {
+        var lines = ["Write a comping part for this progression: \(progression.text)", "", "Chords:"]
+        for placed in progression.chords {
+            let startEighth = Int((placed.startBeat * 2).rounded())
+            let endEighth = Int(((placed.startBeat + placed.durationBeats) * 2).rounded())
+            lines.append("- \(placed.symbol.text): eighths \(startEighth)–\(endEighth)")
+        }
+        let totalEighths = Int((progression.totalBeats * 2).rounded())
+        lines.append("")
+        lines.append("Feel for this take: \(figure.summary.lowercased()).")
+        lines.append("")
+        lines.append("A chord must not sound past the end of the chord it belongs to.")
+        lines.append("Total length: \(totalEighths) eighths.")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Turns the model's degree choices into actual voicings, voice-led.
+    ///
+    /// Free of any FoundationModels type on purpose in everything but its
+    /// argument, so the arithmetic that matters can be checked outside Xcode.
+    static func voice(_ hits: [CompingHit],
+                      over progression: ChordProgression,
+                      centre: Int) -> [SequencedNote] {
+        CompingVoicer.voice(hits.map { (startEighth: $0.startEighth,
+                                        lengthEighths: $0.lengthEighths,
+                                        degrees: $0.degrees,
+                                        velocity: $0.velocity) },
+                            over: progression,
+                            centre: centre)
+    }
+
     // MARK: - When it goes wrong
 
     /// What a generation failure actually was, and what to do about it.

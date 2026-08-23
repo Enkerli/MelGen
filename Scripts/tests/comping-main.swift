@@ -261,6 +261,74 @@ let compVariant = MelodyVariant(voiced: comp, name: "c", summary: "s", transform
 check("a line variant carries a pattern", lineVariant.material.patternIfLine != nil)
 check("a comp variant does not", compVariant.material.patternIfLine == nil)
 
+// MARK: - Voicing what a model chose
+
+print()
+print("── the half the model doesn't do ──────────────────")
+
+// The model gives when and which tones; everything else is arithmetic. These are
+// the shapes it would plausibly return, including the ones it would get wrong.
+let modelHits: [CompingVoicer.Hit] = [
+    (startEighth: 0, lengthEighths: 3, degrees: [2, 4, 6], velocity: 90),
+    (startEighth: 3, lengthEighths: 2, degrees: [6, 1, 2], velocity: 78),
+    (startEighth: 8, lengthEighths: 4, degrees: [2, 6, 5], velocity: 96),
+    (startEighth: 16, lengthEighths: 6, degrees: [0, 2, 4, 6], velocity: 88),
+    (startEighth: 24, lengthEighths: 4, degrees: [2, 4, 6, 1], velocity: 84)
+]
+let voiced = CompingVoicer.voice(modelHits, over: changes)
+
+check("chosen degrees become a voiced part", !voiced.isEmpty, "\(voiced.count) notes")
+check("and it's polyphonic", MelodyComping.maximumPolyphony(of: voiced) >= 3,
+      "up to \(MelodyComping.maximumPolyphony(of: voiced)) voices")
+check("every note belongs to the chord it's under",
+      voiced.allSatisfy { note in
+          guard let chord = changes.chord(at: note.startBeat) else { return false }
+          return chord.symbol.scalePitchClasses.contains(((Int(note.note) % 12) + 12) % 12)
+      })
+check("nothing sounds into the next chord",
+      voiced.allSatisfy { note in
+          guard let chord = changes.chords.first(where: {
+              note.startBeat >= $0.startBeat - 0.001
+                  && note.startBeat < $0.startBeat + $0.durationBeats - 0.001
+          }) else { return true }
+          return note.startBeat + note.durationBeats <= chord.startBeat + chord.durationBeats + 0.01
+      })
+check("it lands in a playable register",
+      voiced.allSatisfy { $0.note >= 36 && $0.note <= 96 },
+      "range \(voiced.map(\.note).min() ?? 0)–\(voiced.map(\.note).max() ?? 0)")
+check("voicing is deterministic", CompingVoicer.voice(modelHits, over: changes) == voiced)
+
+// The whole reason this isn't the model's job: successive voicings have to stay
+// near each other, and nothing in a language model is keeping them there.
+func chordAt(_ beat: Double, _ notes: [SequencedNote]) -> [Int] {
+    notes.filter { abs($0.startBeat - beat) < 0.001 }.map { Int($0.note) }.sorted()
+}
+let successive = [0.0, 1.5, 4.0, 8.0, 12.0].map { chordAt($0, voiced) }.filter { !$0.isEmpty }
+let jumps = zip(successive, successive.dropFirst()).map { before, after in
+    after.reduce(0) { total, pitch in
+        total + (before.map { abs(pitch - $0) }.min() ?? 12)
+    }
+}
+check("successive voicings stay near each other",
+      jumps.allSatisfy { $0 <= 14 }, "movement per change: \(jumps)")
+
+// And the failure modes a model actually produces.
+check("a hit with one tone is skipped rather than played as a single note",
+      CompingVoicer.pitches(for: [2], of: try ChordProgression.parseChordSymbol("Dm7")) == nil)
+check("duplicate degrees collapse rather than doubling",
+      (CompingVoicer.pitches(for: [2, 2, 6], of: try ChordProgression.parseChordSymbol("Dm7"))?.count ?? 0) == 2)
+check("a degree past the scale wraps an octave up",
+      (CompingVoicer.pitches(for: [0, 7], of: try ChordProgression.parseChordSymbol("Dm7"))?
+        .max() ?? 0)
+        - (CompingVoicer.pitches(for: [0, 7], of: try ChordProgression.parseChordSymbol("Dm7"))?
+        .min() ?? 0) == 12)
+check("hits past the end of the form are dropped",
+      CompingVoicer.voice([(startEighth: 900, lengthEighths: 2, degrees: [2, 6], velocity: 90)],
+                          over: changes).isEmpty)
+check("a negative onset is dropped rather than wrapped",
+      CompingVoicer.voice([(startEighth: -4, lengthEighths: 2, degrees: [2, 6], velocity: 90)],
+                          over: changes).isEmpty)
+
 print()
 print(failures == 0 ? "comping: all checks passed" : "comping: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)
