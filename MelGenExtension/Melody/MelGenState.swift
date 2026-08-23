@@ -20,12 +20,17 @@ enum TakeSource: String, Codable, Sendable {
     /// Built here and now out of gestures, by the phrase grammar. Also instant,
     /// and unlike a stored line it has never existed before.
     case composed
+    /// Drawn from the slot statistics of the takes you kept. Instant too, and the
+    /// only one of the four that sounds like *your* material rather than like a
+    /// vocabulary somebody wrote down.
+    case sampled
 
     var label: String {
         switch self {
         case .model: return "model"
         case .pattern: return "line"
         case .composed: return "phrase"
+        case .sampled: return "learned"
         }
     }
 }

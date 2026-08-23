@@ -299,7 +299,46 @@ struct MelGenExtensionMainView: View {
             }
             .buttonStyle(.plain)
             .disabled(state.progressionText.isEmpty)
+
+            // The fourth source, and the only one that sounds like this
+            // musician: slot statistics over the takes they kept, sampled.
+            sampleStyleButton
         }
+    }
+
+    @ViewBuilder
+    private var sampleStyleButton: some View {
+        let model = MelodyStyleModel.learn(from: state.curatedTakes)
+        let ready = !model.isEmpty && model.takes >= 3
+        Button {
+            sampleLearnedStyle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Sample your style")
+                    .font(.system(size: 13, weight: .medium))
+                Text(ready
+                     ? "from \(model.takes) kept takes"
+                     : "keep three takes first")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, MelGenMetrics.space3)
+            .frame(height: MelGenMetrics.controlHeight)
+            .foregroundStyle(ready ? theme.text : theme.textMuted)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(ready ? theme.borderStrong : theme.border, lineWidth: ready ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!ready || state.progressionText.isEmpty)
     }
 
     private var generateEnabled: Bool {
@@ -900,6 +939,21 @@ struct MelGenExtensionMainView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Where the material puts its notes, bar by bar. A groove looks
+                // like a groove here; a smear looks like a smear, which is the
+                // honest signal that there isn't enough material yet.
+                let model = MelodyStyleModel.learn(from: state.curatedTakes)
+                if !model.isEmpty {
+                    Text(model.summary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(theme.textSecondary)
+                    ForEach(Array(model.onsetMap().prefix(8).enumerated()), id: \.offset) { _, row in
+                        Text(row)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(theme.textMuted)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1255,6 +1309,66 @@ struct MelGenExtensionMainView: View {
                 $0.patternCursor += 1
             }
             statusMessage = "\(pattern.name) — \(pattern.summary)."
+        } else {
+            commit(reloadKernel: false) { $0.patternCursor += 1 }
+        }
+        return record
+    }
+
+    /// Draws a line from the slot statistics of the takes that were kept.
+    ///
+    /// The other three sources are, in order, somebody else's vocabulary (the
+    /// seeds), a grammar (gestures) and a language model. This one is the
+    /// musician's own habits, played back as new material.
+    @discardableResult
+    private func sampleLearnedStyle(commitNow: Bool = true) -> GenerationRecord? {
+        let current = liveState
+
+        let progression: ChordProgression
+        do {
+            progression = try ChordProgression.parse(current.progressionText)
+        } catch {
+            statusMessage = error.localizedDescription
+            return nil
+        }
+
+        let model = MelodyStyleModel.learn(from: current.curatedTakes)
+        guard !model.isEmpty else {
+            statusMessage = "Nothing kept yet — mark a few takes and this learns from them."
+            return nil
+        }
+
+        let seed = UInt64(bitPattern: Int64(current.patternCursor &* 40_503))
+            ^ UInt64(truncatingIfNeeded: abs(current.progressionText.hashValue))
+        guard let pattern = model.sample(seed: seed, pass: current.patternCursor % 4) else {
+            statusMessage = "The model didn't draw anything — it needs more material."
+            return nil
+        }
+
+        let notes = MelodyPatterns.realize(pattern, over: progression)
+        guard !notes.isEmpty else {
+            statusMessage = "That draw didn't fit this progression."
+            return nil
+        }
+
+        let record = GenerationRecord(
+            progressionText: current.progressionText,
+            temperature: current.temperature,
+            briefName: pattern.name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .sampled,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+
+        if commitNow {
+            commit {
+                $0.add(record)
+                $0.patternCursor += 1
+            }
+            statusMessage = "Drawn from your own \(model.takes) kept takes — \(pattern.summary)."
         } else {
             commit(reloadKernel: false) { $0.patternCursor += 1 }
         }
