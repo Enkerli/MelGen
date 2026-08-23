@@ -28,7 +28,13 @@ or locked to the host's playhead.
 | **Curation** | One tap per take — keep, tweak, try again, right elsewhere, partly, later, skip — in passes, so the same take can be answered differently next time |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
 | **Lines from takes** | Keep a take as a degree-relative line and it plays over any changes, instantly, with no model |
-| **Learned style** | What you kept, measured, and shown in the words the model is given |
+| **Learned style** | What you kept, measured — as prompt text, as slot statistics, and as a chain of what follows what |
+| **Composed phrases** | Gestures with rhythmic identity, composed by a phrase grammar into lines that state, answer and land |
+| **Interval cells** | Hanon's self-sequencing figures and Samchillian-style interval streams, described as moves rather than positions |
+| **Variants and morphs** | Fourteen transforms, scored against your material, and a dial between two lines you like |
+| **Listening** | Play something in and it becomes library material, read against the changes on screen |
+| **Comping** | Voicings under the changes, voice-led, in six figures |
+| **Progressions** | Generated here from corpus transition tables, rather than pasted in |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Themes** | Light (default) and Dark, MelGen's own setting rather than the host's |
@@ -83,6 +89,16 @@ Scripts/verify.sh chords     # one suite
 | `state` | Session-state round-trip, and the expression / density / note-length passes |
 | `extraction` | Takes read back as degree-relative lines, round-tripped by replaying, plus the fit report |
 | `curation` | Dispositions, passes, eviction, facets, the tag vocabulary, the rotation, and what gets learned |
+| `phrases` | Gestures, the phrase grammar, and the lines it composes |
+| `stylemodel` | Slot statistics over kept takes, and sampling new lines from them |
+| `chain` | The variable-order model: what follows what, with backoff |
+| `mutation` | Transforms, variant scoring, and the morph between two lines |
+| `retrieval` | Finding a line rather than making one, and being surprised on purpose |
+| `topics` | Grouping the library so the vocabulary can come from the material |
+| `steps` | Interval cells: self-sequencing figures and interval streams |
+| `capture` | Pairing, segmenting and quantizing what was played in |
+| `comping` | The voicing layer, voice leading, and chords instead of a line |
+| `progression` | Generating the changes, and a drift check on the corpus tables |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 
@@ -139,6 +155,13 @@ rather than transcribing it:
 
 ```bash
 python3 Scripts/generate-chord-dictionary.py
+```
+
+The same applies to the progression corpus, ported from
+[ProgGenie](https://github.com/Enkerli/music-suite)'s `packages/proggen`:
+
+```bash
+python3 Scripts/generate-progression-tables.py
 ```
 
 Never hand-edit `MelGenExtension/Melody/ChordDictionary+Generated.swift`. Change
