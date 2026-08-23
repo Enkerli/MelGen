@@ -88,4 +88,42 @@ struct CompingHit {
     @Guide(description: "How hard the chord is struck", .range(40...120))
     var velocity: Int
 }
+
+/// A template, asked for as character rather than as figures.
+///
+/// The one thing worth spending a model request on. A take costs about 1.8
+/// seconds a note every time; a template costs one request once and the
+/// deterministic path composes from it instantly for as long as it's kept. And
+/// it's the request the model is actually suited to: naming a character and
+/// describing it, rather than doing arithmetic slowly.
+///
+/// Numbers rather than a list of gesture figures, deliberately. Asked for figures
+/// the model would have to know a vocabulary it has never seen and would invent
+/// names; asked for "about five notes a bar, mostly short, heavily syncopated"
+/// it is on ground it understands, and matching that to figures is arithmetic
+/// this side does exactly.
+@available(iOS 26.0, macOS 26.0, *)
+@Generable(description: "A named style for a melodic line: what it's called, how it should be played, and what it measures like")
+struct AuthoredTemplateIdea {
+    @Guide(description: "A short name, two or three words. Evocative rather than technical — the name of a way of playing, not a description of a rhythm.")
+    var name: String
+
+    @Guide(description: "One or two sentences telling a composer how to play this way. Say what to do, not what it measures like. No numbers.")
+    var brief: String
+
+    @Guide(description: "Roughly how many notes per bar this way of playing uses", .range(1...8))
+    var notesPerBar: Int
+
+    @Guide(description: "How much silence it leaves, 0 for wall-to-wall and 100 for mostly space", .range(0...100))
+    var airiness: Int
+
+    @Guide(description: "How much of it falls off the beat, 0 for square and 100 for nothing on a beat", .range(0...100))
+    var offbeatness: Int
+
+    @Guide(description: "Typical note length in eighth notes, 1 for short and 6 for long", .range(1...6))
+    var noteLength: Int
+
+    @Guide(description: "How its phrases are laid out. One of: callAnswer, aaba, pairs, through.")
+    var shape: String
+}
 #endif

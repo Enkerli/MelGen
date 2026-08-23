@@ -291,18 +291,68 @@ extension MelodyComping {
     /// whole chords — displacing the figure, thinning it, moving the register.
     /// Nothing here goes through degree extraction, which is what flattened
     /// comping variants to single notes.
+    /// - Parameter parent: the take being varied. Its *rhythm* is what makes a
+    ///   variant a variant of it, so the re-voicings keep it and only change how
+    ///   the chords are laid out. Without this, exploring a model-generated comp
+    ///   threw the model's material away and offered twelve deterministic comps
+    ///   instead — polyphonic, so it didn't look like a bug, and not variants of
+    ///   anything.
     static func variants(of progression: ChordProgression,
                          figure: CompingFigure,
+                         parent: [SequencedNote] = [],
                          seed: UInt64,
                          limit: Int = 12) -> [(name: String, summary: String, notes: [SequencedNote])] {
-        var results: [(String, String, [SequencedNote])] = []
+        // Axis-tagged at construction. The first version worked the axis out by
+        // reading the name back, and two different kinds of variant happened to
+        // end with the same word — so a whole axis was silently classified as
+        // another and never appeared. Deriving structure from a string you just
+        // built is a way of forgetting what you knew.
+        enum Axis: Int, CaseIterable { case revoiced, displaced, register, style, rhythm, density }
+        var results: [(axis: Axis, name: String, summary: String, notes: [SequencedNote])] = []
+
+        // Re-voicing the parent: same hits, same lengths, different chords under
+        // them. This is the variant that keeps what you were listening to.
+        if !parent.isEmpty {
+            for style in VoicingStyle.allCases where style != figure.style {
+                let revoiced = revoice(parent, over: progression, as: style)
+                guard !revoiced.isEmpty, revoiced != parent else { continue }
+                results.append((.revoiced, "This comp · \(style.label)",
+                                "the rhythm you have, laid out as \(style.label.lowercased())",
+                                revoiced))
+            }
+            for shift in [1, -2] {
+                let displaced = displace(parent, byEighths: shift, over: progression)
+                guard !displaced.isEmpty else { continue }
+                // Re-voiced after moving, not before. A hit displaced across a
+                // chord change carries the *old* chord's notes otherwise, which
+                // is a wrong chord rather than a variation — and the kind of
+                // wrong that a polyphony count doesn't notice.
+                let corrected = revoice(displaced, over: progression, as: figure.style)
+                guard !corrected.isEmpty else { continue }
+                results.append((.displaced, "This comp, shifted \(shift > 0 ? "+" : "")\(shift)",
+                                "the same figure, landing elsewhere", corrected))
+            }
+        }
+
+        // Register first among the figure-derived ones: an octave is the most
+        // audible change available and it was being ranked below six voicing
+        // styles, so it never survived the limit.
+        for (octaves, label) in [(-1, "an octave down"), (1, "an octave up")] {
+            let notes = parent.isEmpty
+                ? comp(progression, figure: figure,
+                       centre: ChordVoicings.defaultCentre + 12 * octaves, seed: seed)
+                : revoice(parent, over: progression, as: figure.style,
+                          centre: ChordVoicings.defaultCentre + 12 * octaves)
+            guard !notes.isEmpty else { continue }
+            results.append((.register, "\(figure.name) \(label)", "the same comp, \(label)", notes))
+        }
 
         // Same rhythm, every other way of laying the chords out.
         for style in VoicingStyle.allCases where style != figure.style {
             let varied = figure.with(style: style)
             let notes = comp(progression, figure: varied, seed: seed)
             guard !notes.isEmpty else { continue }
-            results.append(("\(figure.name) · \(style.label)", style.summary, notes))
+            results.append((.style, "\(figure.name) · \(style.label)", style.summary, notes))
         }
 
         // Same voicing, every other figure's rhythm.
@@ -310,16 +360,8 @@ extension MelodyComping {
             let varied = figure.with(rhythm: other.rhythm)
             let notes = comp(progression, figure: varied, seed: seed)
             guard !notes.isEmpty else { continue }
-            results.append(("\(other.rhythm.name) · \(figure.style.label)",
+            results.append((.rhythm, "\(other.rhythm.name) · \(figure.style.label)",
                             "\(figure.style.label) voicings on \(other.name)'s rhythm", notes))
-        }
-
-        // Register: a comp an octave down is a different instrument's part.
-        for (octaves, label) in [(-1, "an octave down"), (1, "an octave up")] {
-            let notes = comp(progression, figure: figure,
-                             centre: ChordVoicings.defaultCentre + 12 * octaves, seed: seed)
-            guard !notes.isEmpty else { continue }
-            results.append(("\(figure.name) \(label)", "the same comp, \(label)", notes))
         }
 
         // Sparser and denser, by how often a hit gets the whole voicing.
@@ -328,11 +370,98 @@ extension MelodyComping {
             varied.fullVoicingShare = share
             let notes = comp(progression, figure: varied, seed: seed)
             guard !notes.isEmpty else { continue }
-            results.append(("\(figure.name), \(label)",
+            results.append((.density, "\(figure.name), \(label)",
                             share < 0.5 ? "mostly the top two voices" : "the full voicing every time",
                             notes))
         }
 
-        return Array(results.prefix(limit))
+        // Round-robin across the axes rather than in the order they were
+        // generated. Taking the first twelve gave every slot to whichever axis
+        // happened to be produced first, so a whole kind of variant — a
+        // different rhythm entirely, a different register — could be absent
+        // without anything looking wrong. One from each axis in turn guarantees
+        // all of them are represented before any is doubled.
+        var ordered: [(String, String, [SequencedNote])] = []
+        var cursor = 0
+        while ordered.count < results.count {
+            var addedAny = false
+            for axis in Axis.allCases {
+                let inAxis = results.filter { $0.axis == axis }
+                guard cursor < inAxis.count else { continue }
+                ordered.append((inAxis[cursor].name, inAxis[cursor].summary, inAxis[cursor].notes))
+                addedAny = true
+            }
+            if !addedAny { break }
+            cursor += 1
+        }
+        return Array(ordered.prefix(limit))
+    }
+
+    /// Keeps a comp's rhythm and re-lays its chords.
+    ///
+    /// Each simultaneity is read back as degrees of the chord under it, then
+    /// voiced afresh in the requested style and led from the one before. The
+    /// hits, their lengths and their velocities are untouched, which is what
+    /// makes the result recognisably the same part played differently.
+    static func revoice(_ notes: [SequencedNote],
+                        over progression: ChordProgression,
+                        as style: VoicingStyle,
+                        centre: Int = ChordVoicings.defaultCentre) -> [SequencedNote] {
+        let groups = simultaneities(in: notes.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) })
+        var result: [SequencedNote] = []
+        var previous: [Int]?
+
+        for group in groups {
+            guard let first = group.first,
+                  let placed = progression.chord(at: first.startBeat) else { continue }
+            var voicing = ChordVoicings.voice(placed.symbol, style: style, centre: centre)
+            guard !voicing.pitches.isEmpty else { continue }
+            if let previous {
+                voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches, centre: centre)
+            }
+            previous = voicing.pitches
+
+            // As many voices as the parent had at this hit, so a comp that
+            // thinned to two voices on the weak hits still does.
+            let wanted = max(1, min(group.count, voicing.pitches.count))
+            for pitch in voicing.pitches.suffix(wanted) where (24...108).contains(pitch) {
+                result.append(SequencedNote(note: UInt8(pitch),
+                                            velocity: first.velocity,
+                                            startBeat: first.startBeat,
+                                            durationBeats: first.durationBeats))
+            }
+        }
+        return result.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) }
+    }
+
+    /// Moves a comp's hits without changing what's in them, clipping anything
+    /// that would sound past its own chord.
+    static func displace(_ notes: [SequencedNote],
+                         byEighths shift: Int,
+                         over progression: ChordProgression) -> [SequencedNote] {
+        let offset = Double(shift) / 2
+        return notes.compactMap { note in
+            var moved = note
+            moved.startBeat = note.startBeat + offset
+            guard moved.startBeat >= 0, moved.startBeat < progression.totalBeats else { return nil }
+            guard let chord = progression.chord(at: moved.startBeat) else { return nil }
+            let end = chord.startBeat + chord.durationBeats
+            moved.durationBeats = max(0.25, min(moved.durationBeats, end - moved.startBeat))
+            return moved
+        }.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) }
+    }
+
+    /// Notes grouped by start beat — one chord is one thing.
+    static func simultaneities(in notes: [SequencedNote]) -> [[SequencedNote]] {
+        var groups: [[SequencedNote]] = []
+        for note in notes {
+            if let last = groups.last, let first = last.first,
+               abs(first.startBeat - note.startBeat) < 0.001 {
+                groups[groups.count - 1].append(note)
+            } else {
+                groups.append([note])
+            }
+        }
+        return groups
     }
 }

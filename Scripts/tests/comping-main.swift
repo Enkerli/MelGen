@@ -205,14 +205,32 @@ check("and a line take still renders as a line",
 print()
 print("── varying a comp, as a comp ──────────────────────")
 
-let compVariants = MelodyComping.variants(of: changes, figure: .charleston, seed: 5)
+let parentComp = MelodyComping.comp(changes, figure: .charleston, seed: 5)
+let compVariants = MelodyComping.variants(of: changes, figure: .charleston,
+                                          parent: parentComp, seed: 5)
 check("a comp has variants", compVariants.count >= 8, "\(compVariants.count)")
 check("every one of them is still polyphonic",
       compVariants.allSatisfy { MelodyComping.maximumPolyphony(of: $0.notes) >= 2 },
       "least polyphonic: \(compVariants.map { MelodyComping.maximumPolyphony(of: $0.notes) }.min() ?? 0)")
+// The property, not two hard-coded names: the list has to cover both of a
+// comp's axes. Asserting particular variants made the test fail whenever the
+// ordering changed, which said nothing about whether the coverage was there.
+let variesVoicing = compVariants.contains { variant in
+    VoicingStyle.allCases.contains {
+        $0 != CompingFigure.charleston.style && variant.name.hasSuffix($0.label)
+    }
+}
+let variesRhythm = compVariants.contains { variant in
+    GestureRhythm.all.contains {
+        $0 != CompingFigure.charleston.rhythm && variant.name.hasPrefix($0.name)
+    }
+}
 check("they vary the voicing and the rhythm, which are a comp's two axes",
-      compVariants.contains { $0.name.contains("Drop 2") || $0.name.contains("Quartal") }
-        && compVariants.contains { $0.name.contains("Tresillo") || $0.name.contains("Even") })
+      variesVoicing && variesRhythm,
+      "voicing \(variesVoicing), rhythm \(variesRhythm)")
+check("and every axis is represented before any is doubled",
+      Set(compVariants.prefix(6).map { $0.name.components(separatedBy: " ").first ?? "" }).count >= 3,
+      compVariants.prefix(6).map(\.name).joined(separator: ", "))
 check("they include a register move", compVariants.contains { $0.name.contains("octave") })
 check("none of them is the original", compVariants.allSatisfy {
     $0.notes != MelodyComping.comp(changes, figure: .charleston, seed: 5)
@@ -225,8 +243,49 @@ check("every one plays the chord that's sounding",
           }
       })
 check("varying a comp is deterministic",
-      MelodyComping.variants(of: changes, figure: .charleston, seed: 5).map(\.name)
+      MelodyComping.variants(of: changes, figure: .charleston,
+                             parent: parentComp, seed: 5).map(\.name)
         == compVariants.map(\.name))
+
+// The one that matters: a variant of *this take* has to keep this take's
+// rhythm. Without it, exploring a model-generated comp threw the model's
+// material away and offered deterministic comps instead — polyphonic, so it
+// didn't look like a bug, and not variants of anything.
+let keepsRhythm = compVariants.filter { $0.name.hasPrefix("This comp · ") }
+check("some variants keep the parent's own rhythm", !keepsRhythm.isEmpty,
+      "\(keepsRhythm.count) of \(compVariants.count)")
+check("and keep it exactly",
+      keepsRhythm.allSatisfy { variant in
+          Set(variant.notes.map { ($0.startBeat * 100).rounded() })
+              == Set(parentComp.map { ($0.startBeat * 100).rounded() })
+      })
+check("while changing what's played at each hit",
+      keepsRhythm.allSatisfy { $0.notes.map(\.note) != parentComp.map(\.note) })
+check("re-voicing keeps a comp polyphonic",
+      keepsRhythm.allSatisfy { MelodyComping.maximumPolyphony(of: $0.notes) >= 2 })
+check("and every re-voiced note still belongs to its chord",
+      keepsRhythm.allSatisfy { variant in
+          variant.notes.allSatisfy { note in
+              guard let chord = changes.chord(at: note.startBeat) else { return false }
+              return chord.symbol.scalePitchClasses.contains(((Int(note.note) % 12) + 12) % 12)
+          }
+      })
+
+// Displacement keeps the chords and moves them.
+let shifted = compVariants.filter { $0.name.contains("shifted") }
+check("some variants move the parent's hits", !shifted.isEmpty)
+check("and nothing sounds past its own chord",
+      shifted.allSatisfy { variant in
+          variant.notes.allSatisfy { note in
+              guard let chord = changes.chord(at: note.startBeat) else { return false }
+              return note.startBeat + note.durationBeats
+                  <= chord.startBeat + chord.durationBeats + 0.01
+          }
+      })
+
+// With no parent it falls back to the figure, which is what a fresh comp wants.
+check("with no parent it still offers something",
+      !MelodyComping.variants(of: changes, figure: .charleston, seed: 5).isEmpty)
 check("names are distinct", Set(compVariants.map(\.name)).count == compVariants.count)
 
 // The bug this exists to prevent, stated precisely. Extraction itself keeps

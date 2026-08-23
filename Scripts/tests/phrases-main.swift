@@ -220,6 +220,87 @@ check("a syncopated style composes more offbeats than a straight one",
 check("but a straight style doesn't forbid syncopation",
       straightRate > 0.02, "\(Int(straightRate * 100))% still offbeat")
 
+// MARK: - Templates have to differ
+
+print()
+print("── nine templates, or one template with nine names ───")
+
+/// A template's average measured profile over several seeds.
+func profile(of template: MelGenTemplate) -> PatternProfile {
+    var total = PatternProfile()
+    var count = 0.0
+    for seed in (1...8).map(UInt64.init) {
+        let measured = PatternProfile.of(MelodyPhrases.compose(
+            bars: 8, seed: seed,
+            preferring: template.gestureRhythms,
+            contours: template.gestureContours,
+            density: template.density,
+            restiness: template.restiness,
+            architecture: template.architecture))
+        total.notesPerBar += measured.notesPerBar
+        total.offbeatShare += measured.offbeatShare
+        total.restShare += measured.restShare
+        total.stepShare += measured.stepShare
+        total.skipShare += measured.skipShare
+        total.leapShare += measured.leapShare
+        total.meanLength += measured.meanLength
+        count += 1
+    }
+    total.notesPerBar /= count; total.offbeatShare /= count; total.restShare /= count
+    total.stepShare /= count; total.skipShare /= count; total.leapShare /= count
+    total.meanLength /= count
+    return total
+}
+
+let templateProfiles = MelGenTemplates.line.map { ($0.name, profile(of: $0)) }
+var distances: [Double] = []
+for i in templateProfiles.indices {
+    for j in (i + 1)..<templateProfiles.count {
+        distances.append(templateProfiles[i].1.distance(to: templateProfiles[j].1))
+    }
+}
+let median = distances.sorted()[distances.count / 2]
+
+// The number this guards. Measured at 0.04 median / 0.07 max before the template
+// character reached the composer, which is to say the nine templates were one
+// template with nine names — and no amount of authoring more of them would have
+// helped until that was true.
+check("templates are measurably different from one another", median >= 0.07,
+      String(format: "median pair distance %.2f, max %.2f", median, distances.max() ?? 0))
+
+// And they differ on the axes they claim to. A template is allowed to be similar
+// to another; it is not allowed to be similar to *all* of them.
+let densities = templateProfiles.map { $0.1.notesPerBar }
+check("density actually spreads",
+      (densities.max() ?? 0) - (densities.min() ?? 0) > 2.5,
+      String(format: "%.1f to %.1f notes per bar", densities.min() ?? 0, densities.max() ?? 0))
+
+let offbeats = templateProfiles.map { $0.1.offbeatShare }
+check("so does syncopation",
+      (offbeats.max() ?? 0) - (offbeats.min() ?? 0) > 0.2,
+      "\(Int((offbeats.min() ?? 0) * 100))% to \(Int((offbeats.max() ?? 0) * 100))% offbeat")
+
+// The named ones have to be what they're named.
+func named(_ name: String) -> PatternProfile? {
+    templateProfiles.first { $0.0 == name }?.1
+}
+check("Sparse is the sparsest",
+      named("Sparse")?.notesPerBar == densities.min(),
+      String(format: "%.1f/bar", named("Sparse")?.notesPerBar ?? 0))
+check("Running eighths writes shorter notes than Long tones",
+      (named("Running eighths")?.meanLength ?? 9) < (named("Long tones")?.meanLength ?? 0),
+      String(format: "%.1f against %.1f eighths",
+             named("Running eighths")?.meanLength ?? 0, named("Long tones")?.meanLength ?? 0))
+check("Anticipation is among the most offbeat",
+      (named("Anticipation")?.offbeatShare ?? 0) > (offbeats.reduce(0, +) / Double(offbeats.count)),
+      "\(Int((named("Anticipation")?.offbeatShare ?? 0) * 100))% against an average of "
+      + "\(Int(offbeats.reduce(0, +) / Double(offbeats.count) * 100))%")
+
+// A template claiming to syncopate has to be made of figures that do.
+check("syncopation is measured from the figures, not declared",
+      MelodyPhrases.leansOffbeat([.charleston, .pushedPair])
+        && !MelodyPhrases.leansOffbeat([.even, .steadyQuarters]))
+
 print()
 print(failures == 0 ? "phrases: all checks passed" : "phrases: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)
