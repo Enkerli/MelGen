@@ -107,11 +107,13 @@ Ordered by how likely they are to bite.
    is O(takes × notes) on the main thread. It is fine at fifty takes and will not
    be at five hundred. They accumulate by design — storing them (S4) fixes this
    and is the same work as making styles savable.
-3. **The model's failure mode is now handled, not diagnosed.** A transient
-   failure retries once and then falls back to composing. Nobody has established
-   *why* `SensitiveContentAnalysisML error 15` fires on this device — whether
-   it's the prompt, the locale, or the OS build. Worth a session with the
-   Console open before assuming the retry is enough.
+3. **The model's failure is now diagnosable, and still not diagnosed.** "Test
+   the model" (under the status line, once generation has failed) asks four
+   progressively larger questions — plain text, our schema, our instructions,
+   our examples, this progression — and names which one broke. Run it. A failure
+   at step one is Apple Intelligence on the device and nothing MelGen sends; a
+   failure only at step five is the progression. Until it's been run, nobody
+   knows which, including this branch's author.
 4. **Two buttons that overlap.** "Save as example" (old, absolute-pitch text for
    the prompt) and "Keep as a line" (degree-relative, plays back) do different
    things with the same intent. The old one is probably subsumed now that curated
