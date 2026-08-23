@@ -419,7 +419,8 @@ struct MelGenExtensionMainView: View {
                             }
                         }
 
-                        Text(MelodyGenerator.verdict(for: probes))
+                        Text(MelodyGenerator.verdict(for: probes,
+                                                     hasWorkedHere: state.modelHasWorkedHere))
                             .font(.system(size: 11))
                             .foregroundStyle(theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -446,9 +447,13 @@ struct MelGenExtensionMainView: View {
                 Text("Foundation Models isn't available on this device")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(theme.text)
-                Text("Everything that doesn't need a model still works — composing, "
-                     + "stored lines, comping, drawing from your own material, and the "
-                     + "whole curation loop. The model would only be a fifth source.")
+                Text(state.modelHasWorkedHere
+                     ? "It has worked here before, so something changed — a third-party model "
+                       + "extension under Settings ▸ Apple Intelligence & Siri is the usual "
+                       + "culprit. Everything that doesn't need a model still works meanwhile."
+                     : "Everything that doesn't need a model still works — composing, stored "
+                       + "lines, comping, drawing from your own material, and the whole "
+                       + "curation loop.")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -477,7 +482,8 @@ struct MelGenExtensionMainView: View {
         probes = []
         Task {
             let progression = try? ChordProgression.parse(liveState.progressionText)
-            probes = await MelodyGenerator.diagnose(progression: progression)
+            probes = await MelodyGenerator.diagnose(progression: progression,
+                                                    hasWorkedHere: liveState.modelHasWorkedHere)
             modelIsDown = MelodyGenerator.isSystemwideFailure(probes)
             if !modelIsDown, probes.allSatisfy(\.succeeded) {
                 lastFailureWasModel = false
@@ -791,7 +797,8 @@ struct MelGenExtensionMainView: View {
             do {
                 let notes = try await MelodyGenerator.comp(for: progression,
                                                            temperature: temperature,
-                                                           figure: figure)
+                                                           figure: figure,
+                                                           angle: current.briefCursor)
                 guard !notes.isEmpty else {
                     compChanges()
                     isGenerating = false

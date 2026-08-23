@@ -55,7 +55,11 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
         self.name = figure.name
         self.summary = figure.summary
         self.mode = .comping
-        self.brief = nil
+        // A chord template carries both: the figure for the deterministic path,
+        // where the point is getting exactly the rhythm you asked for, and a
+        // brief for the model, where the point is getting something you didn't
+        // specify. They are not two descriptions of one thing.
+        self.brief = StyleBrief(name: figure.name, text: CompingBriefs.brief(for: figure.name))
         self.gestureRhythms = [figure.rhythm]
         self.figure = figure
     }

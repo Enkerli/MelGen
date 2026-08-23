@@ -121,9 +121,13 @@ enum MelodyGenerator {
     /// That split is the point: a model asked for MIDI notes produces voicings
     /// that jump register between chords, because keeping them near each other
     /// is arithmetic and it is not doing arithmetic.
+    /// - Parameter angle: which rotating nudge to use, so two takes of the same
+    ///   template differ. Without it every model comp came out alike, which is
+    ///   the same failure the style briefs exist to prevent on the melodic side.
     static func comp(for progression: ChordProgression,
                      temperature: Double = 0.6,
                      figure: CompingFigure,
+                     angle: Int = 0,
                      centre: Int = ChordVoicings.defaultCentre,
                      progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> [SequencedNote] {
         let chunks = MelodyChunker.chunks(for: progression)
@@ -134,7 +138,7 @@ enum MelodyGenerator {
             progress?(index, chunks.count)
             let session = LanguageModelSession(instructions: compingInstructions())
             let response = try await session.respond(
-                to: compingPrompt(for: chunk.progression, figure: figure),
+                to: compingPrompt(for: chunk.progression, figure: figure, angle: angle),
                 generating: CompingIdea.self,
                 options: options
             )
@@ -173,7 +177,9 @@ enum MelodyGenerator {
         return text
     }
 
-    static func compingPrompt(for progression: ChordProgression, figure: CompingFigure) -> String {
+    static func compingPrompt(for progression: ChordProgression,
+                              figure: CompingFigure,
+                              angle: Int = 0) -> String {
         var lines = ["Write a comping part for this progression: \(progression.text)", "", "Chords:"]
         for placed in progression.chords {
             let startEighth = Int((placed.startBeat * 2).rounded())
@@ -182,7 +188,13 @@ enum MelodyGenerator {
         }
         let totalEighths = Int((progression.totalBeats * 2).rounded())
         lines.append("")
-        lines.append("Feel for this take: \(figure.summary.lowercased()).")
+        // The brief, not the figure. Handing the model the figure's own
+        // description — "beat one and the and of two" — is asking a language
+        // model to reproduce what a four-line function already does exactly, at
+        // two seconds a request, and it's why every take came out the same.
+        lines.append(CompingBriefs.brief(for: figure.name))
+        lines.append("")
+        lines.append(CompingBriefs.angle(at: angle))
         lines.append("")
         lines.append("A chord must not sound past the end of the chord it belongs to.")
         lines.append("Total length: \(totalEighths) eighths.")
@@ -278,14 +290,16 @@ enum MelodyGenerator {
         // is why this error was still arriving raw after being handled.
         if let scanner = contentScannerFault(in: error) {
             return Failure(
-                message: "Foundation Models can't run: its on-device safety model is missing from "
-                       + "this device (\(scanner)). Generation goes through that scanner, so "
-                       + "nothing generates until it's there. Open Settings ▸ Apple Intelligence & "
-                       + "Siri on Wi-Fi to make the device fetch what's missing. Nothing about "
-                       + "MelGen, the progression or the prompt causes this, and nothing in MelGen "
-                       + "can work around it.",
+                message: "Foundation Models can't run: the safety scanner every generation passes "
+                       + "through isn't answering (\(scanner)). This is the layer under the model, "
+                       + "and nothing about MelGen or the progression causes it. If generation used "
+                       + "to work on this device, the usual cause is a change in Settings ▸ Apple "
+                       + "Intelligence & Siri — a third-party model extension in particular, which "
+                       + "redirects the request away from the on-device model. Turn extensions off "
+                       + "and try again. If it has never worked here, the assets may genuinely be "
+                       + "missing; opening that settings page on Wi-Fi makes the device fetch them.",
                 isTransient: false,
-                short: "the safety model is missing from this device",
+                short: "the safety scanner isn't answering",
                 isSystemwide: true)
         }
 
@@ -343,7 +357,14 @@ enum MelodyGenerator {
     /// failure at step one is the system; a failure only at step four is us. That
     /// distinction can't be guessed at from an error message, and guessing at it
     /// is what a session spends its time on otherwise.
-    static func diagnose(progression: ChordProgression?) async -> [Probe] {
+    /// - Parameter hasWorkedHere: whether this device has ever produced a model
+    ///   take. The plug-in knows — the history records the source of every take —
+    ///   and it is the single most useful input the diagnosis has. "The assets
+    ///   are missing" cannot be true of a device that generated a line last week,
+    ///   and reaching for that explanation anyway is how a diagnosis ends up
+    ///   confidently wrong.
+    static func diagnose(progression: ChordProgression?,
+                         hasWorkedHere: Bool = false) async -> [Probe] {
         var probes: [Probe] = []
 
         // 1. Anything at all, no instructions, no schema.
@@ -422,7 +443,7 @@ enum MelodyGenerator {
     }
 
     /// What the probe results mean, in a sentence.
-    static func verdict(for probes: [Probe]) -> String {
+    static func verdict(for probes: [Probe], hasWorkedHere: Bool = false) -> String {
         guard let first = probes.first else { return "Nothing ran." }
         if probes.allSatisfy(\.succeeded) {
             return "Everything answered. Whatever failed before was transient — try generating again."
@@ -431,16 +452,18 @@ enum MelodyGenerator {
             var verdict = "The framework won't answer even a plain question — no instructions, no "
                         + "schema — so nothing MelGen sends is the cause. This is Foundation "
                         + "Models on this device."
-            if first.message.contains("safety model is missing") {
-                verdict += " Specifically: the on-device safety model isn't installed. Every "
-                        + "generation runs through it, so nothing will generate until it is. "
-                        + "Open Settings ▸ Apple Intelligence & Siri on Wi-Fi, which makes the "
-                        + "device fetch the assets it's missing; it's a known Foundation Models "
-                        + "fault rather than anything to configure. Everything in MelGen that "
-                        + "doesn't need a model still works."
+            if hasWorkedHere {
+                verdict += " It has generated here before, so something changed rather than "
+                        + "something being absent. Check Settings ▸ Apple Intelligence & Siri "
+                        + "for a third-party model extension: with one enabled, requests go "
+                        + "somewhere other than the on-device model and the guardrail path "
+                        + "fails. Turning extensions off is the first thing to try. Otherwise: "
+                        + "language, and whether an update is mid-download."
             } else {
-                verdict += " Check Apple Intelligence is on, the language is supported, and the "
-                        + "model has finished downloading."
+                verdict += " No model take has ever been produced here, so the assets may "
+                        + "genuinely be missing. Open Settings ▸ Apple Intelligence & Siri on "
+                        + "Wi-Fi, which makes the device fetch what it's short of. Everything in "
+                        + "MelGen that doesn't need a model still works meanwhile."
             }
             return verdict
         }

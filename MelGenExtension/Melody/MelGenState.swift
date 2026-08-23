@@ -590,6 +590,16 @@ extension MelGenState {
         history.filter { $0.latestMark?.disposition == disposition }
     }
 
+    /// Whether the model has ever produced a take on this device.
+    ///
+    /// The most useful thing a diagnosis can know, and it costs nothing to know
+    /// it: an explanation that contradicts this is wrong however plausible it
+    /// sounds, and reaching for one anyway is how a wrong diagnosis gets stated
+    /// confidently.
+    var modelHasWorkedHere: Bool {
+        history.contains { $0.source == .model && !$0.notes.isEmpty }
+    }
+
     /// The material worth learning from: what you kept, plus what you said had a
     /// version that works. Deliberately not everything marked — a library that
     /// includes what you set aside teaches the model to write what you set aside.

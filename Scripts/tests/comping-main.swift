@@ -329,6 +329,48 @@ check("a negative onset is dropped rather than wrapped",
       CompingVoicer.voice([(startEighth: -4, lengthEighths: 2, degrees: [2, 6], velocity: 90)],
                           over: changes).isEmpty)
 
+// MARK: - What the model is told
+
+print()
+print("── a brief is not a figure ────────────────────────")
+
+// The distinction the first version collapsed. A figure is a pattern and belongs
+// to the deterministic path; a brief is a character and belongs to the model.
+// If a brief can be executed rather than interpreted, it's a figure wearing the
+// wrong hat.
+for figure in CompingFigure.all {
+    let brief = CompingBriefs.brief(for: figure.name)
+    check("\(figure.name) has a brief", !brief.isEmpty)
+    check("\(figure.name)'s brief doesn't name beats",
+          !brief.contains("beat one") && !brief.contains("and of two")
+            && !brief.lowercased().contains("eighth"),
+          brief.prefix(48) + "…")
+    check("\(figure.name)'s brief differs from its figure's summary",
+          brief != figure.summary)
+}
+check("an unknown template still gets a brief",
+      !CompingBriefs.brief(for: "nothing").isEmpty)
+check("the briefs are distinct",
+      Set(CompingFigure.all.map { CompingBriefs.brief(for: $0.name) }).count
+        == CompingFigure.all.count)
+
+// And the rotation, which is the other half of why every take came out alike.
+check("there are several angles", CompingBriefs.angles.count >= 5)
+check("they're distinct", Set(CompingBriefs.angles).count == CompingBriefs.angles.count)
+check("the rotation wraps",
+      CompingBriefs.angle(at: 0) == CompingBriefs.angle(at: CompingBriefs.angles.count))
+check("and handles a negative cursor", !CompingBriefs.angle(at: -3).isEmpty)
+check("successive takes get different nudges",
+      CompingBriefs.angle(at: 0) != CompingBriefs.angle(at: 1))
+
+// A chord template carries both objects, because they do different jobs.
+let chordTemplate = MelGenTemplates.chords.first { $0.name == CompingFigure.pad.name }
+check("a chord template has a figure for the deterministic path",
+      chordTemplate?.figure != nil)
+check("and a brief for the model", chordTemplate?.brief != nil)
+check("and they say different things",
+      chordTemplate?.brief?.text != chordTemplate?.figure?.summary)
+
 print()
 print(failures == 0 ? "comping: all checks passed" : "comping: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)
