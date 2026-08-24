@@ -1,0 +1,16 @@
+# The desktop half of the pipeline. Nothing here ever runs on the iPad.
+#
+# mido only — no music21, no pretty_midi. This stage parses a file format and
+# nothing else; everything musical happens in Swift, against the same code the
+# plug-in runs. See COREML.md.
+mido==1.3.3
+
+# Training. Any recent PyTorch works; MPS on Apple silicon and CUDA on a Linux
+# box are both fine, and an LSTM this size trains on CPU in minutes.
+torch>=2.2
+
+# Conversion. 8.0 is the floor for stateful models (ct.StateType), which is what
+# keeps the LSTM's hidden state inside Core ML instead of marshalling it through
+# MLMultiArrays on every step.
+coremltools>=8.0
+numpy>=1.24

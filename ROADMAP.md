@@ -169,12 +169,22 @@ adapter path is a developer artifact rather than a personal one, and everything
 worth having in the near term is transparent statistics over the curated corpus.
 
 S1 (learn from incoming MIDI) and S3 (style extraction) are done, and generating
-from the learned distributions is done. What's left: S2 (the file reader), S4
-(storing the learned models instead of recomputing them), S5 (style transfer),
+from the learned distributions is done. What's left: S4 (storing the learned
+models instead of recomputing them), S5 (style transfer), the in-app half of S2,
 and N6. The 2026-08-24 session pointed at the same conclusion from the other
 direction — mono patterns became more palatable through **mutation and morphing**,
 which are Markov-ish and deterministic, so the refinement path runs through
 M-series work rather than through the model.
+
+**Reopened 2026-08-24 by a large MIDI collection.** TRAINING.md closed the
+off-device question mostly on corpus size, and more material changes that
+arithmetic and nothing else about the reasoning. So S6 (a corpus, and a number to
+beat) and S7 (a trained model through Core ML) join this wave, with the gate
+written into S7: it closes rather than continues if it can't beat the chain. The
+analysis is **[COREML.md](COREML.md)**. The cheapest item in the family is
+neither of them — it's pointing S2's new reader at the collection and letting the
+models that already ship learn from it, which needs no tensor, no conversion and
+no Xcode.
 
 ### Deliberately deferred
 
@@ -299,13 +309,20 @@ without it. The headline: the next item in this family is not S1 or S2 but
 *generating from the learned distributions*, which needs neither a model nor a
 capture path.
 
+Training **off** the device and running the result through Core ML is the other
+half, settled separately in **[COREML.md](COREML.md)** — same corpus, same
+tokens, but the burden of proof sits on the model, because `MelodyChain` already
+does that job instantly, inspectably and with nothing to download.
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | S1 | **Learn from incoming MIDI** | XL | ✅ **done 2026-08-23**, and it turned out to be S, not XL — because the learned models were built so that adding material is `add(pattern)` and nothing else. A lock-free ring in the kernel, pairing that survives overlapping note-ons, segmentation on silence, and quantizing that records how far off the grid it was rather than absorbing it. Captured phrases are read against the progression that was on screen, so they're reusable over other changes rather than being a recording. |
-| S2 | **Learn from a loaded MIDI file** | L | The pipeline exists (S1); what's missing is only the file reader. `MelodyCapture.learn(from:over:)` takes plain events, so this is a MIDI file parser and nothing else. Pairs with X4. |
+| S2 | **Learn from a loaded MIDI file** | L | Half done, and the half that landed is on the desktop side of the device line. `Scripts/training/midi_to_events.py` reads a collection into exactly the plain events `MelodyCapture.learn(from:over:)` takes — harmony from a sidecar, from markers, or from a chord track, and a file with none still reads and says so — tested by `Scripts/verify.sh midi`. That is what feeds S6 and what lets a found collection reach the slot model and the chain today. What it does *not* do is let the plug-in open a file: Python isn't on the iPad. The in-app half is a Swift SMF parser behind a file picker, and the event shape it has to produce is now pinned by the Python one. Pairs with X4. |
 | S3 | **Style extraction** | XL | ✅ first cut done 2026-08-22. `StyleLearner.learn` measures the curated takes into `LearnedStyle` — density, rest share, register, step/skip/leap shares, direction changes, duration and onset histograms, harmonic role balance, and the tags — and renders it as prompt text shown in the interface in the words the model receives. The compression claim holds: 620 characters for 24 takes, against several hundred tokens for *one* quoted take. Still to do: a degree histogram conditioned on the chord (which is what generating from the style needs), per-facet styles, and a floor below which the description should say "not yet" rather than a confident number over three takes. |
 | S4 | **Named, saved styles** | M | Half done: `MelodyStyleModel` and `MelodyChain` are both `Codable` and round-trip through JSON (tested), and the slot model accumulates so a style can grow across sessions. What's missing is storage and a name — they're currently recomputed from the kept takes on every draw, which is correct and wasteful. Depends on where the library lives (I5). |
 | S5 | **Style transfer onto an existing pattern** | L | Partly done and partly still interesting. `MelodyTransforms.applyRhythm` transfers a *rhythm* onto existing pitch material, and the morph interpolates between two lines. What's missing is transferring a learned style's distributions onto a pattern — redraw this line's durations and placement from that style, keep its contour. Now a small piece of work on top of `PatternProfile`. |
+| S6 | **A corpus, and a number to beat** | M | ✅ written 2026-08-24, **never compiled** — the session that wrote it had no Swift toolchain, so the first run on a Mac is the real test. `Scripts/export-corpus.sh` compiles the real Melody sources rather than reimplementing them, turns exported histories and a MIDI collection into degree-relative patterns, tokenizes them as `ChainToken` keys unchanged, and reports what `MelodyChain` scores on held-out material. It deduplicates *and splits by line*, because 60 distinct lines behind 98 takes is otherwise the classic way to measure a model on its own training data. The baseline is the deliverable: it's what any later model has to beat, and it's worth having whether or not one is ever trained. |
+| S7 | **A trained model, converted to Core ML** | L | Gated on S6, and the gate is the item. `train_lstm.py` trains a next-token LSTM over the same tokens, conditioned on chord quality, root motion and where the harmony changes — which is exactly what the chain can't afford, since adding harmony to an n-gram context turns every context into one seen once and `trustThreshold` then correctly refuses it. `export_coreml.py` converts it statefully (`ct.StateType`, not hand-carried `h`/`c` — the target is iOS 27), with the vocabulary embedded in the `.mlpackage` so weights and token dictionary can't be separated by a file copy. The device side is deliberately unwritten: it needs a real `.mlpackage` to compile against, and it's a seventh `MaterialSource` returning a `MelodyPattern`, a sampler with a temperature and a seed, and nothing on the audio thread. **If the LSTM doesn't beat S6's baseline this item closes rather than continues** — that would mean more material, not more epochs, and `MelodyChain` stays the answer. |
 
 | P7 | **Harmonic rhythm** | M | Raised 2026-08-24. Every generated progression is one chord per bar, so a form has no rhythmic shape of its own. Wanted: bars with two chords, and bars with three as a half plus two quarters. The parser already accepts multiple chords in a bar and shares the beats equally, so the representation is there — what's missing is the *generator* choosing to use it, and a way to say how often. |
 | P8 | **Time signatures** | L | Raised 2026-08-24: "not all progressions are 4/4". Currently four beats a bar is assumed in the parser's default, the chunker, the notation grid, the metric weighting in expression, and the kernel's bar arithmetic. Doing this properly means a time signature on the progression and threading it through all five; doing it by halves means a plug-in that's subtly wrong in 3/4. Sized accordingly. |

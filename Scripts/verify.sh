@@ -29,6 +29,7 @@
 #   templates — writing a template, and refusing one that isn't new
 #   progression — generating the changes, ported from ProgGenie's corpus tables
 #   analysis — take measurement (variety, harmonic roles) and the dead-air guard
+#   midi    — the MIDI front end of the training pipeline: files to plain events
 #   docs     — the documentation against the code it describes
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
@@ -267,6 +268,11 @@ run_docs() {
     python3 "$REPO/Scripts/tests/docs-audit.py" || status=1
 }
 
+run_midi() {
+    echo "── midi ───────────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/midi-ingest.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -282,7 +288,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_docs; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_docs; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -302,11 +308,12 @@ case "$which" in
     templates) run_templates ;;
     progression) run_progression ;;
     analysis) run_analysis ;;
+    midi)     run_midi ;;
     docs)     run_docs ;;
     contrast) run_contrast ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|contrast|kernel]"; exit 2 ;;
 esac
 
 echo
