@@ -355,6 +355,13 @@ struct MelGenState: Codable, Sendable {
     /// Change key every N bars. 0 for none.
     var progressionModulation: Int = 0
 
+    /// Every template the model has been asked for, and what the gate said.
+    ///
+    /// In the session state, so it exports with the history: a refusal costs a
+    /// model request, and a run of them is the only evidence available about
+    /// whether the gate is calibrated or the model is repeating itself.
+    var templateProposals: [TemplateProposal] = []
+
     /// Which groups of the interface are unfolded.
     var showShape: Bool = true
     var showFeel: Bool = true
@@ -432,6 +439,8 @@ struct MelGenState: Codable, Sendable {
         showFeel = try container.decodeIfPresent(Bool.self, forKey: .showFeel) ?? true
         showHistory = try container.decodeIfPresent(Bool.self, forKey: .showHistory) ?? false
         appearance = try container.decodeIfPresent(MelGenAppearance.self, forKey: .appearance) ?? .light
+        templateProposals = try container.decodeIfPresent([TemplateProposal].self,
+                                                          forKey: .templateProposals) ?? []
         autoRegenerate = try container.decodeIfPresent(Bool.self, forKey: .autoRegenerate) ?? false
         regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses) ?? 1
         briefCursor = try container.decodeIfPresent(Int.self, forKey: .briefCursor) ?? 0
@@ -674,6 +683,31 @@ extension MelGenState {
         history.contains { $0.source == .model && !$0.notes.isEmpty }
     }
 
+    /// Records what the gate decided about a proposed template.
+    ///
+    /// Newest first, and bounded: this is evidence, not an audit trail, and forty
+    /// proposals is already more than anyone will read.
+    mutating func record(_ proposal: TemplateProposal) {
+        templateProposals.insert(proposal, at: 0)
+        if templateProposals.count > 40 { templateProposals.removeLast() }
+    }
+
+    /// Which existing templates the refusals keep naming.
+    ///
+    /// The question behind it: one template accounting for most refusals is a
+    /// property of the *gate*, not of the proposals — either that template sits in
+    /// the middle of the space or the threshold is calibrated wrong. Counting it
+    /// is how that stops being a hunch.
+    var refusalsByNearest: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for proposal in templateProposals where !proposal.accepted {
+            guard let nearest = proposal.verdict.nearest else { continue }
+            counts[nearest, default: 0] += 1
+        }
+        return counts.sorted { ($1.value, $0.key) < ($0.value, $1.key) }
+            .map { (name: $0.key, count: $0.value) }
+    }
+
     /// The material worth learning from: what you kept, plus what you said had a
     /// version that works. Deliberately not everything marked — a library that
     /// includes what you set aside teaches the model to write what you set aside.
@@ -697,6 +731,9 @@ struct MelGenHistoryExport: Codable, Sendable {
     /// pre-expression and won't sound like what was heard without them.
     var expressionAtExport: ExpressionSettings
     var takes: [GenerationRecord]
+    /// Every template the model was asked for and what the gate said, refusals
+    /// included. Optional so a file written before this existed still reads.
+    var templateProposals: [TemplateProposal]?
 }
 
 extension MelGenState {
@@ -705,7 +742,8 @@ extension MelGenState {
             exportedAt: Date(),
             takeCount: history.count,
             expressionAtExport: expression,
-            takes: history
+            takes: history,
+            templateProposals: templateProposals
         )
     }
 
@@ -768,6 +806,11 @@ extension MelGenState {
             incoming.append(take)
             summary.added += 1
         }
+
+        // Proposals first, and outside the early return: a file can carry a run
+        // of refusals and no new takes at all, which is exactly the file you'd
+        // exchange to compare notes about the gate.
+        mergeProposals(from: export)
         guard !incoming.isEmpty else { return summary }
 
         // A variation whose parent came in the same file, or is already here,
@@ -792,6 +835,17 @@ extension MelGenState {
         history.sort { $0.date > $1.date }
         evictAfterImport()
         return summary
+    }
+
+    /// Brings across template proposals the same way: by id, so re-importing
+    /// adds nothing. Refusals are worth having from someone else's session — a
+    /// template refused there is one the gate would refuse here.
+    private mutating func mergeProposals(from export: MelGenHistoryExport) {
+        guard let incoming = export.templateProposals, !incoming.isEmpty else { return }
+        let known = Set(templateProposals.map(\.id))
+        templateProposals.append(contentsOf: incoming.filter { !known.contains($0.id) })
+        templateProposals.sort { $0.date > $1.date }
+        if templateProposals.count > 40 { templateProposals.removeLast(templateProposals.count - 40) }
     }
 
     /// Eviction after an import, which has to spare the current take but can't

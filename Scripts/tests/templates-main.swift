@@ -161,6 +161,147 @@ check("the threshold isn't a wall — some existing templates would clear it aga
       selfJudgements.contains(true),
       "\(selfJudgements.filter { $0 }.count) of \(selfJudgements.count) clear it")
 
+// MARK: - Is the gate calibrated, or just strict?
+
+// The finding this replaced a constant with a measurement. The threshold was
+// 0.08, taken from the median distance between *all pairs* of hand-written
+// templates — but the quantity the gate applies is the distance to the *nearest*
+// neighbour, whose median is about a third of that. So a newcomer was held to
+// more than twice what the set demands of itself, and 92% of drawn characters
+// were refused.
+print()
+print("── the gate against the set it guards ─────────────")
+
+let profiles = existing.map { TemplateGate.profile(of: $0) }
+let nearestDistances = profiles.indices.compactMap { index -> Double? in
+    profiles.indices.filter { $0 != index }
+        .map { profiles[index].distance(to: profiles[$0]) }.min()
+}.sorted()
+let medianNearest = nearestDistances[nearestDistances.count / 2]
+let bar = TemplateGate.threshold(for: existing)
+
+check("the threshold is the set's own median nearest-neighbour distance",
+      abs(bar - min(TemplateGate.maximumThreshold,
+                    max(TemplateGate.minimumThreshold, medianNearest))) < 1e-9,
+      String(format: "bar %.3f, median nearest %.3f", bar, medianNearest))
+check("which is well under the constant it replaced",
+      bar < TemplateGate.maximumThreshold,
+      String(format: "%.3f vs %.3f", bar, TemplateGate.maximumThreshold))
+check("the bar is never laxer than the floor", bar >= TemplateGate.minimumThreshold)
+
+// Most of the existing templates now clear a bar set from their own spacing.
+// Under the old constant, six of the nine failed against each other — which is
+// the definition of a wall rather than a gate.
+let clearing = existing.filter { template in
+    let others = existing.filter { $0.name != template.name }
+    let profile = TemplateGate.profile(of: template)
+    let nearest = others.map { profile.distance(to: TemplateGate.profile(of: $0)) }.min() ?? 1
+    return nearest >= TemplateGate.threshold(for: existing)
+}
+check("most existing templates clear the calibrated bar",
+      clearing.count * 2 > existing.count,
+      "\(clearing.count) of \(existing.count)")
+
+// And the refusal rate over the character space is a rate rather than a verdict.
+var refusalsByNearest: [String: Int] = [:]
+var refusedCount = 0
+var probeCount = 0
+for density in stride(from: 1.0, through: 8.0, by: 1.0) {
+    for air in stride(from: 0.0, through: 1.0, by: 0.25) {
+        for offbeat in stride(from: 0.0, through: 1.0, by: 0.25) {
+            for length in stride(from: 1.0, through: 5.0, by: 2.0) {
+                let probe = TemplateCharacter(name: "probe",
+                                              brief: String(repeating: "x", count: 30),
+                                              notesPerBar: density, airiness: air,
+                                              offbeatness: offbeat, noteLength: length)
+                let verdict = TemplateGate.judge(probe, against: existing)
+                probeCount += 1
+                guard !verdict.accepted else { continue }
+                refusedCount += 1
+                if let nearest = verdict.nearest { refusalsByNearest[nearest, default: 0] += 1 }
+            }
+        }
+    }
+}
+let refusalRate = Double(refusedCount) / Double(max(1, probeCount))
+check("the gate refuses some of the character space but not nearly all of it",
+      refusalRate > 0.05 && refusalRate < 0.75,
+      String(format: "%.0f%% of %d probes refused", refusalRate * 100, probeCount))
+
+// The suspicion worth testing: is one template catching most of the refusals?
+//
+// Measured, one does — but it isn't the one the ear suggested. "Running eighths"
+// takes about 60% of them, and for a reason: the character's density axis runs to
+// eight notes a bar while the composer tops out near six, so every character
+// above that lands on the same figures and is refused by the same neighbour. A
+// uniform sweep of an axis the composer can't honour is bound to pile up there.
+//
+// So the assertion is that the refusals aren't *entirely* one template's, and the
+// number is printed either way — the concentration is the finding, and it points
+// at the density axis rather than at any template being central.
+let blamed = refusalsByNearest.sorted { ($1.value, $0.key) < ($0.value, $1.key) }
+if let top = blamed.first {
+    let share = Double(top.value) / Double(max(1, refusedCount))
+    check("the refusals aren't all blamed on one template",
+          share < 0.75,
+          String(format: "%@ takes %.0f%% of %d refusals, across %d templates",
+                 top.key as NSString, share * 100, refusedCount, blamed.count))
+    check("and the density axis is what concentrates them",
+          top.key == "Running eighths" || share < 0.4,
+          "top: \(top.key)")
+}
+
+// A verdict says what bar it was held to, so a refusal recorded last week is
+// still readable after the threshold moves.
+let refusedProbe = TemplateGate.judge(
+    TemplateCharacter(name: "near miss", brief: String(repeating: "x", count: 30),
+                      notesPerBar: 5, airiness: 0.2, offbeatness: 0.43, noteLength: 1.5),
+    against: existing)
+check("a verdict records the bar it was held to", refusedProbe.threshold > 0,
+      String(format: "%.3f", refusedProbe.threshold))
+check("and how near it came, as a fraction of that bar",
+      refusedProbe.closeness > 0,
+      String(format: "%.2f", refusedProbe.closeness))
+
+// MARK: - A refusal is kept, and readable as a relationship
+
+print()
+print("── logging what was refused ───────────────────────")
+
+let refusedCharacter = TemplateCharacter(
+    name: "Nearly syncopated",
+    brief: "Almost exactly what Syncopated already does, on purpose.",
+    notesPerBar: 4, airiness: 0.31, offbeatness: 0.46, noteLength: 1.6)
+let refusalVerdict = TemplateGate.judge(refusedCharacter, against: existing)
+let proposal = TemplateProposal(character: refusedCharacter, verdict: refusalVerdict)
+check("a refusal reads as a relationship, not just a no",
+      !proposal.accepted == proposal.relationship.contains("small variation of")
+          || proposal.accepted,
+      proposal.relationship)
+
+var logging = MelGenState()
+logging.record(proposal)
+logging.record(TemplateProposal(character: novel,
+                                verdict: TemplateGate.judge(novel, against: existing)))
+check("proposals are logged newest first", logging.templateProposals.count == 2
+      && logging.templateProposals.first?.character.name == novel.name)
+check("and go out with the history",
+      logging.historyExport().templateProposals?.count == 2)
+
+var receivingLog = MelGenState()
+_ = receivingLog.importHistory(logging.historyExport())
+check("and come back in on import", receivingLog.templateProposals.count == 2)
+_ = receivingLog.importHistory(logging.historyExport())
+check("without doubling", receivingLog.templateProposals.count == 2)
+
+// The counting that turns "anticipation catches most of them" from a hunch into
+// a number.
+if !proposal.accepted, let blamedName = refusalVerdict.nearest {
+    check("the log says which template the refusals keep naming",
+          logging.refusalsByNearest.first?.name == blamedName,
+          logging.refusalsByNearest.map { "\($0.name)×\($0.count)" }.joined(separator: " "))
+}
+
 // How much room is there at all? This is the number that says what template
 // authoring is worth: a sweep of the character space, asking how much of it
 // lands somewhere the nine don't already cover.

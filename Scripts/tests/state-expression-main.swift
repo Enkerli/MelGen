@@ -329,7 +329,8 @@ let child = GenerationRecord(progressionText: "Dm7|G7", temperature: 0.6,
 var together = MelGenState()
 let bothSummary = together.importHistory(MelGenHistoryExport(
     exportedAt: Date(), takeCount: 2,
-    expressionAtExport: ExpressionSettings(), takes: [ancestor, child]))
+    expressionAtExport: ExpressionSettings(), takes: [ancestor, child],
+    templateProposals: nil))
 check("a variation imported with its parent keeps the relationship",
       bothSummary.reunited == 1
           && together.history.first { $0.id == child.id }?.parentTakeID == ancestor.id)
@@ -349,7 +350,8 @@ if let importedChild = together.history.first(where: { $0.id == child.id }) {
 var orphaned = MelGenState()
 let orphanSummary = orphaned.importHistory(MelGenHistoryExport(
     exportedAt: Date(), takeCount: 1,
-    expressionAtExport: ExpressionSettings(), takes: [child]))
+    expressionAtExport: ExpressionSettings(), takes: [child],
+    templateProposals: nil))
 check("a variation whose parent didn't come stands on its own",
       orphanSummary.reunited == 0 && orphaned.history.first?.parentTakeID == nil)
 check("and says so, rather than pretending it was never a variation",

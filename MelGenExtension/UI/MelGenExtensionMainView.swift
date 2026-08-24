@@ -51,6 +51,7 @@ struct MelGenExtensionMainView: View {
     @State private var isExporting = false
     @State private var exportDocument: MelGenJSONDocument?
     @State private var isImporting = false
+    @State private var showRefusedTemplates = false
 
     /// Whether the review sweep is unfolded. Not session state: it's about what
     /// you're doing right now, not what the document is.
@@ -940,6 +941,8 @@ struct MelGenExtensionMainView: View {
                     }
                 }
 
+                refusedTemplateList
+
                 if let authored, let verdict = authoredVerdict {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
@@ -976,6 +979,99 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    /// The templates the gate turned down, and what they were too close to.
+    ///
+    /// Visible because the pattern in them is the finding: refusals all naming
+    /// the same existing template say something about the gate rather than about
+    /// the proposals. And each one can be taken into the rotation anyway — the
+    /// gate stops the list filling with renames on its own, which is not the same
+    /// as forbidding one.
+    @ViewBuilder
+    private var refusedTemplateList: some View {
+        let refused = TemplateStore.refused
+        if !refused.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    showRefusedTemplates.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showRefusedTemplates ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Refused: \(refused.count) · " + refusalPattern)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(height: MelGenMetrics.smallControlHeight)
+                }
+                .buttonStyle(.plain)
+
+                if showRefusedTemplates {
+                    ForEach(refused.reversed()) { proposal in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(proposal.character.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                            Text(proposal.relationship)
+                                .font(.system(size: 10))
+                                .foregroundStyle(theme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(proposal.character.brief)
+                                .font(.system(size: 10))
+                                .foregroundStyle(theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: MelGenMetrics.space2) {
+                                Button {
+                                    TemplateStore.promote(named: proposal.character.name)
+                                    libraryRevision += 1
+                                    useTemplate(proposal.character.name)
+                                    statusMessage = "\(proposal.character.name) is in the rotation — "
+                                        + "tweak the patterns it composes to make it its own."
+                                } label: {
+                                    Text("Use it anyway")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(theme.accent)
+                                }
+                                .buttonStyle(.plain)
+                                Button {
+                                    TemplateStore.dropRefused(named: proposal.character.name)
+                                    libraryRevision += 1
+                                } label: {
+                                    Text("Forget it")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(theme.textMuted)
+                                }
+                                .buttonStyle(.plain)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .padding(MelGenMetrics.space2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                                .fill(theme.raised)
+                        )
+                    }
+                }
+            }
+            .id(libraryRevision)
+        }
+    }
+
+    /// Whether the refusals are all blaming the same template — which would be a
+    /// property of the gate, not of what was proposed.
+    private var refusalPattern: String {
+        let counts = state.refusalsByNearest
+        guard let top = counts.first else { return "nothing in common" }
+        let refusals = counts.reduce(0) { $0 + $1.count }
+        guard refusals > 1 else { return "nearest: \(top.name)" }
+        let share = Double(top.count) / Double(refusals)
+        return share >= 0.5
+            ? String(format: "%.0f%% of them blame %@", share * 100, top.name as NSString)
+            : "spread across \(counts.count) templates"
+    }
+
     private func authorTemplate() {
         guard #available(iOS 26.0, macOS 26.0, *) else { return }
         isAuthoring = true
@@ -990,6 +1086,13 @@ struct MelGenExtensionMainView: View {
                 authored = character
                 authoredVerdict = verdict
 
+                // Logged either way, and the log goes out with the history: a
+                // refusal costs a model request, and a run of them is the only
+                // evidence there is about whether the gate is calibrated or the
+                // model is repeating itself.
+                let proposal = TemplateProposal(character: character, verdict: verdict)
+                commit(reloadKernel: false) { $0.record(proposal) }
+
                 if verdict.accepted {
                     TemplateStore.add(character)
                     libraryRevision += 1
@@ -998,7 +1101,12 @@ struct MelGenExtensionMainView: View {
                     useTemplate(character.name)
                     statusMessage = "\(character.name) — \(verdict.summary)"
                 } else {
-                    statusMessage = "\(character.name) was refused: \(verdict.summary)"
+                    // Kept rather than discarded. A refusal says "this composes to
+                    // nearly what X does", not "this is worthless", and the tweaks
+                    // that make a template distinctive get applied by hand anyway.
+                    TemplateStore.addRefused(proposal)
+                    libraryRevision += 1
+                    statusMessage = "\(character.name): \(proposal.relationship)."
                 }
             } catch {
                 let failure = MelodyGenerator.describe(error)

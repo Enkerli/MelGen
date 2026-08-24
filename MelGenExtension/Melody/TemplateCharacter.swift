@@ -175,31 +175,69 @@ enum TemplateDerivation {
 // MARK: - Is it actually new?
 
 /// What happened when an authored template met the ones that already exist.
-struct TemplateVerdict: Sendable {
+struct TemplateVerdict: Codable, Hashable, Sendable {
     var accepted: Bool
     var reason: String
     /// The existing template it's nearest to, and how near.
     var nearest: String?
     var distance: Double
+    /// The bar it was held to, which moves as templates are added. Recorded so a
+    /// refusal from last week still says what it meant.
+    var threshold: Double = 0
 
     var summary: String {
         guard let nearest else { return reason }
-        return reason + String(format: " (nearest: %@, %.2f away)", nearest, distance)
+        return reason + String(format: " (nearest: %@, %.2f away; needed %.2f)",
+                               nearest, distance, threshold)
+    }
+
+    /// How near it was, as a fraction of the bar. Above 1 it passed; a refusal
+    /// at 0.9 is a near miss and one at 0.1 is a rename.
+    var closeness: Double {
+        threshold > 0 ? distance / threshold : 0
     }
 }
 
 enum TemplateGate {
 
-    /// How different a new template has to be from every existing one.
+    /// The strictest the gate is ever allowed to be.
     ///
-    /// Set at roughly the median distance between the hand-written templates, so
-    /// a new one has to be at least as distinct from its nearest neighbour as two
-    /// existing templates typically are from each other. A lower bar would let
-    /// through templates that are real but redundant; a higher one would reject
-    /// legitimately narrow variations. This number is only meaningful because the
-    /// existing templates were made to differ first — against a set that were
-    /// 0.04 apart, no threshold would have meant anything.
-    static let minimumDistance = 0.08
+    /// This was the whole threshold, and it was wrong: it was set from the median
+    /// distance between *all pairs* of hand-written templates (0.101), while the
+    /// quantity the gate actually applies is the distance to the *nearest*
+    /// neighbour. Measured across the nine templates, that median is 0.036 — so
+    /// a fixed 0.08 demanded of a newcomer more than twice what the set demands
+    /// of itself, and six of the nine would have failed the gate against each
+    /// other. Ninety-two per cent of randomly drawn characters were refused.
+    ///
+    /// It survives as a ceiling because a set that happened to be very spread out
+    /// shouldn't be able to make the gate arbitrarily strict.
+    static let maximumThreshold = 0.08
+
+    /// And the laxest, so an outright duplicate is still caught when the existing
+    /// templates are nearly identical to each other.
+    static let minimumThreshold = 0.02
+
+    /// How different a new template has to be from every existing one, given
+    /// what the existing ones are like.
+    ///
+    /// The rule the comment always claimed: a newcomer has to be at least as
+    /// distinct from its nearest neighbour as the existing templates typically
+    /// are from theirs. Derived rather than fixed, so it stays true as templates
+    /// are added — including the ones the model writes.
+    static func threshold(for existing: [MelGenTemplate]) -> Double {
+        guard existing.count > 1 else { return minimumThreshold }
+        let profiles = existing.map { profile(of: $0) }
+        let nearest = profiles.indices.compactMap { index -> Double? in
+            profiles.indices
+                .filter { $0 != index }
+                .map { profiles[index].distance(to: profiles[$0]) }
+                .min()
+        }.sorted()
+        guard !nearest.isEmpty else { return minimumThreshold }
+        let median = nearest[nearest.count / 2]
+        return min(maximumThreshold, max(minimumThreshold, median))
+    }
 
     /// Measures a template by composing from it several times.
     ///
@@ -273,19 +311,50 @@ enum TemplateGate {
 
         guard let nearest else {
             return TemplateVerdict(accepted: true, reason: "Nothing to compare it against.",
-                                   nearest: nil, distance: 0)
+                                   nearest: nil, distance: 0, threshold: 0)
         }
-        guard nearest.distance >= minimumDistance else {
+        let bar = threshold(for: existing)
+        guard nearest.distance >= bar else {
             return TemplateVerdict(
                 accepted: false,
                 reason: "It composes to almost the same thing as one you already have.",
                 nearest: nearest.name,
-                distance: nearest.distance)
+                distance: nearest.distance,
+                threshold: bar)
         }
         return TemplateVerdict(accepted: true,
                                reason: "New — it composes to something the rotation doesn't have.",
                                nearest: nearest.name,
-                               distance: nearest.distance)
+                               distance: nearest.distance,
+                               threshold: bar)
+    }
+}
+
+// MARK: - What was proposed, and what happened to it
+
+/// A template the model wrote, and the gate's answer.
+///
+/// Kept whether or not it was accepted, because a refusal is a finding. Nine
+/// refusals all naming the same nearest template says something about the gate;
+/// nine naming nine different ones says something about the model. Neither is
+/// knowable if the refused ones are thrown away, which is what used to happen.
+struct TemplateProposal: Codable, Hashable, Sendable, Identifiable {
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var character: TemplateCharacter
+    var verdict: TemplateVerdict
+
+    var accepted: Bool { verdict.accepted }
+
+    /// The refusal, as the relationship it actually is: a small variation of
+    /// something already in the rotation.
+    var relationship: String {
+        guard let nearest = verdict.nearest else { return verdict.reason }
+        if verdict.accepted {
+            return String(format: "distinct from %@ by %.2f", nearest, verdict.distance)
+        }
+        return String(format: "a small variation of %@ — %.2f apart, %.0f%% of the %.2f needed",
+                      nearest, verdict.distance, verdict.closeness * 100, verdict.threshold)
     }
 }
 
@@ -320,6 +389,53 @@ enum TemplateStore {
 
     static func remove(named name: String) {
         write(characters.filter { $0.name != name })
+    }
+
+    private static let refusedKey = "MelGen.refusedTemplates"
+
+    /// Templates the gate turned down, kept rather than discarded.
+    ///
+    /// A refusal means "this composes to nearly what X does", not "this is
+    /// worthless" — and the tweaks that make a pattern distinctive are applied by
+    /// hand anyway. So the character stays available to promote, and the reason it
+    /// was refused stays attached to it.
+    static var refused: [TemplateProposal] {
+        guard let data = UserDefaults.standard.data(forKey: refusedKey),
+              let stored = try? JSONDecoder().decode([TemplateProposal].self, from: data) else {
+            return []
+        }
+        return stored
+    }
+
+    static func addRefused(_ proposal: TemplateProposal) {
+        var stored = refused
+        guard !stored.contains(where: {
+            $0.character.name.lowercased() == proposal.character.name.lowercased()
+        }) else { return }
+        stored.append(proposal)
+        // Bounded, because a refusal costs a model request and nobody is going to
+        // read the fiftieth one.
+        if stored.count > 40 { stored.removeFirst(stored.count - 40) }
+        guard let data = try? JSONEncoder().encode(stored) else { return }
+        UserDefaults.standard.set(data, forKey: refusedKey)
+    }
+
+    static func dropRefused(named name: String) {
+        let remaining = refused.filter { $0.character.name != name }
+        guard let data = try? JSONEncoder().encode(remaining) else { return }
+        UserDefaults.standard.set(data, forKey: refusedKey)
+    }
+
+    /// Takes a refused template into the rotation anyway.
+    ///
+    /// The gate is advice, not a lock. Its job is to stop the list filling with
+    /// renames on its own; overruling it deliberately is a different act, and the
+    /// tweaks that would make the template distinctive get applied to the patterns
+    /// it composes regardless.
+    static func promote(named name: String) {
+        guard let proposal = refused.first(where: { $0.character.name == name }) else { return }
+        add(proposal.character)
+        dropRefused(named: name)
     }
 
     private static func write(_ characters: [TemplateCharacter]) {
