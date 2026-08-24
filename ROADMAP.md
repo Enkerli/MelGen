@@ -1,6 +1,6 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-23 (branch `curation-and-training`), after the second device session*
+*Last updated: 2026-08-24, after the third device session.*
 
 A consolidated inventory of planned work, backlog items and exploratory ideas.
 Items are split between **this plug-in**, **shared suite infrastructure** (things
@@ -30,9 +30,10 @@ meant to be a product.
 
 ## What landed on `curation-and-training`
 
-Eighteen commits, 2026-08-22 to 2026-08-23. Everything below is verified outside
-Xcode by `Scripts/verify.sh` and compiles in the extension target; **none of it
-has been heard on a device**, which remains the single largest open risk.
+Eighteen commits, 2026-08-22 to 2026-08-23, since merged. Everything below is
+verified outside Xcode by `Scripts/verify.sh`, and has now been heard on device —
+three sessions, 2026-08-23 to 2026-08-24. What that surfaced is in
+[ISSUES.md](ISSUES.md).
 
 | Area | Items |
 |---|---|
@@ -134,22 +135,15 @@ read back as scale degrees and joins the library, and the library conditions the
 next generation. See [TRAINING.md](TRAINING.md) for what "conditions" can and
 can't mean.
 
-**Nothing on the `curation-and-training` branch has run on a device.** It
-compiles and every deterministic claim is checked outside Xcode, but the whole
-curate → keep → learn loop is unheard. That's the next session's job, and
-`Scripts/analyse-history.sh` is how it gets measured rather than impressioned.
-
-After that, Wave 2 opens with **U1 (piano roll)**. Its case keeps getting
-stronger: G2's rests, G3's gate shaping and D4's feels are all things you
-currently have to take on trust, and the text grid only shows them to the nearest
-eighth. Curation makes it stronger again — judging a take by ear alone is the
-job, but judging *why* wants seeing it.
+Heard on device twice, 2026-08-23 and 2026-08-24. What that produced is in
+[ISSUES.md](ISSUES.md); `Scripts/analyse-history.sh` is how a session gets
+measured rather than impressioned.
 
 ### Wave 2 — make it interactive
 
 | # | Item | Impact | Effort | Depends on | Why |
 |---|------|--------|--------|-----------|-----|
-| U1 | Piano-roll display | **High** | L | — | Now the top of Wave 2. The text grid (F19) made rests and note lengths readable, but sub-eighth gate shaping still isn't visible, and D4 (feels) can't be chosen without seeing what it does |
+| U1 | Piano-roll display | **High** | L | — | ✅ **done 2026-08-23**, playhead added 2026-08-24. Detail row in [Interface](#interface) |
 | N1 | Probe multi-cable input | Medium | S | — | An afternoon that decides the shape of all input routing |
 | T1/T2 | Template selection, cycle vs randomize | Medium | S | — | ✅ **done 2026-08-22** — multi-select over the briefs, plus cycle / shuffle / lock for both briefs and stored lines. Shuffle is a shuffled cycle, so everything is heard once per round and no round opens with what the last one closed on |
 | X1/X2 | MIDI export and drag-out | **High** | M | — | Nothing leaves the plug-in today except live MIDI. Independent of everything else |
@@ -157,23 +151,29 @@ job, but judging *why* wants seeing it.
 
 ### Wave 3 — make it a library and an instrument
 
-Curation (L1–L3) and re-harmonization (R1–R2) **landed early**, on the
-`curation-and-training` branch, because the loop they close is the thing the
-project is for. What's left in this wave: library search and filtering at scale
-(L3), the session/library split done properly (L4, needing I5), polyphonic
-comping (P1–P3), and chord information in exported MIDI (X3). Comping is the
-largest single addition and wants the voicing layer (I1) under it.
+Curation (L1–L3), re-harmonization (R1–R2) and comping (P1–P3) **all landed
+early**, because the loop they close is the thing the project is for. What's left
+in this wave: library search and filtering at scale (L3), the session/library
+split done properly (L4, needing I5), chord information in exported MIDI (X3),
+and — new, from the second device session — **taxicab voice leading** for comping
+(P6), because a comp whose voicings barely move is the most-noticed remaining
+weakness in the most-liked material.
 
 ### Wave 4 — research
 
-Learned styles (S1–S5) and trade fours (N6). The analysis of what's actually
-reachable is in **[TRAINING.md](TRAINING.md)**, and it changes the shape of this
-wave: Foundation Models cannot be trained on device at all, its adapter path is a
-developer artifact rather than a personal one, and everything worth having in the
-near term is transparent statistics over the curated corpus. S3 (style
-extraction) has a first cut already. The next item isn't S1 or S2 — it's
-**generating from the learned distributions**, which needs no model and no
-capture path.
+Trade fours (N6), and the parts of the learned-style series that aren't already
+done. The analysis of what's reachable is in **[TRAINING.md](TRAINING.md)**, and
+it shaped this wave: Foundation Models cannot be trained on device at all, its
+adapter path is a developer artifact rather than a personal one, and everything
+worth having in the near term is transparent statistics over the curated corpus.
+
+S1 (learn from incoming MIDI) and S3 (style extraction) are done, and generating
+from the learned distributions is done. What's left: S2 (the file reader), S4
+(storing the learned models instead of recomputing them), S5 (style transfer),
+and N6. The 2026-08-24 session pointed at the same conclusion from the other
+direction — mono patterns became more palatable through **mutation and morphing**,
+which are Markov-ish and deterministic, so the refinement path runs through
+M-series work rather than through the model.
 
 ### Deliberately deferred
 
@@ -269,6 +269,8 @@ choosing between candidates. Conflating them would make one of the two useless.
 | D3 | **Per-note gate** | M | Promoted to Wave 1 as **G3** — playing it confirmed a single number can't give staccato notes with legato transitions. |
 | D4 | **Feel presets** | L | Raised 2026-08-22, and probably the right answer to "I'm unclear on the gate variability". Accents, swing, gate shape, gate *variability* and micro-timing are five knobs describing one thing: a feel. Named feels (straight, swung, laid back, pushed, clipped funk, rubato) would bundle them, with the individual sliders demoted to an advanced disclosure — you pick a feel and adjust, rather than assembling one from five numbers. Needs: a per-feel curve for each axis, a variability amount per axis (currently the gate shape's spread is fixed), and micro-timing beyond the current uniform jitter — probably per-metric-position offsets, which is also what a groove template is. Shareable with the rest of the suite. Do it *after* U1: choosing between feels you can't see is guesswork |
 
+| D5 | **Note duration as a distribution that moves** | M | Raised 2026-08-22, restated 2026-08-24 with the actual complaint: "the results are fine, it's more about having a way to change them with time". The four palettes pick a *character* (even, long–short, short–long, mixed) and the model interprets it once per take. What's wanted is the distribution of note values as a thing in its own right — how much of each value, and how that mix drifts across a take or across successive takes. That is closer to `LiveMutation`'s model (applied over time, seeded, re-renderable) than to a palette, and probably belongs alongside drift rather than in the generation section. Note that the eighth grid (D1) caps what a distribution can contain. |
+
 ### Polyphony & Comping
 
 The single biggest addition, and a genuine fork in the plug-in's identity.
@@ -280,6 +282,8 @@ The single biggest addition, and a genuine fork in the plug-in's identity.
 | P3 | **Voice-leading between voicings** | L | ✅ **done 2026-08-23**. The voicing moves as a *unit*: re-placing each voice independently finds lower total movement and destroys the voicing doing it, because internal spacing is what makes a rootless A one. Original note: The melodic version folds octaves to keep a line singable. The comping version needs the analogous constraint between successive voicings — minimize total movement, keep common tones. |
 | P4 | **Rhythmic comping figures** | M | ✅ **done 2026-08-23**, and the guess was right — a comping figure is a rhythm plus a voicing policy, and the rhythms are the melodic side's `GestureRhythm` vocabulary, so both modes share one sense of time. Original note: Charleston, bossa, stabs, pad. Overlaps with the template system (T-series): a comping template is a rhythm plus a voicing policy. |
 | P5 | **Split or dual output** | M | Line and comping in one instance, on separate MIDI channels or separate output ports, so one MelGen can feed a mono lead and a poly pad. Decide after P1: two instances may be the cleaner answer. |
+
+| P6 | **Taxicab voice leading** | M | Raised 2026-08-24 from the third device session, and the most-noticed weakness in the most-liked material: comps are the more satisfying half of the plug-in and their voicings barely move — "it often sounds like the chords are all in the same voicing". P3 moves a voicing as a unit, which stops independent re-placement wrecking it but doesn't *minimise* anything. The Suite already has the algorithm, in ProgGenie: taxicab distance over candidate voicings, choosing the one whose total voice movement from the previous chord is smallest. Port it rather than reinvent, the way the chord dictionary and progression tables were ported, and generate the Swift from the same source if it's table-driven. |
 
 ### Learned Styles
 
@@ -302,6 +306,10 @@ capture path.
 | S4 | **Named, saved styles** | M | Half done: `MelodyStyleModel` and `MelodyChain` are both `Codable` and round-trip through JSON (tested), and the slot model accumulates so a style can grow across sessions. What's missing is storage and a name — they're currently recomputed from the kept takes on every draw, which is correct and wasteful. Depends on where the library lives (I5). |
 | S5 | **Style transfer onto an existing pattern** | L | Partly done and partly still interesting. `MelodyTransforms.applyRhythm` transfers a *rhythm* onto existing pitch material, and the morph interpolates between two lines. What's missing is transferring a learned style's distributions onto a pattern — redraw this line's durations and placement from that style, keep its contour. Now a small piece of work on top of `PatternProfile`. |
 
+| P7 | **Harmonic rhythm** | M | Raised 2026-08-24. Every generated progression is one chord per bar, so a form has no rhythmic shape of its own. Wanted: bars with two chords, and bars with three as a half plus two quarters. The parser already accepts multiple chords in a bar and shares the beats equally, so the representation is there — what's missing is the *generator* choosing to use it, and a way to say how often. |
+| P8 | **Time signatures** | L | Raised 2026-08-24: "not all progressions are 4/4". Currently four beats a bar is assumed in the parser's default, the chunker, the notation grid, the metric weighting in expression, and the kernel's bar arithmetic. Doing this properly means a time signature on the progression and threading it through all five; doing it by halves means a plug-in that's subtly wrong in 3/4. Sized accordingly. |
+| P9 | **Shuffle tonalities** | S | Raised 2026-08-24. The walk produces numerals and resolves them in one key. Shuffling the key between generations — or between passes of the same form — costs a transpose and gives a corpus of progressions that isn't all in C. |
+
 ### Pattern Library & Information Architecture
 
 Take history is already 80% of a library; it lacks the curation affordances that
@@ -318,6 +326,8 @@ would make it one.
 | L8 | **Serendipity, done honestly** | M | A "surprise me" that isn't random: weighted away from what you've heard recently and toward facet combinations under-represented in what you kept, with the disagreement between passes used as signal. "Here's one you skipped twice that fits these changes" is a better surprise than a random pick, and the data for it already exists. |
 | L9 | **Curation of variants, not just takes** | M | The mutate/morph loop (G11) produces candidates by the dozen. They need the same dispositions and the same passes, and their provenance names parents rather than a progression. Mostly a question of whether variants share the history ring or get their own. |
 | L6 | **Pattern preview without committing** | M | Audition a library pattern without replacing what's loaded. Needs a second sequence slot in the kernel, or an audition path that bypasses the main one. |
+
+| L6 | **Presets: keep a set of settings** | M | Raised 2026-08-24, with two real examples rather than a hypothetical. **Progression:** 4 bars, surprise 0.96, bold freshness and reharm, 2-chord context, no modulation. **Performance:** chord mode, shuffle through templates, 6 notes/bar, high temperature, mixed note durations, 5% note-order drift, ≥30% accents, ≥30% slides, ~8% skip, ~10% octaves. Both are *found* settings — arrived at by playing — and there is currently no way to keep either, so each session rebuilds them from defaults. That makes presets worth more than several unbuilt features: they're the difference between a session starting where the last one ended and starting from scratch. Naming matters here; these are closer to "setups" than to synth patches, since they span three sections. |
 
 ### Interchange: MIDI Files & Drag-and-Drop
 
@@ -399,6 +409,10 @@ each one is for.
 | U7 | **App icon** | M | None yet — `Assets.xcassets/AppIcon.appiconset` is empty. Because MelGen requires Foundation Models it only runs on OS versions that have the **Icon Composer** pipeline, so use that rather than an asset catalog: one multilayer `.icon` file added to the project, which *replaces* the `AppIcon` asset set and which Xcode back-fills for older releases automatically. Requirements: 1024×1024 canvas, up to four layer groups rendered back to front, artwork as **SVG** (vector, text converted to outlines), and **no baked-in** shadows, blurs, specular highlights, gradients or background — the system applies all of that as Liquid Glass, and custom versions fight it. Design guidance says simple, filled overlapping shapes, no text. Suggested direction, to sit with the suite without claiming membership: the paper-and-ink palette (`--es-bg` cream ground, `--es-fg` warm ink) with the breath-blue accent `#2f66a5` as the one saturated element, and a mark built from two or three overlapping note-length bars of unequal width — the plug-in's actual subject, and it reads at 16px. Needs a vector tool; I can specify it but not draw it. |
 | U6 | **Reduce Motion / reduced transparency** | Trivial | No animation to speak of yet; check before adding any. |
 
+| U8 | **Name the two control groups by when they take effect** | S | Raised 2026-08-24, and it's a naming problem the redesign got backwards. The first group (density, temperature, note duration) affects **the next take**; the second **re-renders what's playing now**. "Texture" landed on the wrong one — it reads as a description of sound, which is the second group's job — and the second group is collapsed by default when it's the more performative of the two and wants to be the more prominent. Candidate framing: **Next take** and **Now**, or **Compose** and **Perform**. Drift is the awkward case: it's applied at render time, which puts it in the second group, but it's a thing you set and leave, which behaves like the first. Deciding that is deciding what the groups mean. |
+| U9 | **Stored lines aren't reachable from the mode that plays them** | S | Raised 2026-08-24: in "Play a stored line" mode the stored lines don't appear among the templates, so there's no way to choose which one. `MelGenTemplates.all(for:)` returns `line + TemplateStore.templates` for line mode and `chords` for comping — stored lines are a third list that the template picker never shows. Either they become templates (they already have names and summaries) or the picker grows a section for them. The first is less machinery and matches "everything downstream works on templates". |
+| U10 | **Rate the take that just went by** | S | Raised 2026-08-24. With auto-regeneration on, a take can be gone before it's been judged, and the vocabulary is about the take you just heard. Two candidate answers, and they're not exclusive: a "previous take" affordance that judges `previousTakeID` (which is already tracked, and already has a bug — see ISSUES), or defaulting **new take every 2 loops** so there's time to answer at all. The second is a one-line default change and probably the better first move. |
+
 ### Platform & Quality
 
 | # | Item | Effort | Notes |
@@ -433,7 +447,7 @@ Things MelGen needs that shouldn't live only in MelGen.
 
 | # | Project | Effort | Notes |
 |---|---------|--------|-------|
-| B1 | **Progression generator** | XL | ✅ **done 2026-08-23**, inside MelGen as Open Question 3 decided, and **extended the same day** after it was judged too generic: its own Adventurousness rather than borrowing the melodic temperature, and a substitution pass — tritone subs, secondary dominants that resolve into whatever follows, relative swaps, borrowed-mode chords, extensions. Applied after the walk rather than folded into it, so the numerals still say what the corpus proposed and the substitution says what was done to it. ProgGenie's corpus transition tables, generated from music-suite rather than transcribed, walked at order two with a blended backoff to order one. Every emitted label is checked against MelGen's own dictionary before it's used, because the corpus vocabulary is larger than the dictionary's. Original note: Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. Open question below is whether this is a separate plug-in or a MelGen panel. |
+| B1 | **Progression generator** | XL | ✅ **done 2026-08-23** — **now a MelGen panel, not a sibling**, as Open Question 3 decided; kept in this table for its history. Extended 2026-08-24 work is P7–P9 below. Original: inside MelGen as Open Question 3 decided, and **extended the same day** after it was judged too generic: its own Adventurousness rather than borrowing the melodic temperature, and a substitution pass — tritone subs, secondary dominants that resolve into whatever follows, relative swaps, borrowed-mode chords, extensions. Applied after the walk rather than folded into it, so the numerals still say what the corpus proposed and the substitution says what was done to it. ProgGenie's corpus transition tables, generated from music-suite rather than transcribed, walked at order two with a blended backoff to order one. Every emitted label is checked against MelGen's own dictionary before it's used, because the corpus vocabulary is larger than the dictionary's. Original note: Generate the changes, not the line. Overlaps **ProgGenie** deliberately: same corpus of leadsheets, but the model conditioned on that corpus rather than pure transition weights — so it can be asked for "a bridge that gets back to the tonic" instead of only sampling a Markov chain. |
 | B2 | **Comping instrument** | XL | If P1's mode switch makes MelGen incoherent, comping becomes its own plug-in sharing the theory, library and realization code. Decide after P1's design, not before. |
 | B3 | **Pattern librarian** | L | If L5 wins (curating incoming material as well as generated), the library outgrows a plug-in panel and wants to be an app — at which point it is either a MIDIcurator feature or its replacement. |
 

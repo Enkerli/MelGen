@@ -430,6 +430,42 @@ check("and a brief for the model", chordTemplate?.brief != nil)
 check("and they say different things",
       chordTemplate?.brief?.text != chordTemplate?.figure?.summary)
 
+// MARK: - Harmonising a mono line (mode-aware realize)
+
+// Every deterministic source makes a monophonic pattern, so chord mode has to
+// put voicings under one. Each hit is a simultaneity of *one* note, which is why
+// re-voicing without a voice count returns a line unchanged.
+let monoLine: [SequencedNote] = [
+    SequencedNote(note: 66, velocity: 90, startBeat: 0, durationBeats: 1),
+    SequencedNote(note: 69, velocity: 88, startBeat: 1, durationBeats: 1),
+    SequencedNote(note: 71, velocity: 92, startBeat: 2, durationBeats: 2),
+]
+let harmonyChanges = try ChordProgression.parse("F♯m7 | Bm7")
+let lineKeptMono = MelodyComping.revoice(monoLine, over: harmonyChanges, as: .rootlessA)
+check("re-voicing a mono line without a voice count leaves it mono",
+      MelodyComping.maximumPolyphony(of: lineKeptMono) == 1,
+      "\(MelodyComping.maximumPolyphony(of: lineKeptMono)) voices")
+
+let lineAsChords = MelodyComping.revoice(monoLine, over: harmonyChanges, as: .rootlessA, voices: 3)
+check("asking for three voices harmonises it",
+      MelodyComping.maximumPolyphony(of: lineAsChords) == 3,
+      "\(MelodyComping.maximumPolyphony(of: lineAsChords)) voices")
+check("harmonising keeps the line's rhythm",
+      Set(lineAsChords.map(\.startBeat)) == Set(monoLine.map(\.startBeat)),
+      "\(Set(lineAsChords.map(\.startBeat)).sorted())")
+check("harmonising keeps the line's note lengths",
+      lineAsChords.allSatisfy { voiced in
+          monoLine.contains { abs($0.startBeat - voiced.startBeat) < 1e-9
+                              && abs($0.durationBeats - voiced.durationBeats) < 1e-9 }
+      })
+check("every harmonised note fits the chord under it",
+      lineAsChords.allSatisfy { note in
+          guard let chord = harmonyChanges.chord(at: note.startBeat) else { return false }
+          let pc = ((Int(note.note) % 12) + 12) % 12
+          return chord.symbol.scalePitchClasses.contains(pc)
+              || chord.symbol.tonePitchClasses.contains(pc)
+      })
+
 print()
 print(failures == 0 ? "comping: all checks passed" : "comping: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

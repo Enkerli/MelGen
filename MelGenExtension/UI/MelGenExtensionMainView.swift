@@ -211,6 +211,12 @@ struct MelGenExtensionMainView: View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
             progressionSection
 
+            // Outside the take section on purpose. These are transport controls,
+            // and a transport control that materialises after an unrelated action
+            // reads as a bug — Host sync and Auto are both things you'd want set
+            // *before* making the first take, not after.
+            transportStrip
+
             if state.currentTake != nil {
                 currentTakeSection
             }
@@ -1324,17 +1330,16 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Current take
 
-    /// The take: what you hear, what it looks like, and the controls that move it.
+    /// The take: what you hear, and what it looks like.
     ///
-    /// The transport sits on the roll's edge rather than in a section of its
-    /// own, so what you hear and what you see never scroll apart — which they
-    /// did, by about a screen. The status message becomes the take's caption
-    /// instead of floating above everything, and it announces politely, so a new
-    /// take is spoken rather than silently replacing the old one.
+    /// The transport used to live here, on the roll's edge, so that what you hear
+    /// and what you see never scrolled apart. It moved out because the section is
+    /// gated on there *being* a take, which hid Host sync and Auto until one
+    /// existed. The status message stays as the take's caption rather than
+    /// floating above everything, and announces politely, so a new take is spoken
+    /// rather than silently replacing the old one.
     private var currentTakeSection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            transportStrip
-
             if let changes = try? ChordProgression.parse(state.progressionText) {
                 PianoRoll(notes: state.renderedMelody,
                           progression: changes,
@@ -1989,7 +1994,7 @@ struct MelGenExtensionMainView: View {
                       source: TakeSource = .mutated) {
         let current = liveState
         guard let progression = try? ChordProgression.parse(current.progressionText) else { return }
-        let notes = MelodyPatterns.realize(pattern, over: progression)
+        let notes = realize(pattern, over: progression)
         guard !notes.isEmpty else {
             statusMessage = "That variant didn't fit this progression."
             return
@@ -2587,6 +2592,31 @@ struct MelGenExtensionMainView: View {
     /// generation — measured at roughly four times slower than real time — catches
     /// up in the background.
     @discardableResult
+    /// Realizes a pattern the way the current mode wants it heard.
+    ///
+    /// Every deterministic source produces a `MelodyPattern`, and a pattern is
+    /// monophonic by construction — so each of them played a mono line in chord
+    /// mode, which is a mode switch that only some of the buttons honoured. This
+    /// is the one place that decides, so a seventh source can't reintroduce it:
+    /// in chord mode the pattern's rhythm is kept and voicings are laid under it,
+    /// voice-led, exactly as re-voicing a comp does.
+    private func realize(_ pattern: MelodyPattern,
+                         over progression: ChordProgression) -> [SequencedNote] {
+        let notes = realize(pattern, over: progression)
+        guard liveState.mode == .comping, !notes.isEmpty else { return notes }
+        let voiced = MelodyComping.revoice(notes,
+                                           over: progression,
+                                           as: .rootlessA,
+                                           voices: 3)
+        return voiced.isEmpty ? notes : voiced
+    }
+
+    /// What a take made this way should be labelled as, so the history doesn't
+    /// call a voiced draw a line.
+    private func source(_ line: TakeSource) -> TakeSource {
+        liveState.mode == .comping ? .comping : line
+    }
+
     private func adaptStoredLine(commitNow: Bool = true) -> GenerationRecord? {
         let current = liveState
 
@@ -2599,7 +2629,7 @@ struct MelGenExtensionMainView: View {
         }
 
         let pattern = current.nextLine(from: PatternStore.library)
-        let notes = MelodyPatterns.realize(pattern, over: progression)
+        let notes = realize(pattern, over: progression)
         guard !notes.isEmpty else {
             statusMessage = "That line didn't fit this progression."
             return nil
@@ -2667,7 +2697,7 @@ struct MelGenExtensionMainView: View {
                                             architecture: template.architecture,
                                             palette: current.durationPalette)
 
-        let notes = MelodyPatterns.realize(pattern, over: progression)
+        let notes = realize(pattern, over: progression)
         guard !notes.isEmpty else {
             statusMessage = "That phrase didn't fit this progression."
             return nil
@@ -2739,7 +2769,7 @@ struct MelGenExtensionMainView: View {
             return nil
         }
 
-        let notes = MelodyPatterns.realize(pattern, over: progression)
+        let notes = realize(pattern, over: progression)
         guard !notes.isEmpty else {
             statusMessage = "That draw didn't fit this progression."
             return nil
@@ -2751,7 +2781,7 @@ struct MelGenExtensionMainView: View {
             briefName: pattern.name,
             density: current.expression.density,
             durationPalette: current.durationPalette,
-            source: current.learnedDraw == .slots ? .sampled : .chained,
+            source: source(current.learnedDraw == .slots ? .sampled : .chained),
             analysis: MelodyAnalyser.analyse(notes, over: progression),
             lengthBeats: progression.totalBeats,
             notes: notes

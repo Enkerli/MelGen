@@ -28,6 +28,7 @@
 #   templates — writing a template, and refusing one that isn't new
 #   progression — generating the changes, ported from ProgGenie's corpus tables
 #   analysis — take measurement (variety, harmonic roles) and the dead-air guard
+#   docs     — the documentation against the code it describes
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
 #   identity — the audio component triple is unique across the suite and matches
@@ -257,6 +258,11 @@ run_analysis() {
     "$BUILD/analysis" || status=1
 }
 
+run_docs() {
+    echo "── docs ───────────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/docs-audit.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -272,7 +278,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_docs; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -292,6 +298,7 @@ case "$which" in
     templates) run_templates ;;
     progression) run_progression ;;
     analysis) run_analysis ;;
+    docs)     run_docs ;;
     contrast) run_contrast ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;

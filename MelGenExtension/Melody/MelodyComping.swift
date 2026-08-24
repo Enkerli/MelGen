@@ -403,10 +403,15 @@ extension MelodyComping {
     /// voiced afresh in the requested style and led from the one before. The
     /// hits, their lengths and their velocities are untouched, which is what
     /// makes the result recognisably the same part played differently.
+    /// - Parameter voices: how many voices to put under each hit. Nil keeps as
+    ///   many as the parent had there, which is what re-voicing a comp wants.
+    ///   A number is what *harmonising a line* wants: every hit in a monophonic
+    ///   part is a simultaneity of one, so without this a line comes back a line.
     static func revoice(_ notes: [SequencedNote],
                         over progression: ChordProgression,
                         as style: VoicingStyle,
-                        centre: Int = ChordVoicings.defaultCentre) -> [SequencedNote] {
+                        centre: Int = ChordVoicings.defaultCentre,
+                        voices: Int? = nil) -> [SequencedNote] {
         let groups = simultaneities(in: notes.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) })
         var result: [SequencedNote] = []
         var previous: [Int]?
@@ -422,8 +427,9 @@ extension MelodyComping {
             previous = voicing.pitches
 
             // As many voices as the parent had at this hit, so a comp that
-            // thinned to two voices on the weak hits still does.
-            let wanted = max(1, min(group.count, voicing.pitches.count))
+            // thinned to two voices on the weak hits still does — unless a count
+            // was asked for, which is how a mono line becomes chords.
+            let wanted = max(1, min(voices ?? group.count, voicing.pitches.count))
             for pitch in voicing.pitches.suffix(wanted) where (24...108).contains(pitch) {
                 result.append(SequencedNote(note: UInt8(pitch),
                                             velocity: first.velocity,

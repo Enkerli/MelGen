@@ -98,6 +98,28 @@ measurements, not assumed better.
 
 ## 3. Fixed since the last session
 
+*2026-08-24:*
+
+- **Chord mode never cycled its comping templates.** `runAutoRegeneration` was
+  mode-blind in three places: it composed a line on the first pass whatever the
+  mode said, its filler alternated between a fresh phrase and a stored line (both
+  melodic), and it asked the model for a line when a take was due. The rotation,
+  `MelGenTemplates.all(for: .comping)` and the cursor advance were all already
+  correct and simply never reached.
+- **No playhead.** The kernel published which pass it was on but not where in the
+  loop. It now publishes the phase, negative when stopped — including on the stop
+  transition, where the early return would otherwise leave a line frozen mid-loop.
+- **Seven equal dispositions as the default.** The right model, a costly default:
+  it turned keep/tweak/skip into a scan of seven labels, which is the cost a sweep
+  pays most. Three show, the rest are one tap away.
+- **Variants couldn't be judged.** The best material the system produces sat
+  outside the loop that decides what's good. A transform that improves a pattern
+  *is* the `tweak` the vocabulary already had a word for.
+- **The four-probe model diagnostic is gone.** It existed to find out which part
+  of the framework was broken; that question has been answered.
+
+*Earlier:*
+
 - **Variants flattened comping.** Twice. First because they went through
   degree extraction, which is one note per onset by construction. Then because
   they re-comped from the figure name and discarded the take's own material — so
@@ -115,31 +137,76 @@ measurements, not assumed better.
 
 Ordered by how likely they are to bite.
 
-1. **The interface has outgrown its structure.** Sixteen top-level sections in a
-   2,700-line view. Every feature arrived as another section, which is how it got
-   here. Structural rather than a wording problem — see §5.
-2. **No contour measurement.** §1: the axis the complaints are actually about
+1. **Some takes lose their first notes.** Reported 2026-08-24: "as though they
+   were before the playhead". Unmeasured and the most serious open bug, because it
+   costs material rather than convenience. Where to look, in order: `scheduleNotes`
+   uses a half-open window `[windowStart, windowEnd)`, so a note at exactly beat 0
+   of the first buffer is included only if `windowStart` is exactly 0 — and in
+   host-sync mode the first synced buffer *latches* the position and emits nothing,
+   which is correct for sync and would eat a downbeat note on the very first pass.
+   Second candidate: `capDeadAir`/`fillHoles` run after assembly and could shift a
+   first note's start. Reproduce with a take whose first note is at beat 0, in both
+   free-running and host-sync mode, before changing anything.
+2. **A rating follows what's playing, not what was rated.** Reported 2026-08-24:
+   mutations and morphs show the parent take's disposition and stay on "pass 1",
+   and "even different applied patterns keep the previous rating — this wasn't the
+   case previously." Diagnosed, not yet fixed: drift and morph change what's
+   *rendered* without adding a take (deliberately — `LiveMutation` "never touches
+   the take"), so the panel is correctly showing the parent's mark for material
+   that no longer sounds like the parent. The pass label is also correct and reads
+   as stale, because `curationPass` only advances when a pass is explicitly ended.
+   The fix is a design decision, not a patch: either a materially-drifted render
+   becomes its own take, or the panel says "this is a variation of a take you
+   marked" and offers to judge the variation — which is the affordance variants
+   just got.
+3. **"Auto" and "Host sync" only appear once a pattern exists.** Reported
+   2026-08-24. They're transport controls, and a transport control that
+   materialises after an unrelated action reads as a bug even when it's a
+   deliberate progressive disclosure.
+4. **"Draw from your style" produces mono lines in chord mode.** Reported
+   2026-08-24 — the same family as the auto-loop bug fixed the same day: a source
+   that doesn't consult `mode`. Worth auditing *every* source for it rather than
+   fixing this one, since that's now twice.
+5. **New templates keep getting refused.** Reported 2026-08-24. `TemplateGate`
+   rejects a proposed template that isn't distinctive enough from the existing
+   nine, and the model keeps proposing ones that aren't. Two ways out, and the
+   second may be better: make the request harder to answer generically (name the
+   existing templates in the prompt and ask for something none of them covers), or
+   stop asking — keep the nine and let the *tweaks* already applied to patterns do
+   the differentiating, which is where the variety has actually been coming from.
+6. **The interface has outgrown its structure.** Sixteen top-level sections in a
+   3,000-line view. Every feature arrived as another section, which is how it got
+   here. The 2026-08-23 redesign addressed the symptom by splitting Play from
+   Decide; the view got *longer*, so the structural problem stands — see §5.
+7. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-3. **A leading silence isn't treated as a rest.** §1.
-4. **The learned models are recomputed on every draw.** O(takes × notes) on the
+8. **A leading silence isn't treated as a rest.** §1.
+9. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-5. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+10. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-6. **Takes still can't be named.** `retitle` exists and nothing calls it.
-7. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+11. **Takes still can't be named.** `retitle` exists and nothing calls it.
+12. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-8. **The fit report is computed, tested and invisible.**
-9. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+13. **The fit report is computed, tested and invisible.**
+14. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-10. **The library is `UserDefaults`, not an App Group** (I5/L4).
-11. **`PatternStore` and the learned models have no export or import.**
-12. **`previousTakeID` is encoded but not decoded.**
+15. **The library is `UserDefaults`, not an App Group** (I5/L4).
+16. **`PatternStore` and the learned models have no export or import.**
+17. **`previousTakeID` is encoded but not decoded.**
 
 ---
 
 ## 5. For the design pass
+
+**The pass ran on 2026-08-23** — Play and Decide are the two tabs it produced, and
+the two-loop framing came out of it. What it didn't do is reduce the view, which
+got longer; §4.6 stands. The analysis below is kept because it's still the right
+diagnosis, and because U8 (naming the two control groups by when they take effect)
+is unfinished business from it: the redesign named the group that affects the next
+take "Texture", which describes what the *other* group does.
 
 The interface problem is not that any control is badly named. It is that
 **capability grew as sections** and nothing was ever removed or subsumed, so the

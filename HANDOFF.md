@@ -1,12 +1,18 @@
-# Branch handoff — `curation-and-training`
+# Handoff — current state
 
-*2026-08-23. For whoever picks this up next, including the agent embedded in
-Xcode. Written while moving fast on purpose: what landed, what's loose, and what
-is definitely not proven.*
+*Updated 2026-08-24. For whoever picks this up next, including the agent embedded
+in Xcode. Written while moving fast on purpose: what landed, what's loose, and
+what is definitely not proven.*
 
-Eighteen commits. Everything is verified outside Xcode and compiles in the
-extension target. **None of it has run on a device**, which is the single largest
-open risk and the first thing to do next.
+The `curation-and-training` branch this document started as a handoff for is
+merged, and so is the redesign that followed it. Everything is verified outside
+Xcode by `Scripts/verify.sh` and compiles in the extension target.
+
+**It has now been heard on device three times, 2026-08-23 to 2026-08-24**, which
+retired the largest open risk this document used to name. What those sessions
+surfaced lives in [ISSUES.md](ISSUES.md) — the two that matter most are takes
+losing their first notes, and a rating that follows what's playing rather than
+what was rated.
 
 ---
 
@@ -94,7 +100,8 @@ Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
 
 Ordered by how likely they are to bite.
 
-1. **Heard once, on 2026-08-23, and it moved a lot.** What came back: comping is
+1. **Heard three times, 2026-08-23 to 2026-08-24, and it moved a lot each time.**
+   From the first: comping is
    the best recent addition; phrasing improved but has room; the model failed
    with a content-scanner error and said nothing useful about it; the interface
    had outrun legibility. All of that is addressed. What is *still* unheard: the
