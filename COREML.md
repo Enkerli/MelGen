@@ -202,6 +202,49 @@ no download, no conversion step, no per-OS maintenance — stays the answer.
 isolation, because a loss curve with nothing to compare against is the easiest
 way to talk yourself into shipping something worse.
 
+### The gate doesn't currently gate
+
+*Measured 2026-08-24, on first run — this section was written before anything
+here had been compiled, and the first run contradicted it.*
+
+The paragraph above is right about the principle and wrong about the
+implementation, in the specific way it warns against. The comparison it supplies
+can be **worse than a constant**, so "beats the baseline" is satisfiable by a
+model that learned nothing.
+
+Run against a 32-take export (7 training lines, a 32-token vocabulary):
+
+| Bar | Held-out perplexity |
+|---|---|
+| `MelodyChain`, `--smoothing 0.01` | 632.8 |
+| `MelodyChain`, `--smoothing 0.1` (the default) | 109.0 |
+| `MelodyChain`, `--smoothing 1.0` | 41.5 |
+| **Uniform over the vocabulary** | **32.0** |
+
+Two separate problems. The number moves by a factor of fifteen on a flag whose
+default nobody chose deliberately — add-*k* dominates the loss when most backoff
+rungs are untrusted, so at small corpus sizes the "baseline" is mostly measuring
+*k*. And at every setting tried it is worse than guessing uniformly, which means
+an LSTM that learned only the token frequencies would be declared "worth
+converting". `train_lstm.py` compares against `chainNLL` alone, so it would print
+exactly that.
+
+The corpus above is small and unrepresentative — seven lines of stored seeds —
+and the chain may well beat uniform on a real collection. That is the point: it
+is not known, and the gate as written cannot tell you. **Both scripts need two
+more floors before any number here is acted on:** the unigram loss from the train
+split's own token frequencies, and the uniform loss over the vocabulary. The bar
+is the best of the three, not the chain alone.
+
+Two smaller findings from the same run, neither worth changing yet:
+
+- **Top-1 accuracy reads 0%** because a context with no trusted rung leaves an
+  empty distribution, and `max` over nothing counts as wrong. Honest, but the
+  metric carries no information at this corpus size.
+- **`Scripts/verify.sh midi` passes when `mido` isn't installed**, printing SKIP
+  and returning OK. So "tested by `verify.sh midi`" is true only on a machine
+  that has the dependency. The 19 checks do all pass where it does.
+
 Three things the split does on purpose:
 
 - **Deduplicate by line.** The first exported session held 60 distinct lines
@@ -298,7 +341,8 @@ waiting on (ROADMAP I5/L4). Don't solve it twice; solve it there.
 | # | Step | Effort | Gate |
 |---|---|---|---|
 | 1 | Read the MIDI collection into events | ✅ built, tested | `Scripts/verify.sh midi` |
-| 2 | Corpus exporter: patterns, tokens, vocabulary, baseline | ✅ written, **never compiled** | first run on a Mac |
+| 2 | Corpus exporter: patterns, tokens, vocabulary, baseline | ✅ written, **compiles and runs** (2026-08-24) | first run done; see §4 |
+| 2b | Give the baseline its floors — unigram and uniform | S | does the bar beat a constant? |
 | 3 | Point it at the real collection; read what it prints | S | is there a corpus at all? |
 | 4 | Feed the collection to the models that already ship | S | does the chain get better? **This is the cheapest win here** |
 | 5 | Train the LSTM | M | does it beat the baseline? |
@@ -307,7 +351,16 @@ waiting on (ROADMAP I5/L4). Don't solve it twice; solve it there.
 
 Step 4 is the one to be greedy about. It needs no tensor, no conversion and no
 Xcode work — the collection becomes patterns, the patterns feed
-`MelodyStyleModel` and `MelodyChain`, and both of those already play. If that
+`MelodyStyleModel` and `MelodyChain`, and both of those already play.
+
+And it now needs less than this document assumed. **History import landed
+2026-08-24**, after this was written: `MelGenState.importHistory` merges an
+exported history by take id, and there's a file picker for it. The corpus
+exporter already builds `GenerationRecord`s on its way to tokens, so teaching it
+to emit a history export as well as `corpus.jsonl` puts a found MIDI collection
+in front of the shipping models with **no new Swift at all** — no SMF parser, no
+in-app reader. That makes step 4 an afternoon on the desktop side rather than S2's
+other half. If that
 alone fixes the "not amazingly interesting" complaint that
 [TRAINING.md](TRAINING.md) measured — 60 distinct lines behind 98 takes — then
 steps 5–7 are a research project rather than a fix, and can be judged as one.

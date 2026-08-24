@@ -66,6 +66,7 @@ same machinery. A seventh source would be a file, not a subsystem.
 | Learn from what's played in | Lock-free capture ring, pairing, segmenting, quantizing |
 | Comp the changes | Voicing layer, voice leading, comping figures, polyphonic mode |
 | Generate the changes too | ProgGenie's corpus tables, generated from music-suite |
+| Prepare the off-device path | Desktop-only: a tested MIDI reader, a corpus exporter that compiles the real Melody sources, and a training/conversion pair. Nothing ships. [COREML.md](COREML.md) — and §4 there records that the gate the whole document rests on doesn't yet gate |
 | Lead the voices | Minimal L1 (taxicab) leading ported from the suite's reference implementation and held to its shared vectors; three modes, and a seam pass for lines |
 | Judge a variation as one | Takes carry the take they were made from and what was done to get there, so a variant, mutation, morph or drifted pass is judged in its own right with its parent's mark for context |
 | Keep a setup | `MelGenSetup` — the settings that decide what comes next, and none of the material; one can be the default a new instance starts from |
