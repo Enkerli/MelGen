@@ -144,9 +144,23 @@ public:
         count += 1;
     }
     
-    void commitSequence(double lengthBeats) {
+    /// - Parameter restartFromTop: play the new sequence from its first beat
+    ///   rather than from wherever the loop happens to be.
+    ///
+    ///   Without this, a take committed at beat 17 of a 32-beat loop began
+    ///   sounding at beat 17: everything before that was skipped until the loop
+    ///   came round, which is heard as the take's first notes never arriving.
+    ///   Auditioning several takes in a row made it every take.
+    ///
+    ///   Asked for when the *take* changes, not when the render does — otherwise
+    ///   moving an expression slider, which re-pushes the same take, would jump
+    ///   the loop back to the start on every touch.
+    void commitSequence(double lengthBeats, bool restartFromTop = false) {
         mSequenceLengths[mStagingIndex] = std::max(lengthBeats, 0.25);
         mShared.activeIndex.store(mStagingIndex, std::memory_order_release);
+        if (restartFromTop) {
+            mShared.restartRequested.store(true, std::memory_order_release);
+        }
     }
     
     /**
@@ -186,8 +200,12 @@ public:
         // Handle transport transitions of the playMelody parameter.
         if (mPlayMelody && !mMelodyPlaying) {
             mTimelineBeats = 0;
+            mLoopOrigin = 0;
             mHostBeatInitialized = false;
             mMelodyPlaying = true;
+            // Pressing play is itself a restart, so an outstanding request from a
+            // take committed while stopped doesn't fire a second one later.
+            mShared.restartRequested.store(false, std::memory_order_relaxed);
         } else if (!mPlayMelody && mMelodyPlaying) {
             releaseAllNotes(bufferStartTime);
             mMelodyPlaying = false;
@@ -212,8 +230,11 @@ public:
         if (mHostSync && mHostBeatValid) {
             if (!mHostBeatInitialized) {
                 // First synced buffer: latch the host position, emit nothing.
+                // The loop starts here, so we come in on the pattern's downbeat
+                // rather than at whatever beat the host happens to sit on.
                 mHostBeatInitialized = true;
                 mTimelineBeats = mHostBeat;
+                mLoopOrigin = mHostBeat;
                 return;
             }
             windowStart = mTimelineBeats;
@@ -226,17 +247,35 @@ public:
             if (stalled || jumped) {
                 releaseAllNotes(bufferStartTime);
                 mTimelineBeats = windowEnd;
+                // A locate is a fresh start: re-anchor the loop, both so the
+                // pattern is heard from its top and so loop time can't go
+                // negative when the host jumps backwards.
+                mLoopOrigin = windowEnd;
                 return;
             }
         } else {
             mHostBeatInitialized = false;
         }
 
+        // A newly committed take asked to be heard from its beginning: move the
+        // loop's origin to here. Whatever is sounding belongs to the take being
+        // replaced, so it is released rather than left to expire against beat
+        // numbers that no longer mean the same thing.
+        if (mShared.restartRequested.exchange(false, std::memory_order_acq_rel)) {
+            releaseAllNotes(bufferStartTime);
+            mLoopOrigin = windowStart;
+        }
+
+        // Everything below works in loop time — beats from the loop's own start —
+        // rather than in timeline time, so a restart is just a change of origin.
+        const double loopStart = windowStart - mLoopOrigin;
+        const double loopEnd = windowEnd - mLoopOrigin;
+
         // Note-offs first, so a note re-triggered at the loop point is released
         // before its next note-on.
         for (uint32_t i = 0; i < mActiveCount;) {
-            if (mActiveNotes[i].offBeat < windowEnd) {
-                const double offset = std::max(0.0, mActiveNotes[i].offBeat - windowStart) / beatsPerFrame;
+            if (mActiveNotes[i].offBeat < loopEnd) {
+                const double offset = std::max(0.0, mActiveNotes[i].offBeat - loopStart) / beatsPerFrame;
                 sendNoteOff(bufferStartTime + AUEventSampleTime(offset), mActiveNotes[i].note, 0);
                 mActiveNotes[i] = mActiveNotes[mActiveCount - 1];
                 mActiveCount -= 1;
@@ -245,9 +284,9 @@ public:
             }
         }
 
-        scheduleNotes(bufferStartTime, windowStart, windowEnd, beatsPerFrame);
+        scheduleNotes(bufferStartTime, loopStart, loopEnd, beatsPerFrame);
         mTimelineBeats = windowEnd;
-        publishPassIndex(windowEnd);
+        publishPassIndex(loopEnd);
     }
 
     /// How many complete loop passes have played. The UI polls this to know when
@@ -566,6 +605,13 @@ public:
 
     bool mMelodyPlaying = false;   // render-thread playback state
     double mTimelineBeats = 0;     // position the last buffer ended at
+    /// The timeline value that counts as beat zero of the loop.
+    ///
+    /// Zero until something restarts the loop. Keeping it separate from
+    /// `mTimelineBeats` is what lets a restart work identically whether the
+    /// timeline is ours or the host's: the host's playhead keeps its own meaning,
+    /// and the loop just decides where its own start is on that ruler.
+    double mLoopOrigin = 0;
     double mHostBeat = 0;          // host playhead, this buffer
     bool mHostBeatValid = false;   // did the host give us a position?
     bool mHostBeatInitialized = false;
@@ -595,6 +641,9 @@ public:
         std::atomic<double> loopBeats{0};
         /// Position within the current pass, or negative when stopped.
         std::atomic<double> phaseBeats{-1.0};
+        /// Set by the UI thread when a newly committed take should be heard from
+        /// its beginning; cleared by the render thread once it has been.
+        std::atomic<bool> restartRequested{false};
         /// How many MIDI events have been captured, ever. The render thread
         /// writes; the UI reads forward from its own cursor.
         std::atomic<uint64_t> captureWrite{0};
@@ -606,6 +655,7 @@ public:
           tempo{other.tempo.load(std::memory_order_relaxed)},
           loopBeats{other.loopBeats.load(std::memory_order_relaxed)},
           phaseBeats{other.phaseBeats.load(std::memory_order_relaxed)},
+          restartRequested{other.restartRequested.load(std::memory_order_relaxed)},
           captureWrite{other.captureWrite.load(std::memory_order_acquire)} {}
         SharedFields &operator=(const SharedFields &other) {
             activeIndex.store(other.activeIndex.load(std::memory_order_acquire), std::memory_order_release);
@@ -613,6 +663,7 @@ public:
             tempo.store(other.tempo.load(std::memory_order_relaxed), std::memory_order_relaxed);
             loopBeats.store(other.loopBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
             phaseBeats.store(other.phaseBeats.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            restartRequested.store(other.restartRequested.load(std::memory_order_relaxed), std::memory_order_relaxed);
             captureWrite.store(other.captureWrite.load(std::memory_order_acquire), std::memory_order_release);
             return *this;
         }

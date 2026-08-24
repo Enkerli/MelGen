@@ -69,12 +69,14 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     /// Hands a generated melody to the DSP kernel. The kernel loops it for
     /// `lengthBeats` quarter-note beats while the playMelody parameter is on.
     /// Safe to call from the main thread while rendering.
-    func setMelody(_ notes: [SequencedNote], lengthBeats: Double) {
+    /// - Parameter restartFromTop: begin the new sequence at its first beat.
+    ///   Asked for when the take changes, not when the same take is re-rendered.
+    func setMelody(_ notes: [SequencedNote], lengthBeats: Double, restartFromTop: Bool = false) {
         kernel.beginSequenceUpdate()
         for note in notes {
             kernel.appendSequenceNote(note.startBeat, note.durationBeats, note.note, note.velocity)
         }
-        kernel.commitSequence(lengthBeats)
+        kernel.commitSequence(lengthBeats, restartFromTop)
     }
 
     /// How many complete loop passes have played. The UI polls this to decide
@@ -145,6 +147,10 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     // be written into the audio unit's full state. Access is locked because the
     // host may ask for full state from a different thread than the UI.
 
+    /// Which take the kernel is currently playing, so a re-render can be told
+    /// apart from a change of material.
+    private var lastLoadedTakeID: UUID?
+
     private let stateLock = NSLock()
     private var _state = MelGenState()
 
@@ -167,7 +173,13 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     /// kernel. A take with no notes leaves the kernel's sequence alone.
     private func loadCurrentTakeIntoKernel(_ state: MelGenState) {
         guard let take = state.currentTake else { return }
-        setMelody(state.renderedMelody, lengthBeats: take.lengthBeats)
+        // A different take starts from its own beginning; the same take being
+        // re-rendered — which is what every expression slider does — carries on
+        // from where the loop already is, so touching a control doesn't jump the
+        // playhead back to the top.
+        let isNewTake = take.id != lastLoadedTakeID
+        lastLoadedTakeID = take.id
+        setMelody(state.renderedMelody, lengthBeats: take.lengthBeats, restartFromTop: isNewTake)
     }
 
     private static let stateKey = "MelGen.sessionState"
