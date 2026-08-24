@@ -466,6 +466,164 @@ check("every harmonised note fits the chord under it",
               || chord.symbol.tonePitchClasses.contains(pc)
       })
 
+// MARK: - Taxicab voice leading, against the suite's shared vectors
+
+// The one place MelGen and the suite must agree note for note. The vectors are
+// the same file the TypeScript, Lua and C++ implementations are held to, so a
+// divergence here is a divergence between plug-ins rather than a local bug.
+print()
+print("── taxicab leading, against the suite's vectors ────")
+
+struct VectorFile: Decodable {
+    struct Case: Decodable {
+        let name: String
+        let from: [Int]
+        let to: [Int]
+        let size: Int
+    }
+    let cases: [Case]
+}
+
+if let path = ProcessInfo.processInfo.environment["VOICE_LEADING_VECTORS"],
+   let data = FileManager.default.contents(atPath: path),
+   let vectors = try? JSONDecoder().decode(VectorFile.self, from: data) {
+    for vector in vectors.cases {
+        let size = VoiceLeading.size(from: vector.from, to: vector.to)
+        check("\(vector.name)", size == vector.size, "got \(size), expected \(vector.size)")
+        // The suite documents the measure as symmetric, so the port has to be.
+        check("\(vector.name), the other way round",
+              VoiceLeading.size(from: vector.to, to: vector.from) == vector.size)
+    }
+    check("the vectors were found", !vectors.cases.isEmpty, "\(vectors.cases.count) cases")
+} else {
+    check("the suite's voice-leading vectors are readable", false,
+          ProcessInfo.processInfo.environment["VOICE_LEADING_VECTORS"] ?? "VOICE_LEADING_VECTORS unset")
+}
+
+// MARK: - Leading actual notes rather than pitch classes
+
+print()
+print("── leading notes ──────────────────────────────────")
+
+let cmaj: [Int] = [60, 64, 67]
+let smoothToF = VoiceLeading.led(from: cmaj, to: [5, 9, 0], range: ChordVoicings.range)
+check("a leading covers every tone of the target chord",
+      classes(smoothToF) == Set([5, 9, 0]), names(smoothToF))
+check("no voice moves more than a tritone",
+      smoothToF.allSatisfy { note in cmaj.contains { abs($0 - note) <= 6 } },
+      names(smoothToF))
+check("the common tone doesn't move at all", smoothToF.contains(60), names(smoothToF))
+check("taxicab leading moves less than transposing the chord",
+      VoiceLeading.movement(from: cmaj, to: smoothToF)
+          <= VoiceLeading.movement(from: cmaj, to: cmaj.map { $0 + 5 }),
+      "\(VoiceLeading.movement(from: cmaj, to: smoothToF)) vs \(VoiceLeading.movement(from: cmaj, to: cmaj.map { $0 + 5 }))")
+
+let smoothToBigger = VoiceLeading.led(from: cmaj, to: [2, 5, 9, 0], range: ChordVoicings.range)
+check("leading to a bigger chord still states all of it",
+      classes(smoothToBigger) == Set([2, 5, 9, 0]), names(smoothToBigger))
+check("and doesn't double anything",
+      Set(smoothToBigger).count == smoothToBigger.count, names(smoothToBigger))
+
+// MARK: - Smooth mode moves less than register mode, over a real progression
+
+// The complaint this answers: with register leading every chord is the same
+// shape transposed, so the top voice tracks the root and it sounds like one
+// voicing being moved around. Smooth leading has to actually move less.
+let smoothChanges = try ChordProgression.parse("Dm7 | G7 | Cmaj7 | A7♭13")
+var totals: [VoiceLeadingMode: Int] = [:]
+for mode in VoiceLeadingMode.allCases {
+    let voicings = ChordVoicings.voiceLead(smoothChanges, style: .rootlessA, leading: mode)
+    var total = 0
+    for (previous, next) in zip(voicings, voicings.dropFirst()) {
+        total += VoiceLeading.movement(from: previous.pitches, to: next.pitches)
+    }
+    totals[mode] = total
+    check("\(mode.label) voices every chord",
+          voicings.count == smoothChanges.chords.count && voicings.allSatisfy { !$0.isEmpty })
+    check("\(mode.label) states each chord correctly",
+          zip(voicings, smoothChanges.chords).allSatisfy { voicing, placed in
+              classes(voicing.pitches).isSubset(of: Set(placed.symbol.scalePitchClasses.map {
+                  (($0 % 12) + 12) % 12
+              }))
+          })
+}
+check("smooth leading moves less than register leading",
+      (totals[.smooth] ?? .max) < (totals[.register] ?? 0),
+      "smooth \(totals[.smooth] ?? -1) vs register \(totals[.register] ?? -1)")
+check("register leading moves less than none",
+      (totals[.register] ?? .max) <= (totals[VoiceLeadingMode.none] ?? 0),
+      "register \(totals[.register] ?? -1) vs none \(totals[VoiceLeadingMode.none] ?? -1)")
+
+// A comp asked for smooth leading has to actually be smoother, end to end.
+var compMovement: [VoiceLeadingMode: Int] = [:]
+for mode in VoiceLeadingMode.allCases {
+    let notes = MelodyComping.comp(smoothChanges, figure: .pad, leading: mode)
+    let groups = MelodyComping.simultaneities(in: notes)
+    var total = 0
+    for (previous, next) in zip(groups, groups.dropFirst()) {
+        total += VoiceLeading.movement(from: previous.map { Int($0.note) },
+                                       to: next.map { Int($0.note) })
+    }
+    compMovement[mode] = total
+    check("a \(mode.label) comp produces chords",
+          MelodyComping.maximumPolyphony(of: notes) >= 3,
+          "\(MelodyComping.maximumPolyphony(of: notes)) voices")
+}
+check("a smooth comp moves less than a register comp",
+      (compMovement[.smooth] ?? .max) < (compMovement[.register] ?? 0),
+      "smooth \(compMovement[.smooth] ?? -1) vs register \(compMovement[.register] ?? -1)")
+
+// MARK: - Lines lead too
+
+// In line mode voice leading is about the seams: a note landing on a chord
+// change should reach for the near chord tone rather than leaping because its
+// degree happens to point somewhere else.
+print()
+print("── leading a line across the changes ──────────────")
+
+let leaps = try ChordProgression.parse("Cmaj7 | F♯maj7")
+let sawtooth = MelodyPattern(
+    name: "seam test", bars: 1,
+    summary: "one note per beat, on a degree that isn't a chord tone",
+    notes: (0..<8).map { PatternNote(startEighth: $0 * 2, lengthEighths: 2, degree: 5, velocity: 90) })
+let plainLine = MelodyPatterns.realize(sawtooth, over: leaps, leading: VoiceLeadingMode.none)
+let ledLine = MelodyPatterns.realize(sawtooth, over: leaps, leading: .smooth)
+func biggestLeap(_ notes: [SequencedNote]) -> Int {
+    zip(notes, notes.dropFirst()).map { abs(Int($1.note) - Int($0.note)) }.max() ?? 0
+}
+check("leading a line keeps every note", ledLine.count == plainLine.count,
+      "\(ledLine.count) vs \(plainLine.count)")
+check("leading a line keeps its rhythm",
+      Set(ledLine.map(\.startBeat)) == Set(plainLine.map(\.startBeat)))
+check("the seam at the chord change is no wider than it was",
+      biggestLeap(ledLine) <= biggestLeap(plainLine),
+      "\(biggestLeap(ledLine)) vs \(biggestLeap(plainLine)) semitones")
+// The point of leading a line: the note that lands on the change is on the
+// chord, rather than beside it by an accident of degree arithmetic.
+func onChordAtChanges(_ notes: [SequencedNote]) -> Int {
+    var count = 0
+    var lastChordStart: Double?
+    for note in notes.sorted(by: { $0.startBeat < $1.startBeat }) {
+        guard let chord = leaps.chord(at: note.startBeat) else { continue }
+        defer { lastChordStart = chord.startBeat }
+        guard chord.startBeat != lastChordStart else { continue }
+        let pc = ((Int(note.note) % 12) + 12) % 12
+        if chord.symbol.tonePitchClasses.map({ (($0 % 12) + 12) % 12 }).contains(pc) { count += 1 }
+    }
+    return count
+}
+check("leading a line lands on the chord at every change",
+      onChordAtChanges(ledLine) == leaps.chords.count
+          && onChordAtChanges(plainLine) < leaps.chords.count,
+      "\(onChordAtChanges(ledLine)) vs \(onChordAtChanges(plainLine)) of \(leaps.chords.count) changes")
+
+check("every note of a led line still belongs to its chord",
+      ledLine.allSatisfy { note in
+          guard let chord = leaps.chord(at: note.startBeat) else { return false }
+          let pc = ((Int(note.note) % 12) + 12) % 12
+          return chord.symbol.scalePitchClasses.contains(pc)
+      })
+
 print()
 print(failures == 0 ? "comping: all checks passed" : "comping: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

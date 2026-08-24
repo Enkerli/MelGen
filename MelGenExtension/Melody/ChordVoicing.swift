@@ -227,18 +227,47 @@ enum ChordVoicings {
     /// keeps its pitch classes but chooses octaves that put every voice as close
     /// as possible to the voice it's replacing — common tones end up not moving
     /// at all, which is what a player does without thinking about it.
+    /// - Parameter leading: which of the two kinds of leading to apply. See
+    ///   `VoiceLeadingMode`; `register` keeps the style's shape and moves the
+    ///   whole voicing, `smooth` sends each voice to its nearest target tone.
     static func voiceLead(_ progression: ChordProgression,
                           style: VoicingStyle = .rootlessA,
                           centre: Int = defaultCentre,
-                          includeBass: Bool = false) -> [Voicing] {
+                          includeBass: Bool = false,
+                          leading: VoiceLeadingMode = .register) -> [Voicing] {
         var previous: [Int]?
         return progression.chords.map { placed in
             var voicing = voice(placed.symbol, style: style, centre: centre, includeBass: includeBass)
-            if let previous, !voicing.pitches.isEmpty {
-                voicing.pitches = lead(from: previous, to: voicing.pitches, centre: centre)
-            }
+            voicing.pitches = lead(from: previous, to: voicing.pitches, centre: centre, mode: leading)
             previous = voicing.pitches
             return voicing
+        }
+    }
+
+    /// Applies whichever kind of leading was asked for.
+    ///
+    /// The style still decides *which* notes are in the chord — a rootless
+    /// voicing has no root whichever way it is led, a quartal one is still
+    /// fourths. What the leading decides is where those notes sit. Keeping that
+    /// division is what lets the two modes be a choice rather than two
+    /// half-finished voicers.
+    static func lead(from previous: [Int]?,
+                     to target: [Int],
+                     centre: Int,
+                     mode: VoiceLeadingMode) -> [Int] {
+        guard let previous, !previous.isEmpty, !target.isEmpty else { return target }
+        switch mode {
+        case .none:
+            return target
+        case .register:
+            return lead(from: previous, to: target, centre: centre)
+        case .smooth:
+            let led = VoiceLeading.led(from: previous,
+                                       to: target.map { (($0 % 12) + 12) % 12 },
+                                       range: range)
+            // A leading that lost a voice is worse than no leading: a comp that
+            // thins itself chord by chord ends up as a two-note part.
+            return led.count >= min(target.count, 3) ? led : lead(from: previous, to: target, centre: centre)
         }
     }
 

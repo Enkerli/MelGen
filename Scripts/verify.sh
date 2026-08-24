@@ -23,7 +23,8 @@
 #   topics — grouping the library so the vocabulary can come from the material
 #   steps — interval cells: Hanon's self-sequencing figures and Samchillian streams
 #   capture — pairing, segmenting and quantizing what was played in
-#   comping — the voicing layer, voice leading, and chords instead of a line
+#   comping — the voicing layer, taxicab voice leading (against the suite's
+#             shared vectors), and chords instead of a line
 #   drift — the live mutation layer: probabilities that re-roll every pass
 #   templates — writing a template, and refusing one that isn't new
 #   progression — generating the changes, ported from ProgGenie's corpus tables
@@ -219,6 +220,9 @@ run_capture() {
 
 run_comping() {
     echo "── comping ───────────────────────────────────────"
+    # The taxicab checks are held to the suite's shared vectors — the same file
+    # the TypeScript, Lua and C++ implementations must reproduce.
+    export VOICE_LEADING_VECTORS="$MUSIC_SUITE/packages/theory/vectors/voice-leading.json"
     cp "$REPO/Scripts/tests/comping-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
     swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/comping" || { status=1; return 0; }

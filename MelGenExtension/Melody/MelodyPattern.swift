@@ -45,6 +45,23 @@ struct PatternNote: Codable, Hashable, Sendable {
     /// pattern, which has no original harmony to be relative to.
     var role: HarmonicRole?
 
+    /// Whether the seam leading is allowed to move this note.
+    ///
+    /// Only notes with no stated relationship to the harmony, and notes that
+    /// *were* chord tones where they came from. A chromatic alteration and a
+    /// recorded colour note are both deliberately off the chord: snapping them
+    /// onto it is not smoothing, it's deleting the thing the note was for. The
+    /// extraction round trip caught this — a real take replayed over its own
+    /// changes came back with a different note, and a line written with a
+    /// chromatic approach stopped reporting that it had one.
+    var isLeadable: Bool {
+        guard alteration == 0 else { return false }
+        switch role {
+        case nil, .chordTone: return true
+        case .colour, .avoid, .offScale: return false
+        }
+    }
+
     init(startEighth: Int,
          lengthEighths: Int,
          degree: Int,
@@ -192,9 +209,13 @@ enum MelodyPatterns {
     /// two-bar cell over sixteen bars comes back eight times, recognisably the
     /// same figure and correct over every chord. That recurrence is the point:
     /// it's what makes a line sound composed rather than sampled.
+    /// - Parameter leading: whether to reach for the chord at a change. Voice
+    ///   leading in a line is about the seams — see `ledToChord`, and
+    ///   `PatternNote.isLeadable` for which notes are exempt from it.
     static func realize(_ pattern: MelodyPattern,
                         over progression: ChordProgression,
-                        registerCentre centre: Int = registerCentre) -> [SequencedNote] {
+                        registerCentre centre: Int = registerCentre,
+                        leading: VoiceLeadingMode = .smooth) -> [SequencedNote] {
         guard !pattern.notes.isEmpty, progression.totalBeats > 0, pattern.bars > 0 else { return [] }
 
         let patternBeats = Double(pattern.bars) * beatsPerBar
@@ -204,6 +225,9 @@ enum MelodyPatterns {
         var placed: [SequencedNote] = []
         var previousPitch: Int?
         var previousNote: PatternNote?
+        // Which chord the last note belonged to, so the first note under a new
+        // one can be recognised as the seam.
+        var previousChordStart: Double?
 
         for repetition in 0..<repetitions {
             let offset = Double(repetition) * patternBeats
@@ -225,7 +249,21 @@ enum MelodyPatterns {
                                             beat: startBeat,
                                             in: progression)
                 }
-                guard let pitch = resolved else { continue }
+                guard var pitch = resolved else { continue }
+
+                // The seam: the first note under a chord is the one a player
+                // places deliberately.
+                //
+                // The very first note has nothing to lead *from*, but landing on
+                // the chord is right regardless, so it uses itself as the
+                // reference and only the chord-tone correction applies.
+                let chordStart = progression.chord(at: startBeat)?.startBeat
+                if leading == .smooth, chordStart != previousChordStart, note.isLeadable {
+                    pitch = ledToChord(pitch, at: startBeat, in: progression,
+                                       from: previousPitch ?? pitch)
+                }
+                previousChordStart = chordStart
+
                 previousNote = note
                 previousPitch = pitch
 
@@ -367,6 +405,46 @@ enum MelodyPatterns {
         while pitch > registerBand.upperBound { pitch -= 12 }
         while pitch < registerBand.lowerBound { pitch += 12 }
         return pitch.clamped(to: 36...96)
+    }
+
+    /// Reaches for the chord at a change.
+    ///
+    /// Voice leading in a line isn't the same problem as in a comp: there is one
+    /// voice, so nothing can be held. What there is instead is a seam. Inside a
+    /// chord a degree means what the pattern says it means, and the pattern's
+    /// shape is the whole point of it. At a change the same degree points at a
+    /// different pitch class, and whether that lands on the new chord or beside
+    /// it is an accident of arithmetic rather than a musical decision.
+    ///
+    /// So only the first note under each chord is touched, and only when it
+    /// isn't already a chord tone: it moves to the nearest one within `reach`,
+    /// preferring the direction that keeps the interval from the previous note
+    /// smaller. A note further than `reach` from any chord tone is left alone —
+    /// it's a colour note the pattern asked for, not a mistake.
+    static func ledToChord(_ pitch: Int,
+                           at beat: Double,
+                           in progression: ChordProgression,
+                           from previous: Int,
+                           reach: Int = 2) -> Int {
+        guard let placed = progression.chord(at: beat) else { return pitch }
+        let tones = Set(placed.symbol.tonePitchClasses.map { (($0 % 12) + 12) % 12 })
+        guard !tones.isEmpty else { return pitch }
+        let pitchClass = ((pitch % 12) + 12) % 12
+        if tones.contains(pitchClass) { return pitch }
+
+        let candidates = (-reach...reach)
+            .map { pitch + $0 }
+            .filter { tones.contains((($0 % 12) + 12) % 12) }
+        guard !candidates.isEmpty else { return pitch }
+
+        // Nearest chord tone, and among equals the one that makes the step from
+        // the previous note smaller — which is the leading, rather than just the
+        // correction.
+        return candidates.min {
+            let left = (abs($0 - pitch), abs($0 - previous))
+            let right = (abs($1 - pitch), abs($1 - previous))
+            return left < right
+        } ?? pitch
     }
 
     /// Keeps the line strictly monophonic and honours each pattern note's rest.

@@ -138,11 +138,17 @@ enum MelodyComping {
     /// for them. That ordering is the difference between a comp that moves and
     /// one that jumps: voice leading is a property of the sequence, so it has to
     /// be decided over the sequence.
+    /// - Parameter leading: how each voicing relates to the one before it.
+    ///   Smooth by default, because the complaint that a comp sounds like "the
+    ///   same voicing over and over" is exactly what register-only leading
+    ///   produces: every chord is one shape transposed, so the top voice tracks
+    ///   the root and nothing is heard to move.
     static func comp(_ progression: ChordProgression,
                      figure: CompingFigure = .charleston,
                      centre: Int = ChordVoicings.defaultCentre,
                      seed: UInt64 = 0x60D,
-                     gate: Double = 0.9) -> [SequencedNote] {
+                     gate: Double = 0.9,
+                     leading: VoiceLeadingMode = .smooth) -> [SequencedNote] {
         guard progression.totalBeats > 0, !progression.chords.isEmpty else { return [] }
         var rng = SplitMix64(seed: seed)
 
@@ -162,9 +168,8 @@ enum MelodyComping {
                                               style: style,
                                               centre: centre,
                                               includeBass: figure.includeBass)
-            if let previous, !voicing.pitches.isEmpty {
-                voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches, centre: centre)
-            }
+            voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches,
+                                                 centre: centre, mode: leading)
             previous = voicing.pitches
             voicings.append(voicing)
         }
@@ -301,7 +306,8 @@ extension MelodyComping {
                          figure: CompingFigure,
                          parent: [SequencedNote] = [],
                          seed: UInt64,
-                         limit: Int = 12) -> [(name: String, summary: String, notes: [SequencedNote])] {
+                         limit: Int = 12,
+                         leading: VoiceLeadingMode = .smooth) -> [(name: String, summary: String, notes: [SequencedNote])] {
         // Axis-tagged at construction. The first version worked the axis out by
         // reading the name back, and two different kinds of variant happened to
         // end with the same word — so a whole axis was silently classified as
@@ -314,7 +320,7 @@ extension MelodyComping {
         // them. This is the variant that keeps what you were listening to.
         if !parent.isEmpty {
             for style in VoicingStyle.allCases where style != figure.style {
-                let revoiced = revoice(parent, over: progression, as: style)
+                let revoiced = revoice(parent, over: progression, as: style, leading: leading)
                 guard !revoiced.isEmpty, revoiced != parent else { continue }
                 results.append((.revoiced, "This comp · \(style.label)",
                                 "the rhythm you have, laid out as \(style.label.lowercased())",
@@ -327,7 +333,7 @@ extension MelodyComping {
                 // chord change carries the *old* chord's notes otherwise, which
                 // is a wrong chord rather than a variation — and the kind of
                 // wrong that a polyphony count doesn't notice.
-                let corrected = revoice(displaced, over: progression, as: figure.style)
+                let corrected = revoice(displaced, over: progression, as: figure.style, leading: leading)
                 guard !corrected.isEmpty else { continue }
                 results.append((.displaced, "This comp, shifted \(shift > 0 ? "+" : "")\(shift)",
                                 "the same figure, landing elsewhere", corrected))
@@ -340,9 +346,11 @@ extension MelodyComping {
         for (octaves, label) in [(-1, "an octave down"), (1, "an octave up")] {
             let notes = parent.isEmpty
                 ? comp(progression, figure: figure,
-                       centre: ChordVoicings.defaultCentre + 12 * octaves, seed: seed)
+                       centre: ChordVoicings.defaultCentre + 12 * octaves, seed: seed,
+                       leading: leading)
                 : revoice(parent, over: progression, as: figure.style,
-                          centre: ChordVoicings.defaultCentre + 12 * octaves)
+                          centre: ChordVoicings.defaultCentre + 12 * octaves,
+                          leading: leading)
             guard !notes.isEmpty else { continue }
             results.append((.register, "\(figure.name) \(label)", "the same comp, \(label)", notes))
         }
@@ -350,7 +358,7 @@ extension MelodyComping {
         // Same rhythm, every other way of laying the chords out.
         for style in VoicingStyle.allCases where style != figure.style {
             let varied = figure.with(style: style)
-            let notes = comp(progression, figure: varied, seed: seed)
+            let notes = comp(progression, figure: varied, seed: seed, leading: leading)
             guard !notes.isEmpty else { continue }
             results.append((.style, "\(figure.name) · \(style.label)", style.summary, notes))
         }
@@ -358,7 +366,7 @@ extension MelodyComping {
         // Same voicing, every other figure's rhythm.
         for other in CompingFigure.all where other.rhythm != figure.rhythm {
             let varied = figure.with(rhythm: other.rhythm)
-            let notes = comp(progression, figure: varied, seed: seed)
+            let notes = comp(progression, figure: varied, seed: seed, leading: leading)
             guard !notes.isEmpty else { continue }
             results.append((.rhythm, "\(other.rhythm.name) · \(figure.style.label)",
                             "\(figure.style.label) voicings on \(other.name)'s rhythm", notes))
@@ -368,7 +376,7 @@ extension MelodyComping {
         for (share, label) in [(0.15, "sparser"), (1.0, "every hit full")] {
             var varied = figure
             varied.fullVoicingShare = share
-            let notes = comp(progression, figure: varied, seed: seed)
+            let notes = comp(progression, figure: varied, seed: seed, leading: leading)
             guard !notes.isEmpty else { continue }
             results.append((.density, "\(figure.name), \(label)",
                             share < 0.5 ? "mostly the top two voices" : "the full voicing every time",
@@ -407,11 +415,15 @@ extension MelodyComping {
     ///   many as the parent had there, which is what re-voicing a comp wants.
     ///   A number is what *harmonising a line* wants: every hit in a monophonic
     ///   part is a simultaneity of one, so without this a line comes back a line.
+    /// - Parameter leading: how each hit's voicing relates to the hit before
+    ///   it. Re-voicing is where leading is most audible, because the rhythm is
+    ///   held fixed and the movement is the only thing that changed.
     static func revoice(_ notes: [SequencedNote],
                         over progression: ChordProgression,
                         as style: VoicingStyle,
                         centre: Int = ChordVoicings.defaultCentre,
-                        voices: Int? = nil) -> [SequencedNote] {
+                        voices: Int? = nil,
+                        leading: VoiceLeadingMode = .smooth) -> [SequencedNote] {
         let groups = simultaneities(in: notes.sorted { ($0.startBeat, $0.note) < ($1.startBeat, $1.note) })
         var result: [SequencedNote] = []
         var previous: [Int]?
@@ -421,9 +433,8 @@ extension MelodyComping {
                   let placed = progression.chord(at: first.startBeat) else { continue }
             var voicing = ChordVoicings.voice(placed.symbol, style: style, centre: centre)
             guard !voicing.pitches.isEmpty else { continue }
-            if let previous {
-                voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches, centre: centre)
-            }
+            voicing.pitches = ChordVoicings.lead(from: previous, to: voicing.pitches,
+                                                 centre: centre, mode: leading)
             previous = voicing.pitches
 
             // As many voices as the parent had at this hit, so a comp that

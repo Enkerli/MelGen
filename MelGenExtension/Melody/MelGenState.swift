@@ -82,6 +82,19 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     var tags: [String] = []
     /// A name, when it has earned one.
     var title: String = ""
+
+    /// The take this one was made from, when it was made from one.
+    ///
+    /// A variation isn't a take that happens to resemble another: it's a
+    /// deliberate step away from something already judged, and the judgement
+    /// being made about it is a judgement about that step. Recording which take
+    /// it stepped from is what lets the panel say "the parent was Tweak, this
+    /// variation is Keep" — which is the sentence actually being spoken.
+    var parentTakeID: UUID?
+    /// What was done to the parent to get here: "Rootless B", "drift, pass 3",
+    /// "morph 40%". Read as the *relationship*, not as a name for the take.
+    var derivation: String = ""
+
     var lengthBeats: Double
     var notes: [SequencedNote]
 
@@ -135,6 +148,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         marks = try container.decodeIfPresent([CurationMark].self, forKey: .marks) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        parentTakeID = try container.decodeIfPresent(UUID.self, forKey: .parentTakeID)
+        derivation = try container.decodeIfPresent(String.self, forKey: .derivation) ?? ""
         lengthBeats = try container.decodeIfPresent(Double.self, forKey: .lengthBeats) ?? 0
         notes = try container.decodeIfPresent([SequencedNote].self, forKey: .notes) ?? []
     }
@@ -153,6 +168,8 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          marks: [CurationMark] = [],
          tags: [String] = [],
          title: String = "",
+         parentTakeID: UUID? = nil,
+         derivation: String = "",
          lengthBeats: Double,
          notes: [SequencedNote]) {
         self.id = id
@@ -169,8 +186,18 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.marks = marks
         self.tags = tags
         self.title = title
+        self.parentTakeID = parentTakeID
+        self.derivation = derivation
         self.lengthBeats = lengthBeats
         self.notes = notes
+    }
+
+    /// Whether this take is a variation of another one.
+    var isVariation: Bool { parentTakeID != nil }
+
+    /// What to call this take's relationship to its parent, for a caption.
+    var derivationLabel: String {
+        derivation.isEmpty ? "a variation" : derivation
     }
 }
 
@@ -304,6 +331,12 @@ struct MelGenState: Codable, Sendable {
     /// Which comping figure is in play, by name.
     var compingFigureName: String = CompingFigure.charleston.name
 
+    /// How each chord relates to the one before it, and how a line crosses a
+    /// change. Smooth by default: register-only leading makes every chord the
+    /// same shape transposed, which is what "the chords are all in the same
+    /// voicing" sounds like. See `VoiceLeadingMode`.
+    var voiceLeading: VoiceLeadingMode = .smooth
+
     /// Settings for generating the changes themselves.
     var progressionKey: Int = 0
     var progressionMode: ProgressionMode = .major
@@ -394,6 +427,7 @@ struct MelGenState: Codable, Sendable {
         progressionModulation = try container.decodeIfPresent(Int.self, forKey: .progressionModulation) ?? 0
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
+        voiceLeading = try container.decodeIfPresent(VoiceLeadingMode.self, forKey: .voiceLeading) ?? .smooth
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true
         showFeel = try container.decodeIfPresent(Bool.self, forKey: .showFeel) ?? true
         showHistory = try container.decodeIfPresent(Bool.self, forKey: .showHistory) ?? false
@@ -509,6 +543,46 @@ extension MelGenState {
     mutating func unmark(_ takeID: UUID) {
         guard let index = history.firstIndex(where: { $0.id == takeID }) else { return }
         history[index].marks.removeAll { $0.pass == curationPass }
+    }
+
+    // MARK: - Where a take came from
+
+    /// The take a variation was made from, if it's still in the history.
+    ///
+    /// A parent can be evicted while its variations survive — which is fine, and
+    /// is why every caller of this has to cope with nil rather than assume the
+    /// chain is whole.
+    func parent(of take: GenerationRecord) -> GenerationRecord? {
+        guard let parentTakeID = take.parentTakeID else { return nil }
+        return history.first { $0.id == parentTakeID }
+    }
+
+    /// The parent's most recent judgement — the context for judging the child.
+    /// "The parent was Tweak; this variation is tweaked in the right direction,
+    /// so it's Keep."
+    func parentMark(of take: GenerationRecord) -> CurationMark? {
+        parent(of: take)?.latestMark
+    }
+
+    /// The chain a take came down, nearest parent first.
+    ///
+    /// Bounded by a visited set rather than by trust: ids come out of saved state
+    /// and an imported history could name a cycle, which would otherwise be an
+    /// infinite loop in a getter the interface calls while drawing.
+    func ancestry(of take: GenerationRecord) -> [GenerationRecord] {
+        var chain: [GenerationRecord] = []
+        var seen: Set<UUID> = [take.id]
+        var cursor = take
+        while let next = parent(of: cursor), seen.insert(next.id).inserted {
+            chain.append(next)
+            cursor = next
+        }
+        return chain
+    }
+
+    /// Everything made from a take, newest first.
+    func variations(of takeID: UUID) -> [GenerationRecord] {
+        history.filter { $0.parentTakeID == takeID }
     }
 
     /// The brief for the next take, honouring the selection and the mode.
@@ -650,6 +724,87 @@ extension MelGenState {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(MelGenHistoryExport.self, from: data)
+    }
+
+    /// What importing a history file did.
+    struct ImportSummary: Sendable, Equatable {
+        var added: Int
+        var alreadyHere: Int
+        var reunited: Int
+
+        var sentence: String {
+            guard added > 0 else {
+                return alreadyHere > 0
+                    ? "Every take in that file is already here."
+                    : "That file had no takes in it."
+            }
+            var parts = ["\(added) take\(added == 1 ? "" : "s") imported"]
+            if alreadyHere > 0 { parts.append("\(alreadyHere) already here") }
+            if reunited > 0 { parts.append("\(reunited) rejoined a parent") }
+            return parts.joined(separator: ", ") + "."
+        }
+    }
+
+    /// Merges an exported history into this one.
+    ///
+    /// Identity is the take's own id, which is what makes this idempotent:
+    /// importing the same file twice is a no-op, and importing a session that
+    /// overlaps another only brings across what's new. That matters because the
+    /// files are meant to be exchanged and re-exported, and a merge that
+    /// duplicated on every round trip would make the library useless in a week.
+    ///
+    /// Marks are *not* merged into a take that's already here. A judgement is a
+    /// record of what someone decided while listening, and quietly replacing it
+    /// with a judgement made elsewhere would lose the disagreement — which is the
+    /// most interesting thing in the record.
+    @discardableResult
+    mutating func importHistory(_ export: MelGenHistoryExport) -> ImportSummary {
+        let existing = Set(history.map(\.id))
+        var summary = ImportSummary(added: 0, alreadyHere: 0, reunited: 0)
+        var incoming: [GenerationRecord] = []
+
+        for take in export.takes {
+            guard !existing.contains(take.id) else { summary.alreadyHere += 1; continue }
+            incoming.append(take)
+            summary.added += 1
+        }
+        guard !incoming.isEmpty else { return summary }
+
+        // A variation whose parent came in the same file, or is already here,
+        // keeps the relationship; one whose parent is nowhere becomes a take in
+        // its own right rather than a child of something that doesn't exist.
+        let reachable = existing.union(incoming.map(\.id))
+        for index in incoming.indices {
+            guard let parentTakeID = incoming[index].parentTakeID else { continue }
+            if reachable.contains(parentTakeID) {
+                summary.reunited += 1
+            } else {
+                incoming[index].parentTakeID = nil
+                incoming[index].derivation = incoming[index].derivation.isEmpty
+                    ? ""
+                    : "\(incoming[index].derivation) (parent not imported)"
+            }
+        }
+
+        // Newest first, like the rest of the history, and the current take is
+        // left alone: importing is a library operation, not a transport one.
+        history.append(contentsOf: incoming)
+        history.sort { $0.date > $1.date }
+        evictAfterImport()
+        return summary
+    }
+
+    /// Eviction after an import, which has to spare the current take but can't
+    /// use `add`'s path — nothing was added *as* the current take.
+    private mutating func evictAfterImport() {
+        while history.count > Self.historyCeiling {
+            guard let index = history.lastIndex(where: { $0.id != currentTakeID }) else { break }
+            history.remove(at: index)
+        }
+    }
+
+    static func importHistory(from data: Data) throws -> MelGenHistoryExport {
+        try decodeHistoryExport(data)
     }
 
     /// A filename that sorts, reads well in Files, and — because exporting twice

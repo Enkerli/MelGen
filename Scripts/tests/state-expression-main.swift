@@ -299,6 +299,85 @@ let earlier = exportable.historyExportFilename(now: Date(timeIntervalSince1970: 
 let later = exportable.historyExportFilename(now: Date(timeIntervalSince1970: 1_700_000_007))
 check("two exports the same day don't collide", earlier != later, "\(earlier) vs \(later)")
 
+// 11g. Importing a history back in. Merging is by take id, which is what makes
+// it idempotent — the files are meant to be exchanged and re-exported, and a
+// merge that duplicated on every round trip would ruin a library in a week.
+var receiving = MelGenState()
+let firstImport = receiving.importHistory(reread)
+check("importing brings the takes across", firstImport.added == 1 && receiving.history.count == 1)
+let secondImport = receiving.importHistory(reread)
+check("importing the same file twice adds nothing",
+      secondImport.added == 0 && secondImport.alreadyHere == 1 && receiving.history.count == 1,
+      secondImport.sentence)
+check("an import reports what it did", firstImport.sentence.contains("1 take imported"),
+      firstImport.sentence)
+
+// A judgement made here isn't replaced by one made elsewhere: the disagreement
+// is the most interesting thing in the record.
+receiving.mark(reread.takes[0].id, as: .keep)
+_ = receiving.importHistory(reread)
+check("importing doesn't overwrite a judgement already made",
+      receiving.history.first?.latestMark?.disposition == .keep)
+
+// A variation keeps its parent when the parent comes too, and becomes a take in
+// its own right when it doesn't.
+let ancestor = GenerationRecord(progressionText: "Dm7|G7", temperature: 0.6,
+                                briefName: "Parent", lengthBeats: 8, notes: raw)
+let child = GenerationRecord(progressionText: "Dm7|G7", temperature: 0.6,
+                             briefName: "Child", parentTakeID: ancestor.id,
+                             derivation: "drift, pass 3", lengthBeats: 8, notes: raw)
+var together = MelGenState()
+let bothSummary = together.importHistory(MelGenHistoryExport(
+    exportedAt: Date(), takeCount: 2,
+    expressionAtExport: ExpressionSettings(), takes: [ancestor, child]))
+check("a variation imported with its parent keeps the relationship",
+      bothSummary.reunited == 1
+          && together.history.first { $0.id == child.id }?.parentTakeID == ancestor.id)
+if let importedChild = together.history.first(where: { $0.id == child.id }) {
+    check("and the parent is findable from it",
+          together.parent(of: importedChild)?.id == ancestor.id)
+    check("as is the parent's mark, once there is one", {
+        together.mark(ancestor.id, as: .tweak)
+        return together.parentMark(of: importedChild)?.disposition == .tweak
+    }())
+    check("and the ancestry is the chain it came down",
+          together.ancestry(of: importedChild).map(\.id) == [ancestor.id])
+    check("the parent lists it as a variation",
+          together.variations(of: ancestor.id).map(\.id) == [child.id])
+}
+
+var orphaned = MelGenState()
+let orphanSummary = orphaned.importHistory(MelGenHistoryExport(
+    exportedAt: Date(), takeCount: 1,
+    expressionAtExport: ExpressionSettings(), takes: [child]))
+check("a variation whose parent didn't come stands on its own",
+      orphanSummary.reunited == 0 && orphaned.history.first?.parentTakeID == nil)
+check("and says so, rather than pretending it was never a variation",
+      orphaned.history.first?.derivation.contains("parent not imported") == true,
+      orphaned.history.first?.derivation ?? "—")
+
+// A cycle can only arrive from a hand-edited or corrupted file, and the ancestry
+// walk is called while drawing — so it has to terminate rather than be trusted.
+var cyclic = MelGenState()
+var left = GenerationRecord(progressionText: "C", temperature: 0.5, briefName: "L",
+                            lengthBeats: 4, notes: raw)
+var right = GenerationRecord(progressionText: "C", temperature: 0.5, briefName: "R",
+                             lengthBeats: 4, notes: raw)
+left.parentTakeID = right.id
+right.parentTakeID = left.id
+cyclic.history = [left, right]
+check("a cycle in the ancestry terminates", cyclic.ancestry(of: left).count <= 2,
+      "\(cyclic.ancestry(of: left).count)")
+
+// Parentage survives the session round trip, since a variation judged today has
+// to still know what it varied tomorrow.
+let lineageDecoded = try JSONDecoder().decode(
+    MelGenState.self, from: try JSONEncoder().encode(together))
+check("parentage round-trips through saved state",
+      lineageDecoded.history.first { $0.id == child.id }?.parentTakeID == ancestor.id)
+check("and so does what was done to get there",
+      lineageDecoded.history.first { $0.id == child.id }?.derivation == "drift, pass 3")
+
 // A take's source is recorded, so the log distinguishes an adapted line from a
 // generated one.
 var mixed = MelGenState()

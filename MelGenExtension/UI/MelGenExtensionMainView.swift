@@ -50,6 +50,7 @@ struct MelGenExtensionMainView: View {
 
     @State private var isExporting = false
     @State private var exportDocument: MelGenJSONDocument?
+    @State private var isImporting = false
 
     /// Whether the review sweep is unfolded. Not session state: it's about what
     /// you're doing right now, not what the document is.
@@ -235,7 +236,10 @@ struct MelGenExtensionMainView: View {
                     lineLibrarySection
                     captureSection
                     authorRow
-                    exportButton
+                    HStack(spacing: MelGenMetrics.space2) {
+                        exportButton
+                        importButton
+                    }
                 }
             }
         }
@@ -595,6 +599,23 @@ struct MelGenExtensionMainView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            // Voice leading sits with the mode rather than with the expression
+            // controls, because it's a harmonic decision and it applies to both
+            // modes: how one chord reaches the next, and how a line crosses a
+            // change.
+            HStack(spacing: MelGenMetrics.space2) {
+                ChipPicker(options: VoiceLeadingMode.allCases.map { ($0, $0.label) },
+                           selection: Binding(
+                               get: { state.voiceLeading },
+                               set: { mode in commit(reloadKernel: false) { $0.voiceLeading = mode } }),
+                           theme: theme)
+                    .frame(maxWidth: 240)
+                Text("Voice leading — \(state.voiceLeading.summary.lowercased())")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             // Rule three: one filled action, and it always names what it will do.
             PrimaryAction(title: source.verb(mode: state.mode),
                           subtitle: actionSubtitle,
@@ -796,7 +817,8 @@ struct MelGenExtensionMainView: View {
         var added = 0
         for (index, figure) in CompingFigure.all.enumerated() {
             let notes = MelodyComping.comp(progression, figure: figure,
-                                           seed: UInt64(bitPattern: Int64(index &* 7919 &+ 13)))
+                                           seed: UInt64(bitPattern: Int64(index &* 7919 &+ 13)),
+                                           leading: current.voiceLeading)
             guard !notes.isEmpty else { continue }
             commit(reloadKernel: index == CompingFigure.all.count - 1) {
                 $0.add(GenerationRecord(
@@ -833,7 +855,8 @@ struct MelGenExtensionMainView: View {
         let figure = template.figure ?? CompingFigure.charleston
         let notes = MelodyComping.comp(progression,
                                        figure: figure,
-                                       seed: UInt64(bitPattern: Int64(current.briefCursor &* 2_246_822_519)))
+                                       seed: UInt64(bitPattern: Int64(current.briefCursor &* 2_246_822_519)),
+                                       leading: current.voiceLeading)
         guard !notes.isEmpty else {
             statusMessage = "Nothing to comp — check the progression."
             return nil
@@ -1321,6 +1344,8 @@ struct MelGenExtensionMainView: View {
             source: take.source,
             analysis: (try? ChordProgression.parse(take.progressionText))
                 .map { MelodyAnalyser.analyse(notes, over: $0) },
+            parentTakeID: take.id,
+            derivation: "drift, pass \(current.mutationPass)",
             lengthBeats: take.lengthBeats,
             notes: notes
         )
@@ -1533,16 +1558,26 @@ struct MelGenExtensionMainView: View {
                 Spacer(minLength: 0)
             }
 
-            DispositionBar(current: mark?.disposition, theme: theme, onSelect: { disposition in
-                commit(reloadKernel: false) { state in
-                    if let disposition {
-                        state.mark(take.id, as: disposition, aspects: mark?.aspects ?? [])
-                    } else {
-                        state.unmark(take.id)
-                    }
-                }
-                statusMessage = disposition.map { "\($0.label) — pass \(state.curationPass)." }
+            // Where this take came from, and what was said about that. The
+            // sentence being written is "the parent was Tweak; this variation is
+            // tweaked in the right direction, so it's Keep" — so both halves
+            // have to be on screen at the moment of judging.
+            lineage(of: take)
+
+            DispositionBar(current: judgingDrift ? nil : mark?.disposition,
+                           theme: theme,
+                           onSelect: { disposition in
+                judge(disposition, of: take, mark: mark)
             }, startExpanded: true)
+
+            if judgingDrift {
+                Text("Drift is running, so this judges the pass you're hearing — "
+                     + "it's kept as a variation of \(take.displayName), "
+                     + "leaving the take's own mark alone.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             // Only asked when it's the question: "part of it works" is the one
             // disposition that's incomplete on its own.
@@ -1567,6 +1602,80 @@ struct MelGenExtensionMainView: View {
             }
 
             keepAsLineButton(for: take)
+        }
+    }
+
+    /// Whether what's sounding is a performance of the take rather than the take.
+    ///
+    /// Drift re-rolls on every loop and deliberately doesn't create takes, which
+    /// meant judging while it ran marked the *parent* — so a pass that had
+    /// changed a great deal still showed the mark of the thing it drifted from,
+    /// and stayed on "pass 1" while doing it.
+    private var judgingDrift: Bool {
+        state.liveMutation.isActive && state.mutationPass > 0
+    }
+
+    /// Records a judgement about whatever is actually sounding.
+    ///
+    /// When that's the take, it marks the take. When it's a drifted pass, the
+    /// pass is frozen as a variation first and the mark lands on that — which is
+    /// what makes "rate each variation" true rather than approximately true.
+    private func judge(_ disposition: TakeDisposition?,
+                       of take: GenerationRecord,
+                       mark: CurationMark?) {
+        guard let disposition else {
+            commit(reloadKernel: false) { $0.unmark(take.id) }
+            statusMessage = nil
+            return
+        }
+
+        if judgingDrift {
+            keepThisPass()
+            guard let variation = liveState.currentTake, variation.id != take.id else { return }
+            commit(reloadKernel: false) { $0.mark(variation.id, as: disposition) }
+            let parentMark = take.latestMark?.disposition.label ?? "unjudged"
+            statusMessage = "\(disposition.label) — \(variation.derivationLabel), "
+                + "from a take you called \(parentMark.lowercased())."
+            return
+        }
+
+        commit(reloadKernel: false) { state in
+            state.mark(take.id, as: disposition, aspects: mark?.aspects ?? [])
+        }
+        if let parent = liveState.parentMark(of: take) {
+            statusMessage = "\(disposition.label) — \(take.derivationLabel) of a take "
+                + "you called \(parent.disposition.label.lowercased())."
+        } else {
+            statusMessage = "\(disposition.label) — pass \(state.curationPass)."
+        }
+    }
+
+    /// What this take was made from, and what was decided about that.
+    @ViewBuilder
+    private func lineage(of take: GenerationRecord) -> some View {
+        if let parent = state.parent(of: take) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.turn.up.right")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("\(take.derivationLabel) of \(parent.displayName)")
+                    .lineLimit(1)
+                if let parentMark = parent.latestMark {
+                    Text("· parent: \(parentMark.disposition.label)")
+                        .fontWeight(.semibold)
+                } else {
+                    Text("· parent unjudged")
+                }
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(theme.textMuted)
+        } else {
+            let derived = state.variations(of: take.id)
+            if !derived.isEmpty {
+                Text("\(derived.count) variation\(derived.count == 1 ? "" : "s") came from this one.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+            }
         }
     }
 
@@ -1847,7 +1956,8 @@ struct MelGenExtensionMainView: View {
                 // that the interesting point is somewhere in the middle and
                 // there's no way to find it by pressing a button repeatedly.
                 if let changes = try? ChordProgression.parse(state.progressionText) {
-                    PianoRoll(notes: MelodyPatterns.realize(morphed, over: changes),
+                    PianoRoll(notes: MelodyPatterns.realize(morphed, over: changes,
+                                                            leading: liveState.voiceLeading),
                               progression: changes,
                               lengthBeats: Double(morphed.bars) * 4,
                               theme: theme,
@@ -1896,7 +2006,8 @@ struct MelGenExtensionMainView: View {
             let voiced = MelodyComping.variants(of: progression,
                                                 figure: figure,
                                                 parent: take.notes,
-                                                seed: take.id.uuidStableSeed)
+                                                seed: take.id.uuidStableSeed,
+                                                leading: liveState.voiceLeading)
             let parentKeys = Set(take.notes.map { "\($0.note):\($0.startBeat)" })
             variantParent = nil
             morphTarget = nil
@@ -1951,25 +2062,42 @@ struct MelGenExtensionMainView: View {
             return
         }
 
+        // The parent's mark is the context: judging a variant is judging the
+        // step away from something already judged, and saying both makes the
+        // comparison legible instead of implied.
+        let parentMark = liveState.currentTake?.latestMark?.disposition
         play(variant)
         variantMarks[variant.id] = disposition
         guard let take = liveState.currentTake else { return }
         commit(reloadKernel: false) { $0.mark(take.id, as: disposition, aspects: []) }
-        statusMessage = "\(variant.transform): \(disposition.label.lowercased())"
-            + " — kept as a take, so it counts toward what's learned."
+        if let parentMark, parentMark != disposition {
+            statusMessage = "\(variant.transform): \(disposition.label.lowercased())"
+                + " — from a take you called \(parentMark.label.lowercased())."
+        } else {
+            statusMessage = "\(variant.transform): \(disposition.label.lowercased())"
+                + " — kept as a take, so it counts toward what's learned."
+        }
     }
 
     private func play(_ variant: MelodyVariant) {
+        // The take being varied, captured before committing anything: `add`
+        // moves `currentTake` on, so asking afterwards names the variant itself.
+        let parent = liveState.currentTake
         switch variant.material {
         case .line(let pattern):
-            play(pattern, describedAs: variant.transform)
+            play(pattern, describedAs: variant.transform, derivedFrom: parent)
         case .voiced(let notes, let summary):
-            playVoiced(notes, named: variant.name, describedAs: summary)
+            playVoiced(notes, named: variant.name, describedAs: summary, derivedFrom: parent)
         }
     }
 
     /// Commits already-realized polyphonic notes as a take.
-    private func playVoiced(_ notes: [SequencedNote], named name: String, describedAs detail: String) {
+    /// - Parameter derivedFrom: the take this was varied from, so the new take
+    ///   carries the relationship and can be judged against its parent's mark.
+    private func playVoiced(_ notes: [SequencedNote],
+                            named name: String,
+                            describedAs detail: String,
+                            derivedFrom parent: GenerationRecord? = nil) {
         let current = liveState
         guard let progression = try? ChordProgression.parse(current.progressionText),
               !notes.isEmpty else { return }
@@ -1981,6 +2109,8 @@ struct MelGenExtensionMainView: View {
             durationPalette: current.durationPalette,
             source: .comping,
             analysis: MelodyAnalyser.analyse(notes, over: progression),
+            parentTakeID: parent?.id,
+            derivation: parent == nil ? "" : name,
             lengthBeats: progression.totalBeats,
             notes: notes
         )
@@ -1989,9 +2119,13 @@ struct MelGenExtensionMainView: View {
     }
 
     /// Commits a pattern as a take so it can be heard and judged like any other.
+    /// - Parameter derivedFrom: the take this was varied from. A variant, a
+    ///   mutation and a morph are all steps away from something already judged,
+    ///   and the judgement made about them is about the step.
     private func play(_ pattern: MelodyPattern,
                       describedAs description: String,
-                      source: TakeSource = .mutated) {
+                      source: TakeSource = .mutated,
+                      derivedFrom parent: GenerationRecord? = nil) {
         let current = liveState
         guard let progression = try? ChordProgression.parse(current.progressionText) else { return }
         let notes = realize(pattern, over: progression)
@@ -2008,6 +2142,8 @@ struct MelGenExtensionMainView: View {
             durationPalette: current.durationPalette,
             source: source,
             analysis: MelodyAnalyser.analyse(notes, over: progression),
+            parentTakeID: parent?.id,
+            derivation: parent == nil ? "" : description,
             lengthBeats: progression.totalBeats,
             notes: notes
         )
@@ -2402,7 +2538,10 @@ struct MelGenExtensionMainView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                exportButton
+                HStack(spacing: MelGenMetrics.space2) {
+                    exportButton
+                    importButton
+                }
             }
         }
     }
@@ -2502,6 +2641,75 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    /// Reads a history file back in.
+    ///
+    /// The counterpart to exporting, and the reason exporting is worth doing: a
+    /// library that can only leave is a log. Merging is by take id, so importing
+    /// the same file twice changes nothing and two overlapping sessions join up
+    /// instead of doubling.
+    private var importButton: some View {
+        Button {
+            isImporting = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Import history")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, MelGenMetrics.space3)
+            .frame(height: MelGenMetrics.controlHeight)
+            .foregroundStyle(theme.text)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(theme.borderStrong, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .fileImporter(isPresented: $isImporting,
+                      allowedContentTypes: [.json],
+                      allowsMultipleSelection: true) { result in
+            importHistoryFiles(result)
+        }
+    }
+
+    /// Merges every chosen file, reporting what happened across all of them.
+    ///
+    /// The plug-in isn't the document's owner, so each URL has to be opened
+    /// inside a security scope — without it the read fails with a permission
+    /// error that looks like a corrupt file.
+    private func importHistoryFiles(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .failure(let error):
+            statusMessage = "Import failed: \(error.localizedDescription)"
+        case .success(let urls):
+            var total = MelGenState.ImportSummary(added: 0, alreadyHere: 0, reunited: 0)
+            var failures: [String] = []
+            for url in urls {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let data = try Data(contentsOf: url)
+                    let export = try MelGenState.importHistory(from: data)
+                    var summary = MelGenState.ImportSummary(added: 0, alreadyHere: 0, reunited: 0)
+                    commit(reloadKernel: false) { summary = $0.importHistory(export) }
+                    total.added += summary.added
+                    total.alreadyHere += summary.alreadyHere
+                    total.reunited += summary.reunited
+                } catch {
+                    failures.append(url.lastPathComponent)
+                }
+            }
+            statusMessage = failures.isEmpty
+                ? total.sentence
+                : total.sentence + " Couldn't read \(failures.joined(separator: ", "))."
+        }
+    }
+
     /// Time, note count, temperature — and how long the model took, so a run of
     /// takes shows whether generation is keeping up.
     private func historyDetail(_ take: GenerationRecord) -> String {
@@ -2591,7 +2799,6 @@ struct MelGenExtensionMainView: View {
     /// No model, so it's instant. This is what makes the plug-in usable while
     /// generation — measured at roughly four times slower than real time — catches
     /// up in the background.
-    @discardableResult
     /// Realizes a pattern the way the current mode wants it heard.
     ///
     /// Every deterministic source produces a `MelodyPattern`, and a pattern is
@@ -2600,14 +2807,20 @@ struct MelGenExtensionMainView: View {
     /// is the one place that decides, so a seventh source can't reintroduce it:
     /// in chord mode the pattern's rhythm is kept and voicings are laid under it,
     /// voice-led, exactly as re-voicing a comp does.
+    ///
+    /// Qualified on purpose. An unqualified `realize(pattern, over:)` here is a
+    /// call to *this* function, which recurses until the stack runs out — and it
+    /// compiles, because the signature matches.
     private func realize(_ pattern: MelodyPattern,
                          over progression: ChordProgression) -> [SequencedNote] {
-        let notes = realize(pattern, over: progression)
+        let notes = MelodyPatterns.realize(pattern, over: progression,
+                                           leading: liveState.voiceLeading)
         guard liveState.mode == .comping, !notes.isEmpty else { return notes }
         let voiced = MelodyComping.revoice(notes,
                                            over: progression,
                                            as: .rootlessA,
-                                           voices: 3)
+                                           voices: 3,
+                                           leading: liveState.voiceLeading)
         return voiced.isEmpty ? notes : voiced
     }
 
@@ -2617,6 +2830,7 @@ struct MelGenExtensionMainView: View {
         liveState.mode == .comping ? .comping : line
     }
 
+    @discardableResult
     private func adaptStoredLine(commitNow: Bool = true) -> GenerationRecord? {
         let current = liveState
 
