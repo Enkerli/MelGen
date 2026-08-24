@@ -27,3 +27,12 @@ signing.local.xcconfig
 
 # Claude Code session state
 .claude/
+
+# Training pipeline working files. The corpus is derived from your own
+# material and the weights are derived from the corpus, so neither belongs in
+# a repository — the scripts that make them do.
+__pycache__/
+*.pyc
+corpus/
+*.mlpackage
+*.pt

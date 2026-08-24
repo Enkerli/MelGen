@@ -107,6 +107,7 @@ Scripts/verify.sh chords     # one suite
 | `drift` | Live mutation: what the loop does as it plays, and that it never touches the take |
 | `templates` | That the templates actually differ, and the gate that refuses one that doesn't |
 | `analysis` | Take measurement — variety, harmonic roles — and the dead-air guard |
+| `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
@@ -210,11 +211,43 @@ python3 Scripts/generate-progression-tables.py
 Never hand-edit `MelGenExtension/Melody/ChordDictionary+Generated.swift`. Change
 the vocabulary in music-suite and regenerate.
 
+### Training pipeline
+
+Off-device work, and none of it ships. Three stages, split by what each side is
+actually good at — the reasoning is in [COREML.md](COREML.md), and the short
+version is that there is exactly one implementation of "which degree was that
+note" and it is the one the plug-in runs.
+
+```bash
+pip install -r Scripts/training/requirements.txt
+
+# 1. Python reads file formats, and nothing else.
+python3 Scripts/training/midi_to_events.py ~/MIDI --out corpus/events.jsonl
+
+# 2. Swift decides what the notes mean, and reports the number to beat.
+Scripts/export-corpus.sh ~/exports --events corpus/events.jsonl --out corpus
+
+# 3. Python trains, and says whether the result earned its place.
+python3 Scripts/training/train_lstm.py --corpus corpus
+python3 Scripts/training/export_coreml.py --corpus corpus
+```
+
+Stage 2 prints what `MelodyChain` — the variable-order model that already ships —
+scores on held-out material. A neural model that doesn't beat it is not worth its
+download, and stage 3 says so rather than reporting its own loss in isolation.
+
+`Scripts/analyse-history.sh` is the measurement counterpart: what a session's
+exports contain, rather than what can be trained from them.
+
+```bash
+Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
+```
+
 ---
 
 ## Documentation
 
-Five documents, each with one job. Kept apart so that a finding lands in exactly
+Six documents, each with one job. Kept apart so that a finding lands in exactly
 one of them:
 
 | Document | What belongs in it | What doesn't |
@@ -224,6 +257,7 @@ one of them:
 | [ISSUES.md](ISSUES.md) | What's wrong now, and what was measured rather than guessed | Feature requests |
 | [TRAINING.md](TRAINING.md) | What "learning from your material" can and can't mean on device | Anything not about learning |
 | [HANDOFF.md](HANDOFF.md) | Current state, open risks, and where to pick up | Durable design rationale — that goes in the code |
+| [COREML.md](COREML.md) | Training off-device and running the result on the iPad | On-device learning — that's TRAINING.md |
 
 ### Hygiene
 

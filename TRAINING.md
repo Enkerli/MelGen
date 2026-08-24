@@ -3,6 +3,10 @@
 *Written 2026-08-22. Companion to [ROADMAP.md](ROADMAP.md); the S-series items
 there are the roadmap entries this document is the reasoning behind.*
 
+*The scope here is what can be learned **on** an iPad. Training off-device and
+running the result through Core ML is [COREML.md](COREML.md) — a separate
+question, and one a large MIDI collection reopened after this was written.*
+
 The question, sharpened: **MelGen should learn from the material its user keeps.
 What can actually do that on an iPad, and in what order should it be built?**
 
@@ -214,6 +218,14 @@ Two honest caveats:
 Covered above. The only defensible use is making guided generation cheap and
 reliable, not making it personal. Preconditions: a four-figure corpus of
 format-correct examples, and a decision to accept the retrain-per-OS tax.
+
+An adapter is not the only off-device path, and it is the expensive one: it
+retrains per OS release and weighs 160 MB to bias a monophonic line. A small
+model trained on the same corpus and converted to Core ML has neither problem —
+a couple of megabytes, no version lock, and it runs where the deterministic
+machinery already runs. What it *does* have is the burden of proof, because
+`MelodyChain` already does this job instantly and inspectably. That argument,
+the pipeline, and the gate the model has to pass are in [COREML.md](COREML.md).
 
 ---
 
