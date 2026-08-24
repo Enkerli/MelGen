@@ -8,11 +8,13 @@ The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it. Everything is verified outside
 Xcode by `Scripts/verify.sh` and compiles in the extension target.
 
-**It has now been heard on device three times, 2026-08-23 to 2026-08-24**, which
+**It has now been heard on device four times, 2026-08-23 to 2026-08-24**, which
 retired the largest open risk this document used to name. What those sessions
-surfaced lives in [ISSUES.md](ISSUES.md) — the two that matter most are takes
-losing their first notes, and a rating that follows what's playing rather than
-what was rated.
+surfaced lives in [ISSUES.md](ISSUES.md); the two that mattered most — takes
+losing their first notes, and a rating that followed what was playing rather than
+what was rated — are fixed, and §3 there says how. The first was a phase bug in
+`commitSequence` rather than any of the three places §4 pointed at; the second
+turned into the parentage model, which is the more interesting outcome.
 
 ---
 
@@ -64,6 +66,10 @@ same machinery. A seventh source would be a file, not a subsystem.
 | Learn from what's played in | Lock-free capture ring, pairing, segmenting, quantizing |
 | Comp the changes | Voicing layer, voice leading, comping figures, polyphonic mode |
 | Generate the changes too | ProgGenie's corpus tables, generated from music-suite |
+| Lead the voices | Minimal L1 (taxicab) leading ported from the suite's reference implementation and held to its shared vectors; three modes, and a seam pass for lines |
+| Judge a variation as one | Takes carry the take they were made from and what was done to get there, so a variant, mutation, morph or drifted pass is judged in its own right with its parent's mark for context |
+| Keep a setup | `MelGenSetup` — the settings that decide what comes next, and none of the material; one can be the default a new instance starts from |
+| Keep what the gate refused | Every proposed template is logged with the bar it was held to; the bar is now derived from the existing set's own spacing rather than from a mis-taken constant |
 
 ---
 

@@ -380,6 +380,58 @@ check("parentage round-trips through saved state",
 check("and so does what was done to get there",
       lineageDecoded.history.first { $0.id == child.id }?.derivation == "drift, pass 3")
 
+// 11h. Setups: the settings that shape what comes next, without any of the
+// material. The whole safety of recalling one rests on that split.
+var configured = MelGenState()
+configured.progressionText = "Cmaj7 | A7♭13"
+configured.add(GenerationRecord(progressionText: "Cmaj7 | A7♭13", temperature: 0.6,
+                                briefName: "Sparse", lengthBeats: 8, notes: raw))
+configured.mark(configured.currentTake!.id, as: .keep)
+let judgedTakeID = configured.currentTake!.id
+
+let suggested = MelGenSetup.suggested
+check("the suggested setup is the one that was described",
+      suggested.progressionBars == 4
+          && abs(suggested.progressionSurprise - 0.96) < 1e-9
+          && suggested.progressionFreshness == .bold
+          && suggested.progressionReharm == .bold
+          && suggested.progressionContext == 2
+          && suggested.progressionModulation == 0
+          && suggested.mode == .comping
+          && suggested.briefMode == .shuffle
+          && suggested.durationPalette == .mixed,
+      suggested.summary)
+check("six notes a bar", abs(suggested.expression.density * 8 - 6) < 1e-9,
+      "\(suggested.expression.density * 8)")
+check("and it drifts", suggested.liveMutation.isActive, suggested.liveMutation.summary)
+
+configured.apply(suggested)
+check("applying a setup takes on its settings",
+      configured.mode == .comping && configured.progressionBars == 4
+          && abs(configured.temperature - 0.9) < 1e-9)
+check("and leaves the progression alone", configured.progressionText == "Cmaj7 | A7♭13")
+check("and every take", configured.history.count == 1)
+check("and every judgement",
+      configured.history.first { $0.id == judgedTakeID }?.latestMark?.disposition == .keep)
+
+check("a setup recognises its own settings", configured.matches(suggested))
+configured.temperature = 0.2
+check("and notices when they've been changed", !configured.matches(suggested))
+
+// Round-trips as its own document, since setups live outside the host session.
+let setupData = try JSONEncoder().encode(suggested)
+let setupBack = try JSONDecoder().decode(MelGenSetup.self, from: setupData)
+check("a setup round-trips", setupBack == suggested)
+check("a setup saved by an older build still loads", {
+    let sparse = #"{"name":"partial","mode":"comping"}"#
+    guard let decoded = try? JSONDecoder().decode(MelGenSetup.self, from: Data(sparse.utf8))
+    else { return false }
+    // Everything absent falls back to the plain state defaults rather than
+    // failing the whole list.
+    return decoded.name == "partial" && decoded.mode == .comping
+        && decoded.temperature == MelGenState().temperature
+}())
+
 // A take's source is recorded, so the log distinguishes an adapted line from a
 // generated one.
 var mixed = MelGenState()

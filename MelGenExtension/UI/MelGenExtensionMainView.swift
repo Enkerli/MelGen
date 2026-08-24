@@ -52,6 +52,9 @@ struct MelGenExtensionMainView: View {
     @State private var exportDocument: MelGenJSONDocument?
     @State private var isImporting = false
     @State private var showRefusedTemplates = false
+    @State private var showSetups = false
+    @State private var setupRevision = 0
+    @State private var setupName = ""
 
     /// Whether the review sweep is unfolded. Not session state: it's about what
     /// you're doing right now, not what the document is.
@@ -211,6 +214,7 @@ struct MelGenExtensionMainView: View {
     /// Everything you do while something is sounding.
     private var playTab: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
+            setupRow
             progressionSection
 
             // Outside the take section on purpose. These are transport controls,
@@ -244,6 +248,175 @@ struct MelGenExtensionMainView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Setups
+
+    /// Named settings you can come back to, and one of them the way a new
+    /// instance starts.
+    ///
+    /// Above everything because it's the decision that precedes the others: a
+    /// setup is what four bars, surprise 0.96, chord mode and six notes a bar
+    /// amount to together, and re-dialling those one control at a time every
+    /// session is the work this removes. It carries no material — no take, no
+    /// mark, no progression text — so recalling one can't damage a session.
+    @ViewBuilder
+    private var setupRow: some View {
+        let setups = SetupStore.all
+        let matching = setups.first { state.matches($0) }
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                showSetups.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showSetups ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Setup · " + (matching?.name ?? (setups.isEmpty ? "none saved" : "unsaved")))
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    if let matching, matching.id == SetupStore.defaultSetupID {
+                        Text("· default")
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.textMuted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(theme.textSecondary)
+                .frame(height: MelGenMetrics.smallControlHeight)
+            }
+            .buttonStyle(.plain)
+
+            if showSetups {
+                VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+                    ForEach(setups) { setup in
+                        setupCard(setup, isCurrent: setup.id == matching?.id)
+                    }
+
+                    // Offered rather than installed: an empty list with an
+                    // explanation of what setups are teaches nothing, and a
+                    // preset written in on first launch would be a setting
+                    // nobody chose.
+                    if setups.isEmpty {
+                        Button {
+                            let suggested = MelGenSetup.suggested
+                            SetupStore.save(suggested)
+                            SetupStore.makeDefault(id: SetupStore.all.first { $0.name == suggested.name }?.id)
+                            commit { $0.apply(suggested) }
+                            setupRevision += 1
+                            statusMessage = "\(suggested.name) saved and made the default."
+                        } label: {
+                            findLabel("Start from \(MelGenSetup.suggested.name)",
+                                      systemImage: "sparkles",
+                                      detail: MelGenSetup.suggested.summary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack(spacing: MelGenMetrics.space2) {
+                        TextField("Name these settings", text: $setupName)
+                            .font(.system(size: 13))
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, MelGenMetrics.space2)
+                            .frame(height: MelGenMetrics.controlHeight)
+                            .background(
+                                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                                    .fill(theme.sunken)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                                    .strokeBorder(theme.border, lineWidth: 1)
+                            )
+                        Button {
+                            saveSetup()
+                        } label: {
+                            findLabel("Save setup", systemImage: "square.and.arrow.down.on.square")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(setupName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                .id(setupRevision)
+            }
+        }
+    }
+
+    private func setupCard(_ setup: MelGenSetup, isCurrent: Bool) -> some View {
+        let isDefault = setup.id == SetupStore.defaultSetupID
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(setup.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                if isDefault {
+                    Text("default")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(theme.accentText)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(theme.accent))
+                }
+                Spacer(minLength: 0)
+            }
+            Text(setup.summary)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: MelGenMetrics.space3) {
+                Button {
+                    commit { $0.apply(setup) }
+                    setupRevision += 1
+                    statusMessage = "\(setup.name) — \(setup.summary)."
+                } label: {
+                    Text(isCurrent ? "In use" : "Use")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(isCurrent ? theme.textMuted : theme.accent)
+                }
+                .buttonStyle(.plain)
+                .disabled(isCurrent)
+                Button {
+                    SetupStore.makeDefault(id: isDefault ? nil : setup.id)
+                    setupRevision += 1
+                    statusMessage = isDefault
+                        ? "\(setup.name) is no longer the default."
+                        : "New instances will start from \(setup.name)."
+                } label: {
+                    Text(isDefault ? "Not the default" : "Make default")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    SetupStore.remove(id: setup.id)
+                    setupRevision += 1
+                } label: {
+                    Text("Delete")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(MelGenMetrics.space2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .fill(isCurrent ? theme.sunken : theme.raised)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                .strokeBorder(isCurrent ? theme.accent : theme.border, lineWidth: isCurrent ? 1.5 : 1)
+        )
+    }
+
+    private func saveSetup() {
+        let name = setupName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        let existing = SetupStore.all.contains { $0.name.lowercased() == name.lowercased() }
+        SetupStore.save(MelGenSetup(name: name, capturing: liveState))
+        setupName = ""
+        setupRevision += 1
+        statusMessage = existing ? "\(name) updated." : "\(name) saved."
     }
 
     // MARK: - Decide

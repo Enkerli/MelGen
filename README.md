@@ -24,8 +24,9 @@ or locked to the host's playhead.
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
 | **Templates** | Fifteen — nine line templates and six comping figures. The mode chooses which half is in play; select any subset and cycle, shuffle or lock it |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
-| **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one |
+| **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
 | **Curation** | One tap per take — keep, tweak, try again, right elsewhere, partly, later, skip — in passes, so the same take can be answered differently next time |
+| **Variations** | Every variant, mutation, morph and drifted pass is judged in its own right, and says what its parent was called |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
 | **Lines from takes** | Keep a take as a degree-relative line and it plays over any changes, instantly, with no model |
 | **Learned style** | What you kept, measured — as prompt text, as slot statistics, and as a chain of what follows what |
@@ -34,7 +35,9 @@ or locked to the host's playhead.
 | **Variants and morphs** | Fourteen transforms, scored against your material, and a dial between two lines you like |
 | **Listening** | Play something in and it becomes library material, read against the changes on screen |
 | **Comping** | Voicings under the changes, voice-led, in six figures |
+| **Voice leading** | Off, register, or smooth — minimal taxicab leading, ported from the suite's reference implementation and held to its shared vectors. In line mode it smooths the seam where a line crosses a chord change |
 | **Progressions** | Generated here from corpus transition tables, rather than pasted in |
+| **Setups** | Name the settings that decide what comes next and come back to them; mark one the default and new instances start there |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Two tabs** | **Play** makes material and performs it; **Decide** judges it and shows what's been learned |
@@ -102,7 +105,7 @@ Scripts/verify.sh chords     # one suite
 | `topics` | Grouping the library so the vocabulary can come from the material |
 | `steps` | Interval cells: self-sequencing figures and interval streams |
 | `capture` | Pairing, segmenting and quantizing what was played in |
-| `comping` | The voicing layer, voice leading, and chords instead of a line |
+| `comping` | The voicing layer, taxicab voice leading against the suite's shared vectors, and chords instead of a line |
 | `progression` | Generating the changes, and a drift check on the corpus tables |
 | `drift` | Live mutation: what the loop does as it plays, and that it never touches the take |
 | `templates` | That the templates actually differ, and the gate that refuses one that doesn't |
@@ -248,9 +251,9 @@ say what the state *is*, not why each decision was made.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned work. The near list: harmonic rhythm and
-time signatures, presets, taxicab voice leading for comping, and note-duration
-distributions that change over time. [TRAINING.md](TRAINING.md) works out what
+See [ROADMAP.md](ROADMAP.md) for planned work. The near list: harmonic rhythm,
+time signatures, shuffled tonalities, note-duration distributions that change over
+time, and reaching the stored lines from the mode that plays them. [TRAINING.md](TRAINING.md) works out what
 "learning from your material" can actually mean on device, and what it can't.
 
 ---

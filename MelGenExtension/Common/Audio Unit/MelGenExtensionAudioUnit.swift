@@ -152,7 +152,18 @@ public class MelGenExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     private var lastLoadedTakeID: UUID?
 
     private let stateLock = NSLock()
-    private var _state = MelGenState()
+
+    /// A fresh instance starts from the default setup, when one is marked.
+    ///
+    /// Here rather than in the view, and only for a *new* audio unit: a host
+    /// restoring `fullState` assigns over this, so reopening a project keeps the
+    /// settings that project was saved with. "The way I usually work" applies to
+    /// the instance you just added, not to one you're getting back.
+    private var _state: MelGenState = {
+        var state = MelGenState()
+        if let setup = SetupStore.defaultSetup { state.apply(setup) }
+        return state
+    }()
 
     var state: MelGenState {
         get { stateLock.withLock { _state } }

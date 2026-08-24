@@ -98,7 +98,47 @@ measurements, not assumed better.
 
 ## 3. Fixed since the last session
 
-*2026-08-24:*
+*2026-08-24, second session:*
+
+- **Takes lost their first notes.** The most serious open bug, and none of the
+  three candidates in §4 was the cause. `commitSequence` flipped the kernel's
+  active buffer and left the loop's phase untouched, so a take handed over at
+  beat 17 of a 32-beat loop *started sounding at beat 17* — everything before
+  that skipped until the loop came round. With auto-regeneration handing over a
+  take per pass, that was every take. The kernel now works in loop time rather
+  than timeline time, so a restart is a change of origin, and the restart is
+  asked for when the take changes rather than when it is re-rendered — every
+  expression slider re-pushes the same take, and those must not jerk the phrase
+  back to its start.
+- **`realize(_:over:)` in the main view called itself.** A botched rename the
+  previous session turned `MelodyPatterns.realize(pattern, over:)` into
+  `realize(pattern, over:)` inside its own body. It compiles, because the
+  signature matches; every deterministic source ran off the stack.
+- **A rating followed what was playing, not what was rated.** Resolved the way
+  §4 said it would have to be — as a design decision. A take now records the
+  take it was made from and what was done to get there, so every variant,
+  mutation, morph and drifted pass is a thing in its own right with a parent.
+  The panel names the parent's mark while you judge the child, and judging while
+  drift is running freezes the pass you're hearing instead of marking the take it
+  drifted from.
+- **The template gate was a wall, not a gate.** Its threshold came from the
+  median distance between *all pairs* of the nine hand-written templates (0.101),
+  but the quantity it applies is the distance to the *nearest* neighbour, whose
+  median is 0.036. Six of the nine would have failed the gate against each
+  other, and 92% of drawn characters were refused. The bar is now derived from
+  the set's own spacing. Two related findings: "anticipation" catching most
+  refusals was a hunch worth testing and turned out to be fourth at about 10% —
+  the template that does dominate is Running eighths at 60%, because the
+  character's density axis runs to eight notes a bar while the composer tops out
+  near six. And refusals are now kept rather than discarded, readable as what
+  they are ("a small variation of Syncopated, 0.02 apart") and promotable anyway.
+- **"Auto" and "Host sync" only appeared once a pattern existed.** Moved out of
+  the take section; they're transport controls.
+- **"Draw from your style" produced mono lines in chord mode.** One place now
+  decides how a pattern is realized for the mode, so a seventh source can't
+  reintroduce it.
+
+*2026-08-24, first session:*
 
 - **Chord mode never cycled its comping templates.** `runAutoRegeneration` was
   mode-blind in three places: it composed a line on the first pass whatever the
@@ -137,65 +177,28 @@ measurements, not assumed better.
 
 Ordered by how likely they are to bite.
 
-1. **Some takes lose their first notes.** Reported 2026-08-24: "as though they
-   were before the playhead". Unmeasured and the most serious open bug, because it
-   costs material rather than convenience. Where to look, in order: `scheduleNotes`
-   uses a half-open window `[windowStart, windowEnd)`, so a note at exactly beat 0
-   of the first buffer is included only if `windowStart` is exactly 0 — and in
-   host-sync mode the first synced buffer *latches* the position and emits nothing,
-   which is correct for sync and would eat a downbeat note on the very first pass.
-   Second candidate: `capDeadAir`/`fillHoles` run after assembly and could shift a
-   first note's start. Reproduce with a take whose first note is at beat 0, in both
-   free-running and host-sync mode, before changing anything.
-2. **A rating follows what's playing, not what was rated.** Reported 2026-08-24:
-   mutations and morphs show the parent take's disposition and stay on "pass 1",
-   and "even different applied patterns keep the previous rating — this wasn't the
-   case previously." Diagnosed, not yet fixed: drift and morph change what's
-   *rendered* without adding a take (deliberately — `LiveMutation` "never touches
-   the take"), so the panel is correctly showing the parent's mark for material
-   that no longer sounds like the parent. The pass label is also correct and reads
-   as stale, because `curationPass` only advances when a pass is explicitly ended.
-   The fix is a design decision, not a patch: either a materially-drifted render
-   becomes its own take, or the panel says "this is a variation of a take you
-   marked" and offers to judge the variation — which is the affordance variants
-   just got.
-3. **"Auto" and "Host sync" only appear once a pattern exists.** Reported
-   2026-08-24. They're transport controls, and a transport control that
-   materialises after an unrelated action reads as a bug even when it's a
-   deliberate progressive disclosure.
-4. **"Draw from your style" produces mono lines in chord mode.** Reported
-   2026-08-24 — the same family as the auto-loop bug fixed the same day: a source
-   that doesn't consult `mode`. Worth auditing *every* source for it rather than
-   fixing this one, since that's now twice.
-5. **New templates keep getting refused.** Reported 2026-08-24. `TemplateGate`
-   rejects a proposed template that isn't distinctive enough from the existing
-   nine, and the model keeps proposing ones that aren't. Two ways out, and the
-   second may be better: make the request harder to answer generically (name the
-   existing templates in the prompt and ask for something none of them covers), or
-   stop asking — keep the nine and let the *tweaks* already applied to patterns do
-   the differentiating, which is where the variety has actually been coming from.
-6. **The interface has outgrown its structure.** Sixteen top-level sections in a
+1. **The interface has outgrown its structure.** Sixteen top-level sections in a
    3,000-line view. Every feature arrived as another section, which is how it got
    here. The 2026-08-23 redesign addressed the symptom by splitting Play from
    Decide; the view got *longer*, so the structural problem stands — see §5.
-7. **No contour measurement.** §1: the axis the complaints are actually about
+2. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-8. **A leading silence isn't treated as a rest.** §1.
-9. **The learned models are recomputed on every draw.** O(takes × notes) on the
+3. **A leading silence isn't treated as a rest.** §1.
+4. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-10. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+5. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-11. **Takes still can't be named.** `retitle` exists and nothing calls it.
-12. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+6. **Takes still can't be named.** `retitle` exists and nothing calls it.
+7. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-13. **The fit report is computed, tested and invisible.**
-14. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+8. **The fit report is computed, tested and invisible.**
+9. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-15. **The library is `UserDefaults`, not an App Group** (I5/L4).
-16. **`PatternStore` and the learned models have no export or import.**
-17. **`previousTakeID` is encoded but not decoded.**
+10. **The library is `UserDefaults`, not an App Group** (I5/L4).
+11. **`PatternStore` and the learned models have no export or import.**
+12. **`previousTakeID` is encoded but not decoded.**
 
 ---
 
