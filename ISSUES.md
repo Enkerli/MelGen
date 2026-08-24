@@ -177,28 +177,41 @@ measurements, not assumed better.
 
 Ordered by how likely they are to bite.
 
-1. **The interface has outgrown its structure.** Sixteen top-level sections in a
+1. **Rating what's playing skips to another take.** Reported 2026-08-24 (fourth
+   device session). Pressing any disposition button while playing immediately
+   advances. Almost certainly the auto-regeneration loop: judging commits state,
+   the commit reloads the kernel, and with `autoRegenerate` on the next take is
+   already queued — so the tap that was meant to answer the take also ends it.
+   Judging must be a read-only act as far as the transport is concerned.
+2. **"Every two loops" doesn't buy the time it promises.** Reported 2026-08-24.
+   `regenerateEveryPasses` was meant to leave room to answer a take before it's
+   gone, and it doesn't, because the drift re-rolls on *every* loop — so the two
+   passes aren't the same material twice, they're two different performances and
+   there's still nothing stable to judge. Either the drift's re-roll follows the
+   regeneration interval rather than the loop, or "repeat each take" is a separate
+   setting from "how often to generate". This is U10's other half.
+3. **The interface has outgrown its structure.** Sixteen top-level sections in a
    3,000-line view. Every feature arrived as another section, which is how it got
    here. The 2026-08-23 redesign addressed the symptom by splitting Play from
    Decide; the view got *longer*, so the structural problem stands — see §5.
-2. **No contour measurement.** §1: the axis the complaints are actually about
+4. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-3. **A leading silence isn't treated as a rest.** §1.
-4. **The learned models are recomputed on every draw.** O(takes × notes) on the
+5. **A leading silence isn't treated as a rest.** §1.
+6. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-5. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+7. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-6. **Takes still can't be named.** `retitle` exists and nothing calls it.
-7. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+8. **Takes still can't be named.** `retitle` exists and nothing calls it.
+9. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-8. **The fit report is computed, tested and invisible.**
-9. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+10. **The fit report is computed, tested and invisible.**
+11. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-10. **The library is `UserDefaults`, not an App Group** (I5/L4).
-11. **`PatternStore` and the learned models have no export or import.**
-12. **`previousTakeID` is encoded but not decoded.**
+12. **The library is `UserDefaults`, not an App Group** (I5/L4).
+13. **`PatternStore` and the learned models have no export or import.**
+14. **`previousTakeID` is encoded but not decoded.**
 
 ---
 
