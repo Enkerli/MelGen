@@ -432,6 +432,72 @@ check("a setup saved by an older build still loads", {
         && decoded.temperature == MelGenState().temperature
 }())
 
+// 11i. Filing a take versus loading one. The distinction is the transport, and
+// the bug it fixes looked like a rating button skipping to another take: keeping
+// a drifted pass loaded it, which moved the panel, handed the kernel a new take
+// id (so the loop restarted from its top), and left the drift compounding on
+// notes it had already drifted.
+var performing = MelGenState()
+performing.add(GenerationRecord(progressionText: "Dm7 | G7", temperature: 0.6,
+                                briefName: "Playing", lengthBeats: 8, notes: raw))
+let performedID = performing.currentTake!.id
+performing.liveMutation = LiveMutation(noteOrder: 0.2, accents: 0.3)
+performing.mutationPass = 3
+
+let frozen = GenerationRecord(progressionText: "Dm7 | G7", temperature: 0.6,
+                              briefName: "Playing · pass 3", parentTakeID: performedID,
+                              derivation: "drift, pass 3", lengthBeats: 8, notes: raw)
+performing.file(frozen)
+check("filing a take puts it in the history", performing.history.count == 2)
+check("but doesn't take over the transport", performing.currentTake?.id == performedID,
+      performing.currentTake?.briefName ?? "—")
+check("so the drift keeps rendering the take it was performing",
+      performing.renderedMelody.count == raw.count || !performing.renderedMelody.isEmpty)
+check("and the filed take is still a variation of it",
+      performing.history.first { $0.id == frozen.id }?.parentTakeID == performedID)
+check("which can be marked without touching the parent's mark", {
+    performing.mark(frozen.id, as: .keep)
+    return performing.history.first { $0.id == frozen.id }?.latestMark?.disposition == .keep
+        && performing.history.first { $0.id == performedID }?.latestMark == nil
+}())
+// Filing repeatedly can't compound, because nothing it does is read back.
+performing.file(frozen)
+check("filing doesn't move the current take however often it happens",
+      performing.currentTake?.id == performedID)
+check("adding, by contrast, is what loads a take", {
+    performing.add(GenerationRecord(progressionText: "Dm7 | G7", temperature: 0.6,
+                                    briefName: "Loaded", lengthBeats: 8, notes: raw))
+    return performing.currentTake?.briefName == "Loaded"
+        && performing.previousTakeID == performedID
+}())
+
+// 11j. One cadence, asked by everything that changes what's heard. Auto used to
+// honour the interval while the drift re-rolled every pass, so "new take every
+// two loops" delivered two different performances rather than the same one twice.
+var cadence = MelGenState()
+cadence.regenerateEveryPasses = 1
+check("at every loop, each pass is due",
+      (1...4).allSatisfy { cadence.isDue(pass: Int64($0), since: Int64($0 - 1)) })
+
+cadence.regenerateEveryPasses = 2
+check("at every two loops, the next pass is not due",
+      !cadence.isDue(pass: 5, since: 4))
+check("but the one after is", cadence.isDue(pass: 6, since: 4))
+check("and a pass that overshoots still counts", cadence.isDue(pass: 9, since: 4))
+
+// Both loops ask the same question, so a stretch of passes gives the same
+// answers to each — which is the property that makes an interval mean anything.
+cadence.regenerateEveryPasses = 4
+let takeDue = (0...12).filter { cadence.isDue(pass: Int64($0), since: 0) }
+let driftDue = (0...12).filter { cadence.isDue(pass: Int64($0), since: 0) }
+check("the take and the drift come due together", takeDue == driftDue,
+      "\(takeDue.prefix(3))…")
+check("and not before the interval is up", takeDue.first == 4, "\(takeDue.first ?? -1)")
+
+cadence.regenerateEveryPasses = 0
+check("a nonsense interval is treated as every loop",
+      cadence.isDue(pass: 1, since: 0))
+
 // A take's source is recorded, so the log distinguishes an adapted line from a
 // generated one.
 var mixed = MelGenState()

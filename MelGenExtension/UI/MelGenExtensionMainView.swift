@@ -52,6 +52,9 @@ struct MelGenExtensionMainView: View {
     @State private var exportDocument: MelGenJSONDocument?
     @State private var isImporting = false
     @State private var showRefusedTemplates = false
+    /// Which drift pass was answered, and how. Not in `MelGenState`: it's about
+    /// the performance happening now, not about the session.
+    @State private var driftPassMark: (pass: Int, disposition: TakeDisposition)?
     @State private var showSetups = false
     @State private var setupRevision = 0
     @State private var setupName = ""
@@ -1477,22 +1480,37 @@ struct MelGenExtensionMainView: View {
         .accessibilityLabel("Playback direction")
     }
 
-    /// How often Auto swaps a take in. Only shown when Auto is on, because it
-    /// affects nothing else.
+    /// How often anything changes: when Auto swaps a take in, and when the drift
+    /// re-rolls.
+    ///
+    /// Shown when either is on, because it now governs both. Behind Auto alone it
+    /// was invisible in exactly the case that needed it — a drifting loop with no
+    /// auto-regeneration changed every pass with no way to say otherwise.
     @ViewBuilder
     private var autoRow: some View {
-        if state.autoRegenerate {
-            HStack(spacing: MelGenMetrics.space2) {
-                Text("New take every")
-                    .font(.system(size: 13))
-                    .foregroundStyle(theme.text)
-                ChipPicker(
-                    options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
-                    selection: binding(\.regenerateEveryPasses, reloadKernel: false),
-                    theme: theme
-                )
-                .frame(maxWidth: 320)
-                Spacer(minLength: 0)
+        if state.autoRegenerate || state.liveMutation.isActive {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: MelGenMetrics.space2) {
+                    Text(state.autoRegenerate ? "New take every" : "Re-roll the drift every")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.text)
+                    ChipPicker(
+                        options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
+                        selection: binding(\.regenerateEveryPasses, reloadKernel: false),
+                        theme: theme
+                    )
+                    .frame(maxWidth: 320)
+                    Spacer(minLength: 0)
+                }
+                if state.regenerateEveryPasses > 1 {
+                    Text(state.autoRegenerate && state.liveMutation.isActive
+                         ? "The take and the drift change together, so each performance is heard "
+                           + "\(state.regenerateEveryPasses) times — long enough to judge one."
+                         : "Heard \(state.regenerateEveryPasses) times before anything changes.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -1590,31 +1608,52 @@ struct MelGenExtensionMainView: View {
         }
     }
 
-    /// Re-rolls the drift on every loop boundary.
+    /// Re-rolls the drift, on the same cadence the take changes on.
     ///
     /// A quarter of a second is far shorter than any loop and costs nothing; the
     /// alternative is a callback from the render thread, which would mean the
     /// audio thread waiting on the interface.
+    ///
+    /// The cadence is `regenerateEveryPasses`, not every loop, and that's the
+    /// whole point of the setting. "New take every two loops" was asked for so
+    /// there would be time to judge something before it was gone — and it bought
+    /// none, because the drift re-rolled every loop regardless. Two passes of the
+    /// same take were two different performances of it, so there was still
+    /// nothing stable to answer. Re-rolling with the take means the interval
+    /// governs *how often anything changes*, which is what it was set for.
+    ///
+    /// It applies whether or not auto-regeneration is on: at the default of 1 the
+    /// behaviour is exactly what it was, and at 2 you hear the same performance
+    /// twice either way.
     private func runDrift() async {
         guard state.liveMutation.isActive else { return }
-        var lastPass = audioUnit?.currentPass ?? 0
+        var lastRolledPass = audioUnit?.currentPass ?? 0
         while !Task.isCancelled, liveState.liveMutation.isActive {
             try? await Task.sleep(for: .milliseconds(250))
-            guard let pass = audioUnit?.currentPass, pass != lastPass else { continue }
-            lastPass = pass
+            guard let pass = audioUnit?.currentPass else { continue }
+            guard liveState.isDue(pass: pass, since: lastRolledPass) else { continue }
+            lastRolledPass = pass
             commit { $0.mutationPass += 1 }
         }
     }
 
-    /// Freezes the drifted loop as a take of its own.
+    /// Freezes the drifted loop as a take of its own, without interrupting it.
     ///
     /// The drift is a performance and doesn't touch the take, which is right
     /// until the moment a pass comes out better than what it was performing.
-    private func keepThisPass() {
+    ///
+    /// Filed rather than loaded, and `reloadKernel: false`, because the pass is
+    /// still playing and keeping it is a statement about the record. Loading it
+    /// made a rating look like a skip: the panel jumped to the new take, the
+    /// kernel got a new take id and restarted the loop from the top, and the
+    /// drift began compounding on notes it had already drifted.
+    /// - Returns: the take that was filed, so a caller can mark it.
+    @discardableResult
+    private func keepThisPass() -> GenerationRecord? {
         let current = liveState
-        guard let take = current.currentTake else { return }
+        guard let take = current.currentTake else { return nil }
         let notes = current.renderedMelody
-        guard !notes.isEmpty else { return }
+        guard !notes.isEmpty else { return nil }
 
         let record = GenerationRecord(
             progressionText: take.progressionText,
@@ -1630,8 +1669,9 @@ struct MelGenExtensionMainView: View {
             lengthBeats: take.lengthBeats,
             notes: notes
         )
-        commit { $0.add(record) }
+        commit(reloadKernel: false) { $0.file(record) }
         statusMessage = "Pass \(current.mutationPass) kept as a take of its own."
+        return record
     }
 
     // MARK: - Current take
@@ -1845,7 +1885,11 @@ struct MelGenExtensionMainView: View {
             // have to be on screen at the moment of judging.
             lineage(of: take)
 
-            DispositionBar(current: judgingDrift ? nil : mark?.disposition,
+            // While drift is running the bar answers for the *pass*, so it shows
+            // what was said about this pass rather than about the take. Without
+            // that it read as unjudged the instant after a tap, which looks like
+            // the tap was lost.
+            DispositionBar(current: judgingDrift ? markForThisPass : mark?.disposition,
                            theme: theme,
                            onSelect: { disposition in
                 judge(disposition, of: take, mark: mark)
@@ -1853,8 +1897,9 @@ struct MelGenExtensionMainView: View {
 
             if judgingDrift {
                 Text("Drift is running, so this judges the pass you're hearing — "
-                     + "it's kept as a variation of \(take.displayName), "
-                     + "leaving the take's own mark alone.")
+                     + "kept as a variation of \(take.displayName), which keeps "
+                     + "playing and keeps its own mark."
+                     + (markForThisPass == nil ? "" : " Pass \(state.mutationPass) answered."))
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1896,6 +1941,15 @@ struct MelGenExtensionMainView: View {
         state.liveMutation.isActive && state.mutationPass > 0
     }
 
+    /// What was said about the pass currently sounding, if anything.
+    ///
+    /// Keyed on the pass number so it clears itself when the drift re-rolls: the
+    /// next pass is a different performance and hasn't been answered.
+    private var markForThisPass: TakeDisposition? {
+        guard let answered = driftPassMark, answered.pass == state.mutationPass else { return nil }
+        return answered.disposition
+    }
+
     /// Records a judgement about whatever is actually sounding.
     ///
     /// When that's the take, it marks the take. When it's a drifted pass, the
@@ -1911,12 +1965,16 @@ struct MelGenExtensionMainView: View {
         }
 
         if judgingDrift {
-            keepThisPass()
-            guard let variation = liveState.currentTake, variation.id != take.id else { return }
+            // The filed record is named directly rather than read back through
+            // `currentTake`, which is still — correctly — the take being
+            // performed. Asking "what's current" after filing was what made this
+            // mark the wrong thing once the transport stopped being disturbed.
+            guard let variation = keepThisPass() else { return }
             commit(reloadKernel: false) { $0.mark(variation.id, as: disposition) }
+            driftPassMark = (pass: liveState.mutationPass, disposition: disposition)
             let parentMark = take.latestMark?.disposition.label ?? "unjudged"
             statusMessage = "\(disposition.label) — \(variation.derivationLabel), "
-                + "from a take you called \(parentMark.lowercased())."
+                + "from a take you called \(parentMark.lowercased()). Still playing."
             return
         }
 
@@ -3324,7 +3382,7 @@ struct MelGenExtensionMainView: View {
             guard current.autoRegenerate else { return }
             guard let pass = audioUnit?.currentPass else { continue }
 
-            let due = pass >= lastStartedPass + Int64(max(1, current.regenerateEveryPasses))
+            let due = current.isDue(pass: pass, since: lastStartedPass)
 
             // A model take finished during the last loop: it wins, so swap it in
             // now the loop has come round.

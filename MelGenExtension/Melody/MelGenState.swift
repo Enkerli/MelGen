@@ -373,7 +373,21 @@ struct MelGenState: Codable, Sendable {
 
     /// Regenerate on its own while playing, giving a new take every few passes.
     var autoRegenerate: Bool = false
+    /// How many loop passes go by before anything changes — both when Auto swaps
+    /// a take in and when the drift re-rolls. See `isDue(pass:since:)`.
     var regenerateEveryPasses: Int = 1
+
+    /// Whether a loop boundary is far enough past the last change to be another.
+    ///
+    /// One rule, used by both loops that change what's heard, because they have
+    /// to agree. They didn't: Auto honoured the interval and the drift re-rolled
+    /// every pass, so "new take every 2 loops" gave two *different performances*
+    /// of the same take and there was still nothing stable to judge. The setting
+    /// means "how often anything changes", and that only holds if everything that
+    /// changes asks the same question.
+    func isDue(pass: Int64, since lastChanged: Int64) -> Bool {
+        pass >= lastChanged + Int64(max(1, regenerateEveryPasses))
+    }
 
     /// Rotates through the style briefs so successive takes differ.
     var briefCursor: Int = 0
@@ -499,6 +513,23 @@ struct MelGenState: Codable, Sendable {
         evict()
         previousTakeID = currentTakeID
         currentTakeID = record.id
+    }
+
+    /// Files a take in the history without playing it.
+    ///
+    /// The difference from `add` is the transport, and it matters more than it
+    /// looks. Freezing a drifted pass is a statement about the *record* — this
+    /// one was worth keeping — made while a performance is still running, and
+    /// `add` would end that performance three ways at once: the panel would jump
+    /// to the new take, the kernel would be handed a new take id and restart the
+    /// loop from its top, and the drift would then compound on already-drifted
+    /// notes because it renders from whatever is current.
+    ///
+    /// So a take can be filed without being loaded. What you were listening to
+    /// keeps playing, and the thing you kept is in the library.
+    mutating func file(_ record: GenerationRecord) {
+        history.insert(record, at: 0)
+        evict()
     }
 
     /// Drops the oldest take the ring is allowed to drop.
