@@ -1580,7 +1580,7 @@ struct MelGenExtensionMainView: View {
                                value: binding(\.liveMutation.octaves), theme: theme,
                                format: { "\(Int($0 * 100))%" })
 
-                Text("Re-rolled every time the loop comes round, and seeded by which pass "
+                Text("Re-rolled every \(state.regenerateEveryPasses == 1 ? "loop" : "\(state.regenerateEveryPasses) loops"), and seeded by which pass "
                      + "it is — so a pass that sounded good can be got back rather than "
                      + "being gone. Pass \(state.mutationPass).")
                     .font(.system(size: 11))

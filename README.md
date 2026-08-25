@@ -250,7 +250,7 @@ Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
 
 ## Documentation
 
-Six documents, each with one job. Kept apart so that a finding lands in exactly
+Seven documents, each with one job. Kept apart so that a finding lands in exactly
 one of them:
 
 | Document | What belongs in it | What doesn't |
@@ -261,6 +261,7 @@ one of them:
 | [TRAINING.md](TRAINING.md) | What "learning from your material" can and can't mean on device | Anything not about learning |
 | [HANDOFF.md](HANDOFF.md) | Current state, open risks, and where to pick up | Durable design rationale — that goes in the code |
 | [COREML.md](COREML.md) | Training off-device and running the result on the iPad | On-device learning — that's TRAINING.md |
+| [DESIGN_BRIEF.md](DESIGN_BRIEF.md) | The experience: vocabulary, playflows, what's being asked of a design pass | Implementation, and anything already settled |
 
 ### Hygiene
 
