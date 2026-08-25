@@ -214,32 +214,64 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Play
 
-    /// Everything you do while something is sounding.
+    /// Acts on what is sounding.
+    ///
+    /// The tabs were right and their criterion wasn't: "playing versus judging"
+    /// fails immediately, because judging happens on both and should. The
+    /// criterion that holds is *what the control acts on* — the thing that is
+    /// sounding, or the thing that comes next. The test for belonging here is
+    /// that touching it changes the sound before the lap ends.
+    ///
+    /// Curation is here too, and it is a different kind of curation: reflex.
+    /// One gesture, no comparison, no list — you are answering the thing in
+    /// your ears. The comparative sweep is on Decide.
     private var playTab: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
-            setupRow
-            progressionSection
-
-            // Outside the take section on purpose. These are transport controls,
-            // and a transport control that materialises after an unrelated action
-            // reads as a bug — Host sync and Auto are both things you'd want set
-            // *before* making the first take, not after.
             transportStrip
 
             if state.currentTake != nil {
                 currentTakeSection
             }
-            autoRow
 
-            nextTakeSection
-            textureSection
+            advanceRow
+            autoRow
+            nowPlayingGroup
             driftSection
+        }
+    }
+
+    /// Acts on what comes next, and on the record.
+    ///
+    /// The test for belonging: touching it changes nothing until you ask for a
+    /// take. That is why the progression is here — it is the most consequential
+    /// setting in the app and it does nothing on its own.
+    private var decideTab: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            setupRow
+            progressionSection
+            nextTakeSection
+            nextTakeSettings
+
+            curationSection
+
+            if state.currentTake != nil {
+                variantsSection
+            }
+
+            historySection
 
             MoreRow(summary: "More: stored lines (\(PatternStore.library.count)) · "
                            + "listen to what I play · write a template · export",
-                    isExpanded: $showPlayMore,
+                    isExpanded: $showDecideMore,
                     theme: theme)
-            if showPlayMore {
+            if showDecideMore {
                 VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                     lineLibrarySection
                     captureSection
@@ -424,84 +456,136 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - Decide
 
-    /// Everything you do while deciding what to keep.
-    private var decideTab: some View {
-        VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    // MARK: - The manual gestures
 
-            curationSection
-
-            if state.currentTake != nil {
-                variantsSection
-            }
-
-            MoreRow(summary: "More: history (\(state.history.count)) · export history",
-                    isExpanded: $showDecideMore,
-                    theme: theme)
-            if showDecideMore {
-                historySection
-            }
-        }
-    }
-
-    // MARK: - Texture
-
-    /// Shape and Feel, merged.
+    /// The two things you do to what is sounding, as first-class controls.
     ///
-    /// They were two sections whose only real difference was *when* they take
-    /// effect — one waits for the next take, the other re-renders what is
-    /// playing. That's a sentence, not a section boundary, so it's two labelled
-    /// groups under one heading.
-    private var textureSection: some View {
-        CollapsibleSection(title: "Texture",
-                           summary: textureSummary,
-                           isExpanded: $showTexture,
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                WhenGroup(legend: "Takes effect on the next take", theme: theme) {
-                    VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                        LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
-                                       value: binding(\.expression.density), theme: theme,
-                                       format: { "\(MelodyExpression.notesPerBar(forDensity: $0))/bar" })
-                        LabelledSlider(title: "Temperature", lowLabel: "expected",
-                                       highLabel: "surprising",
-                                       value: binding(\.temperature, reloadKernel: false), theme: theme)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Note duration")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(theme.text)
-                            ChipPicker(options: DurationPalette.allCases.map { ($0, $0.label) },
-                                       selection: binding(\.durationPalette, reloadKernel: false),
-                                       theme: theme)
-                        }
-                    }
+    /// Auto has existed for a while and its manual counterpart never did, which
+    /// is what made the automatic version feel like weather rather than an
+    /// instrument. There *was* a way to make a take by hand — the primary action
+    /// on the other tab — but it is labelled by source ("Generate a line",
+    /// "Comp"), so it doesn't read as the thing Auto does. And there was no way
+    /// at all to re-roll the drift: only "previous" and "keep", so the one
+    /// control that changes what you hear without costing a generation could
+    /// only be waited for.
+    ///
+    /// They sit side by side and they are not peers, so they don't look like
+    /// peers: one costs about 1.8 seconds a note and the other costs nothing,
+    /// and each says so.
+    private var advanceRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: MelGenMetrics.space2) {
+                PrimaryAction(title: "Advance",
+                              subtitle: advanceSubtitle,
+                              systemImage: "forward.end.fill",
+                              isWorking: isGenerating,
+                              isEnabled: !state.progressionText.isEmpty,
+                              theme: theme) {
+                    advance()
                 }
 
-                WhenGroup(legend: "Re-renders what is playing now", theme: theme) {
-                    VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                        LabelledSlider(title: "Expression", lowLabel: "even", highLabel: "shaped",
-                                       value: binding(\.expression.amount), theme: theme)
-                        LabelledSlider(title: "Gate length", lowLabel: "staccato",
-                                       highLabel: "legato",
-                                       value: binding(\.expression.noteLength), theme: theme)
-                        LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
-                                       value: binding(\.expression.swing), theme: theme)
-                    }
+                Button {
+                    rerollDrift()
+                } label: {
+                    findLabel("Re-roll", systemImage: "dice",
+                              detail: state.liveMutation.isActive
+                                  ? "roll \(state.mutationPass + 1)"
+                                  : "drift is off")
+                }
+                .buttonStyle(.plain)
+                .disabled(!state.liveMutation.isActive)
+            }
+
+            Text(advanceExplanation)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// What Advance will actually do, named before it does it.
+    private var advanceSubtitle: String {
+        let template = state.nextTemplate.name
+        if source == .model && !modelIsDown {
+            return "\(template) · something plays while the model works"
+        }
+        return "\(template) · \(source.name.lowercased()) · instant"
+    }
+
+    private var advanceExplanation: String {
+        source == .model && !modelIsDown
+            ? "The model takes about 1.8 seconds a note, so Advance fills the bar "
+              + "immediately and swaps the model's take in on a lap boundary when it arrives."
+            : "Re-roll changes what you are hearing without making a take. Advance makes one."
+    }
+
+    /// Next take, by whatever route is quickest — the gesture, not the source.
+    ///
+    /// The rule from journey one: asking must produce something within a lap. So
+    /// when the chosen source is the model, this starts the generation *and*
+    /// composes something to be going on with, rather than leaving a bar of
+    /// silence while the model thinks for half a minute.
+    private func advance() {
+        if source == .model, !modelIsDown {
+            composeLine()
+            nextTake()
+            return
+        }
+        run(source)
+    }
+
+    /// One draw of drift's dice, on demand rather than on the next lap.
+    private func rerollDrift() {
+        guard liveState.liveMutation.isActive else { return }
+        commit { $0.mutationPass += 1 }
+        statusMessage = "Roll \(liveState.mutationPass)."
+    }
+
+    // MARK: - Now playing, and next take
+
+    /// Controls that re-render what is sounding.
+    ///
+    /// "Texture" is retired. It was one heading over two groups whose real
+    /// difference is *when* they apply, and putting them together meant density
+    /// and gate length looked identical while behaving nothing alike. They are
+    /// now on the two different tabs, under the two different names, because the
+    /// difference is which half of the interface they belong to.
+    private var nowPlayingGroup: some View {
+        WhenGroup(legend: "Now playing", theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                LabelledSlider(title: "Expression", lowLabel: "even", highLabel: "shaped",
+                               value: binding(\.expression.amount), theme: theme)
+                LabelledSlider(title: "Gate length", lowLabel: "staccato",
+                               highLabel: "legato",
+                               value: binding(\.expression.noteLength), theme: theme)
+                LabelledSlider(title: "Swing", lowLabel: "straight", highLabel: "swung",
+                               value: binding(\.expression.swing), theme: theme)
+            }
+        }
+    }
+
+    /// Controls that change nothing until you ask for a take.
+    private var nextTakeSettings: some View {
+        WhenGroup(legend: "Next take", theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
+                               value: binding(\.expression.density), theme: theme,
+                               format: { "\(MelodyExpression.notesPerBar(forDensity: $0))/bar" })
+                LabelledSlider(title: "Temperature", lowLabel: "expected",
+                               highLabel: "surprising",
+                               value: binding(\.temperature, reloadKernel: false), theme: theme)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Note duration")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(theme.text)
+                    ChipPicker(options: DurationPalette.allCases.map { ($0, $0.label) },
+                               selection: binding(\.durationPalette, reloadKernel: false),
+                               theme: theme)
                 }
             }
         }
     }
 
-    private var textureSummary: String {
-        "\(MelodyExpression.notesPerBar(forDensity: state.expression.density))/bar · "
-        + "\(state.durationPalette.label.lowercased()) · "
-        + (state.expression.swing < 0.05 ? "straight" : "swung")
-    }
 
 
     /// Labelled chips where there's room; icons alone in a narrow plug-in window,
@@ -1495,7 +1579,7 @@ struct MelGenExtensionMainView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(theme.text)
                     ChipPicker(
-                        options: [(1, "loop"), (2, "2 loops"), (4, "4 loops"), (8, "8 loops")],
+                        options: [(1, "lap"), (2, "2 laps"), (4, "4 laps"), (8, "8 laps")],
                         selection: binding(\.regenerateEveryPasses, reloadKernel: false),
                         theme: theme
                     )
@@ -1580,9 +1664,9 @@ struct MelGenExtensionMainView: View {
                                value: binding(\.liveMutation.octaves), theme: theme,
                                format: { "\(Int($0 * 100))%" })
 
-                Text("Re-rolled every \(state.regenerateEveryPasses == 1 ? "loop" : "\(state.regenerateEveryPasses) loops"), and seeded by which pass "
-                     + "it is — so a pass that sounded good can be got back rather than "
-                     + "being gone. Pass \(state.mutationPass).")
+                Text("Re-rolled every \(state.regenerateEveryPasses == 1 ? "lap" : "\(state.regenerateEveryPasses) laps"), and seeded by which roll "
+                     + "it is — so a roll that sounded good can be got back rather than "
+                     + "being gone. Roll \(state.mutationPass).")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1591,7 +1675,7 @@ struct MelGenExtensionMainView: View {
                     Button {
                         commit { $0.mutationPass -= 1 }
                     } label: {
-                        findLabel("Previous pass", systemImage: "arrow.uturn.backward")
+                        findLabel("Previous roll", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.plain)
                     .disabled(!state.liveMutation.isActive)
@@ -1599,7 +1683,7 @@ struct MelGenExtensionMainView: View {
                     Button {
                         keepThisPass()
                     } label: {
-                        findLabel("Keep this pass", systemImage: "arrow.down.doc")
+                        findLabel("Keep this roll", systemImage: "arrow.down.doc")
                     }
                     .buttonStyle(.plain)
                     .disabled(!state.liveMutation.isActive)
@@ -1658,19 +1742,19 @@ struct MelGenExtensionMainView: View {
         let record = GenerationRecord(
             progressionText: take.progressionText,
             temperature: take.temperature,
-            briefName: "\(take.briefName) · pass \(current.mutationPass)",
+            briefName: "\(take.briefName) · roll \(current.mutationPass)",
             density: take.density,
             durationPalette: take.durationPalette,
             source: take.source,
             analysis: (try? ChordProgression.parse(take.progressionText))
                 .map { MelodyAnalyser.analyse(notes, over: $0) },
             parentTakeID: take.id,
-            derivation: "drift, pass \(current.mutationPass)",
+            derivation: "drift, roll \(current.mutationPass)",
             lengthBeats: take.lengthBeats,
             notes: notes
         )
         commit(reloadKernel: false) { $0.file(record) }
-        statusMessage = "Pass \(current.mutationPass) kept as a take of its own."
+        statusMessage = "Roll \(current.mutationPass) kept as a take of its own."
         return record
     }
 
@@ -1896,10 +1980,10 @@ struct MelGenExtensionMainView: View {
             }, startExpanded: true)
 
             if judgingDrift {
-                Text("Drift is running, so this judges the pass you're hearing — "
-                     + "kept as a variation of \(take.displayName), which keeps "
-                     + "playing and keeps its own mark."
-                     + (markForThisPass == nil ? "" : " Pass \(state.mutationPass) answered."))
+                Text("Drift is running, so this judges the roll you're hearing — "
+                     + "kept as a take of its own with \(take.displayName) as its parent, "
+                     + "which keeps playing and keeps its own mark."
+                     + (markForThisPass == nil ? "" : " Roll \(state.mutationPass) answered."))
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2016,7 +2100,10 @@ struct MelGenExtensionMainView: View {
         } else {
             let derived = state.variations(of: take.id)
             if !derived.isEmpty {
-                Text("\(derived.count) variation\(derived.count == 1 ? "" : "s") came from this one.")
+                // A take that records this one as its parent, whether it came
+                // from a variant, a morph or a kept drift roll. "Variation" was
+                // a fourth word for the same thing.
+                Text("\(derived.count) take\(derived.count == 1 ? "" : "s") came from this one.")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
             }

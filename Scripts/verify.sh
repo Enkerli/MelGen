@@ -33,6 +33,7 @@
 #   docs     — the documentation against the code it describes
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
+#   terminology — the interface against TERMINOLOGY.md: one word per concept
 #   identity — the audio component triple is unique across the suite and matches
 #              the host app's lookup
 #
@@ -273,6 +274,11 @@ run_midi() {
     python3 "$REPO/Scripts/tests/midi-ingest.py" || status=1
 }
 
+run_terminology() {
+    echo "── terminology ───────────────────────────────────"
+    python3 "$REPO/Scripts/tests/terminology.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -311,6 +317,7 @@ case "$which" in
     midi)     run_midi ;;
     docs)     run_docs ;;
     contrast) run_contrast ;;
+    terminology) run_terminology ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
     *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|contrast|kernel]"; exit 2 ;;

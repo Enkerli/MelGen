@@ -320,7 +320,11 @@ struct ReviewRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(take.displayName)
-        .accessibilityValue(take.latestMark.map { "\($0.disposition.label), pass \($0.pass)" } ?? "Not yet judged")
+        // Says which pass. A screen-reader user hearing "keep, pass 2" has the
+        // same problem the vocabulary exists to fix — there are two counters in
+        // this app and only one of them is a judgement.
+        .accessibilityValue(take.latestMark.map { "\($0.disposition.label), judged on pass \($0.pass)" }
+                            ?? "Not yet judged")
         .accessibilityHint("Loads this take so you can hear it")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
     }
