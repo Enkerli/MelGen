@@ -201,6 +201,8 @@ public:
         if (mPlayMelody && !mMelodyPlaying) {
             mTimelineBeats = 0;
             mLoopOrigin = 0;
+            mPassCarry = 0;
+            mShared.passIndex.store(0, std::memory_order_relaxed);
             mHostBeatInitialized = false;
             mMelodyPlaying = true;
             // Pressing play is itself a restart, so an outstanding request from a
@@ -235,6 +237,7 @@ public:
                 mHostBeatInitialized = true;
                 mTimelineBeats = mHostBeat;
                 mLoopOrigin = mHostBeat;
+                mPassCarry = mShared.passIndex.load(std::memory_order_relaxed);
                 return;
             }
             windowStart = mTimelineBeats;
@@ -250,6 +253,7 @@ public:
                 // A locate is a fresh start: re-anchor the loop, both so the
                 // pattern is heard from its top and so loop time can't go
                 // negative when the host jumps backwards.
+                mPassCarry = mShared.passIndex.load(std::memory_order_relaxed);
                 mLoopOrigin = windowEnd;
                 return;
             }
@@ -263,6 +267,9 @@ public:
         // numbers that no longer mean the same thing.
         if (mShared.restartRequested.exchange(false, std::memory_order_acq_rel)) {
             releaseAllNotes(bufferStartTime);
+            // Carry the passes already played before moving the origin, so the
+            // counter the interface reads doesn't fall back to zero underneath it.
+            mPassCarry = mShared.passIndex.load(std::memory_order_relaxed);
             mLoopOrigin = windowStart;
         }
 
@@ -295,17 +302,26 @@ public:
         return mShared.passIndex.load(std::memory_order_relaxed);
     }
 
-    void publishPassIndex(double timelineBeats) {
+    /// - Parameter loopBeats: position in loop time — beats since the loop's
+    ///   origin, which moves whenever a take restarts.
+    void publishPassIndex(double loopBeats) {
         mShared.tempo.store(mTempo, std::memory_order_relaxed);
         const uint32_t seq = mShared.activeIndex.load(std::memory_order_acquire);
         const double loopLength = mSequenceLengths[seq];
         if (loopLength <= 0) { return; }
         mShared.loopBeats.store(loopLength, std::memory_order_relaxed);
-        mShared.passIndex.store((int64_t)std::floor(timelineBeats / loopLength),
+        // Passes *played*, carried across restarts, rather than passes since the
+        // origin. The origin moves on every take handover, so a counter derived
+        // from it alone resets to zero each time — and the interface, which asks
+        // "has a pass gone by since I last acted", saw its own anchor stranded
+        // above the counter. The interval then stretched instead of holding: two
+        // loops became four, then six, compounding for as long as the session
+        // ran. This counter only ever climbs.
+        mShared.passIndex.store(mPassCarry + (int64_t)std::floor(loopBeats / loopLength),
                                 std::memory_order_relaxed);
         // Where in the loop the last buffer ended. The pass counter says which
         // time round we are; this says where, which is what a playhead needs.
-        double phase = std::fmod(timelineBeats, loopLength);
+        double phase = std::fmod(loopBeats, loopLength);
         if (phase < 0) { phase += loopLength; }
         mShared.phaseBeats.store(mMelodyPlaying ? phase : -1.0, std::memory_order_relaxed);
     }
@@ -612,6 +628,9 @@ public:
     /// timeline is ours or the host's: the host's playhead keeps its own meaning,
     /// and the loop just decides where its own start is on that ruler.
     double mLoopOrigin = 0;
+    /// Passes played before the current origin. What makes the published pass
+    /// counter monotonic across take handovers and host locates.
+    int64_t mPassCarry = 0;
     double mHostBeat = 0;          // host playhead, this buffer
     bool mHostBeatValid = false;   // did the host give us a position?
     bool mHostBeatInitialized = false;

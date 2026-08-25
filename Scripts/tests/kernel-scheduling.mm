@@ -186,6 +186,79 @@ static void testRestartFromTop() {
     expect("a re-render leaves the loop where it is", after > before, detail);
 }
 
+// The pass counter is what the interface uses to ask "has a loop gone by since I
+// last acted", so it must only ever climb. Deriving it from loop time made it
+// reset on every take handover — the origin moves, loop time goes back to zero —
+// and the interface's own anchor was left stranded above it, so "a new take every
+// two loops" stretched to four, then six, compounding all session.
+static void testPassCounterSurvivesRestart() {
+    MelGenExtensionDSPKernel kernel;
+    kernel.initialize(48000);
+    wire(kernel);
+    loadSequence(kernel);       // 4-beat loop
+    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    run(kernel, 8.1);           // two passes
+
+    const int64_t before = kernel.currentPass();
+    char detail[96];
+    snprintf(detail, sizeof(detail), "%lld after two loops", (long long)before);
+    expect("the counter climbs while playing", before >= 2, detail);
+
+    // Hand over a take, the way auto-regeneration does.
+    kernel.beginSequenceUpdate();
+    kernel.appendSequenceNote(0, 1, 72, 100);
+    kernel.commitSequence(4, /*restartFromTop=*/true);
+    run(kernel, 0.5);
+
+    const int64_t after = kernel.currentPass();
+    snprintf(detail, sizeof(detail), "%lld → %lld", (long long)before, (long long)after);
+    expect("a take handover doesn't reset it", after >= before, detail);
+
+    // And it keeps counting from there rather than starting again.
+    run(kernel, 4.1);
+    const int64_t later = kernel.currentPass();
+    snprintf(detail, sizeof(detail), "%lld → %lld after one more loop",
+             (long long)after, (long long)later);
+    expect("it keeps climbing after the handover", later > after, detail);
+
+    // Several handovers in a row — what an auto session actually does — must not
+    // walk the counter backwards even once, and must advance once per loop that
+    // actually completes.
+    bool monotonic = true;
+    int64_t previous = later;
+    for (int take = 0; take < 6; ++take) {
+        kernel.beginSequenceUpdate();
+        kernel.appendSequenceNote(0, 1, uint8_t(60 + take), 100);
+        kernel.commitSequence(4, /*restartFromTop=*/true);
+        run(kernel, 4.1);
+        const int64_t now = kernel.currentPass();
+        if (now < previous) { monotonic = false; }
+        previous = now;
+    }
+    snprintf(detail, sizeof(detail), "%lld → %lld over six handovers",
+             (long long)later, (long long)previous);
+    expect("six handovers in a row keep it monotonic", monotonic, detail);
+    expect("and each completed loop still counts", previous >= later + 6, detail);
+
+    // A handover *before* the loop completes correctly counts nothing: no pass
+    // was played. Worth pinning, because it's the one case where a stalled
+    // counter is right rather than the bug above.
+    const int64_t beforeShort = kernel.currentPass();
+    kernel.beginSequenceUpdate();
+    kernel.appendSequenceNote(0, 1, 79, 100);
+    kernel.commitSequence(4, /*restartFromTop=*/true);
+    run(kernel, 1.0);
+    snprintf(detail, sizeof(detail), "%lld → %lld", (long long)beforeShort,
+             (long long)kernel.currentPass());
+    expect("a handover a quarter of the way through counts no pass",
+           kernel.currentPass() == beforeShort, detail);
+
+    // The playhead is still loop-relative: that's what it's for.
+    const double phase = kernel.currentPhaseBeats();
+    snprintf(detail, sizeof(detail), "phase=%.2f of 4", phase);
+    expect("the phase stays inside the loop", phase >= 0 && phase < 4.0, detail);
+}
+
 int main() {
     testDirection("forward", MelGenPlaybackDirectionForward);
     testDirection("backward", MelGenPlaybackDirectionBackward);
@@ -195,6 +268,8 @@ int main() {
     testTimingPublication();
     printf("%-10s\n", "restart");
     testRestartFromTop();
+    printf("%-10s\n", "passes across handovers");
+    testPassCounterSurvivesRestart();
     printf("\nkernel: %s\n", gFailures ? "FAILURES" : "OK");
     return gFailures ? 1 : 0;
 }

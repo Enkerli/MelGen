@@ -52,9 +52,9 @@ struct MelGenExtensionMainView: View {
     @State private var exportDocument: MelGenJSONDocument?
     @State private var isImporting = false
     @State private var showRefusedTemplates = false
-    /// Which drift pass was answered, and how. Not in `MelGenState`: it's about
-    /// the performance happening now, not about the session.
-    @State private var driftPassMark: (pass: Int, disposition: TakeDisposition)?
+    /// Which pass of which take was answered, and how. Not in `MelGenState`: it's
+    /// about the performance happening now, not about the session.
+    @State private var driftPassMark: (takeID: UUID, pass: Int, disposition: TakeDisposition)?
     @State private var showSetups = false
     @State private var setupRevision = 0
     @State private var setupName = ""
@@ -1943,10 +1943,15 @@ struct MelGenExtensionMainView: View {
 
     /// What was said about the pass currently sounding, if anything.
     ///
-    /// Keyed on the pass number so it clears itself when the drift re-rolls: the
-    /// next pass is a different performance and hasn't been answered.
+    /// Keyed on the take *and* the pass, so it clears itself both when the drift
+    /// re-rolls and when a different take is loaded. Keyed on the pass alone, a
+    /// new take arrived showing the mark given to the previous take's pass —
+    /// which read as a rating that had followed the wrong material, and is the
+    /// exact confusion the pass/take/loop distinction exists to prevent.
     private var markForThisPass: TakeDisposition? {
-        guard let answered = driftPassMark, answered.pass == state.mutationPass else { return nil }
+        guard let answered = driftPassMark,
+              answered.pass == state.mutationPass,
+              answered.takeID == state.currentTake?.id else { return nil }
         return answered.disposition
     }
 
@@ -1971,7 +1976,7 @@ struct MelGenExtensionMainView: View {
             // mark the wrong thing once the transport stopped being disturbed.
             guard let variation = keepThisPass() else { return }
             commit(reloadKernel: false) { $0.mark(variation.id, as: disposition) }
-            driftPassMark = (pass: liveState.mutationPass, disposition: disposition)
+            driftPassMark = (takeID: take.id, pass: liveState.mutationPass, disposition: disposition)
             let parentMark = take.latestMark?.disposition.label ?? "unjudged"
             statusMessage = "\(disposition.label) — \(variation.derivationLabel), "
                 + "from a take you called \(parentMark.lowercased()). Still playing."
