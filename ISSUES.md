@@ -216,7 +216,31 @@ Ordered by how likely they are to bite.
    "what is sounding". Worth settling before more sections are moved on the
    present criterion, because every move made under it inherits the fault.
 
-2. **The template proposal log is empty exactly when it's wanted.**
+2. **Three of the design pass's junk-drawer moves are still undone.** The
+   handoff bundle checked 2026-08-25 against `main` splits four ways: the
+   terminology file is byte-identical, the playflow spec shipped in
+   [#3](https://github.com/Enkerli/MelGen/pull/3), the icon and the rating
+   controls landed the same day — and this is the residue. All three are about
+   the *same* `More` drawer on Decide, which still holds stored lines, capture,
+   authoring and export in one row grouped by the order they were built in.
+
+   - **"Your material" was to become one surface** with a direction of flow —
+     listening and the pattern library on the way in, the learned style and the
+     chain on the way out. Today the readout is inside the review section and
+     the way to add material is in the drawer.
+   - **Interval cells were to stop being a place to go** and become templates
+     under the Composed source, so the mechanism isn't the name of the feature.
+   - **Writing a template was to sit next to the template list**, since it is one
+     model request that pays for itself forever, and **export was to be a menu
+     item** rather than a peer of either. Both are in the drawer. Authoring is
+     also still gated to line mode — item 3, and ROADMAP T3.
+
+   The record is otherwise complete: the three promotions (drift to the top of
+   Play, history as the spine of Decide, variants as the engine behind "another
+   like this") are all in, and the spec's third open question — which platform
+   is the fast path — was answered by the rating controls shipping a swipe.
+
+3. **The template proposal log is empty exactly when it's wanted.**
    `templateProposals` lives in `MelGenState`, so it saves with the host session
    and exports with the history — which was the point, since a run of refusals is
    the only evidence about whether the gate is calibrated. But `TemplateStore`'s
@@ -224,30 +248,30 @@ Ordered by how likely they are to bite.
    halves of the same record have different lifetimes: all four exported histories
    from the device sessions carry **zero** proposals despite templates having been
    proposed and refused. Whichever store is right, it should be one of them.
-3. **Authoring is unavailable in chord mode**, though the gate would accept eight
+4. **Authoring is unavailable in chord mode**, though the gate would accept eight
    more comping templates. ROADMAP T3.
-4. **The interface has outgrown its structure.** Sixteen top-level sections in a
+5. **The interface has outgrown its structure.** Sixteen top-level sections in a
    3,000-line view. Every feature arrived as another section, which is how it got
    here. The 2026-08-23 redesign addressed the symptom by splitting Play from
    Decide; the view got *longer*, so the structural problem stands — see §5.
-5. **No contour measurement.** §1: the axis the complaints are actually about
+6. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-6. **A leading silence isn't treated as a rest.** §1.
-7. **The learned models are recomputed on every draw.** O(takes × notes) on the
+7. **A leading silence isn't treated as a rest.** §1.
+8. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-8. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+9. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-9. **Takes still can't be named.** `retitle` exists and nothing calls it.
-10. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+10. **Takes still can't be named.** `retitle` exists and nothing calls it.
+11. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-11. **The fit report is computed, tested and invisible.**
-12. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+12. **The fit report is computed, tested and invisible.**
+13. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-13. **The library is `UserDefaults`, not an App Group** (I5/L4).
-14. **`PatternStore` and the learned models have no export or import.**
-15. **`previousTakeID` is encoded but not decoded.**
+14. **The library is `UserDefaults`, not an App Group** (I5/L4).
+15. **`PatternStore` and the learned models have no export or import.**
+16. **`previousTakeID` is encoded but not decoded.**
 
 ---
 
