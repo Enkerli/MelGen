@@ -1,0 +1,85 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.98824,0.98431,0.96863,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "extended-srgb:0.10196,0.09412,0.07843,1.00000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "extended-srgb:0.17647,0.16863,0.15294,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "extended-srgb:0.90980,0.88235,0.82353,1.00000"
+              }
+            }
+          ],
+          "image-name" : "Voicing.svg",
+          "name" : "Voicing"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Voicing",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "extended-srgb:0.18431,0.40000,0.64706,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "extended-srgb:0.42745,0.63922,0.87451,1.00000"
+              }
+            }
+          ],
+          "image-name" : "Melody.svg",
+          "name" : "Melody"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Melody",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [ "watchOS" ],
+    "squares" : [ "iOS", "macOS" ]
+  }
+}

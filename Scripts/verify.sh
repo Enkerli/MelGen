@@ -34,6 +34,8 @@
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
 #   terminology — the interface against TERMINOLOGY.md: one word per concept
+#   icon    — MelGen.icon against the design pass: geometry, theme tokens,
+#             a dark value on every fill, and nothing baked into the artwork
 #   identity — the audio component triple is unique across the suite and matches
 #              the host app's lookup
 #
@@ -279,6 +281,11 @@ run_terminology() {
     python3 "$REPO/Scripts/tests/terminology.py" || status=1
 }
 
+run_icon() {
+    echo "── icon ───────────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/icon-audit.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -294,7 +301,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_docs; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -316,11 +323,12 @@ case "$which" in
     analysis) run_analysis ;;
     midi)     run_midi ;;
     docs)     run_docs ;;
+    icon)     run_icon ;;
     contrast) run_contrast ;;
     terminology) run_terminology ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
 esac
 
 echo

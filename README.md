@@ -113,6 +113,7 @@ Scripts/verify.sh chords     # one suite
 | `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
+| `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 
