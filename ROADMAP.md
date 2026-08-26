@@ -1,6 +1,7 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-24, after the third device session.*
+*Last updated: 2026-08-25, after the second design pass and a review of where the
+next value is — see [Reviewed 2026-08-25](#reviewed-2026-08-25--where-the-next-value-actually-is).*
 
 A consolidated inventory of planned work, backlog items and exploratory ideas.
 Items are split between **this plug-in**, **shared suite infrastructure** (things
@@ -189,6 +190,62 @@ exporter already builds `GenerationRecord`s, so having it write a history export
 puts a found collection in front of the chain and the slot model through the file
 picker, with no new Swift at all.
 
+### Reviewed 2026-08-25 — where the next value actually is
+
+*After the design pass merged and the icon landed, a pass over the whole list
+asking one question: which item returns the most for what it costs.*
+
+The answer isn't in-app MIDI import, and the reason is worth stating because the
+opposite is the obvious guess. Reading a found collection into the plug-in
+sounds like the big unlock — but the pipeline that does it **already exists on
+the desktop side and is already tested**, and it solves the hard half that a
+Swift SMF parser wouldn't: *where the harmony comes from*. A MIDI file is a
+pattern with no chords under it, and a degree with no chord under it is just a
+pitch. `midi_to_events.py` reads harmony from a sidecar, from markers, or from a
+chord track, and says so plainly when there is none ([COREML.md](COREML.md) §5).
+An in-app reader would have to answer that question a second time, worse.
+
+So the CLI route wins, and it wins by more than convenience — the corpus
+exporter compiles the **real** `Melody` sources, so there is exactly one
+implementation of "which degree was that note", and it's the one the plug-in
+runs.
+
+**The four things worth doing, in order:**
+
+| Order | Item | Effort | What it returns |
+|---|---|---|---|
+| 1 | **T3's chord-mode authoring gate** | Trivial | `authorRow` is gated on `state.mode == .line` (`MelGenExtensionMainView.swift:1179`), so a comping template can't be asked for at all — while the measured ceiling says chord mode has **eight slots free**. The cheapest real variety on the list, and it needs no corpus |
+| 2 | **S6 step 2b — give the baseline its floors** | S | Nothing downstream means anything until this lands. As measured, `MelodyChain`'s held-out perplexity is *worse than uniform* and moves 15× on a `--smoothing` default nobody chose. Until the bar is best-of-three (chain, unigram, uniform), "beats the baseline" is a sentence a model that learned nothing can satisfy. While here: `verify.sh midi` prints SKIP and returns OK when `mido` is absent, so its 19 checks are conditional on a machine nobody verifies |
+| 3 | **Have the exporter write a history export** | S | The move the user's own reading of this found, and the exporter is already 90% of the way: it builds `GenerationRecord`s on its way to tokens, and `MelGenState.importHistory` plus a file picker have shipped since 2026-08-24. Emitting the export format alongside `corpus.jsonl` puts a found MIDI collection in front of `MelodyChain` and `MelodyStyleModel` **with no new Swift at all** — no SMF parser, no in-app reader, no tensor. Then measure whether the chain actually gets better, which is the question TRAINING.md left open |
+| 4 | **S4, reframed: a style is a file** | M | The one item this review changes the meaning of. `MelodyStyleModel` and `MelodyChain` are already `Codable` and already round-trip through JSON — so "a style file the CLI produces and MelGen loads" is *storage and a name*, not a format problem. That makes S4 the interchange point the whole corpus route needs, rather than the caching optimisation it's written as |
+
+**And that reframing is what settles the Core ML question.** A style can be
+either of two things through the same slot: distributions fitted on a desktop
+over a corpus too big for an iPad, written out as the JSON the plug-in already
+decodes — or, later, a trained model behind `MLModel`. The first needs no Core
+ML, no conversion, no per-OS maintenance and no download; it is S4 plus a flag
+on the exporter. The second only becomes necessary where the first genuinely
+can't reach, and [COREML.md](COREML.md) §3 already names that place precisely:
+**harmony conditioning**. An n-gram can't afford chord quality in its context —
+every context becomes one seen once, and `trustThreshold` correctly refuses it.
+That, and nothing else, is what an LSTM buys.
+
+So the honest ordering is: build the slot (4), fill it the cheap way (3), and
+let S7 compete for the same slot on the evidence — which is exactly the gate S7
+already writes for itself, now with a bar that can actually fail a model.
+
+**What this de-prioritises**, and why it isn't a loss:
+
+- **S2's in-app half and X4** stay open but stop being the training story. Their
+  remaining value is *re-harmonization ergonomics* — drop a file carrying chords
+  and get pattern plus harmonic context in one gesture (R1) — which is a real
+  feature and a different one. Sized and judged as that, X4 is an L that buys an
+  interaction, not a corpus.
+- **X1/X2 (MIDI out, drag-out)** are untouched by any of this and remain the
+  highest-value item outside the corpus family: nothing leaves the plug-in today
+  except live MIDI, and that is the wall between MelGen and everything else on
+  the iPad.
+
 ### Deliberately deferred
 
 - **D1 finer grid (16ths/triplets)** — large, touches the schema and every seed
@@ -322,7 +379,7 @@ does that job instantly, inspectably and with nothing to download.
 | S1 | **Learn from incoming MIDI** | XL | ✅ **done 2026-08-23**, and it turned out to be S, not XL — because the learned models were built so that adding material is `add(pattern)` and nothing else. A lock-free ring in the kernel, pairing that survives overlapping note-ons, segmentation on silence, and quantizing that records how far off the grid it was rather than absorbing it. Captured phrases are read against the progression that was on screen, so they're reusable over other changes rather than being a recording. |
 | S2 | **Learn from a loaded MIDI file** | L | Half done, and the half that landed is on the desktop side of the device line. `Scripts/training/midi_to_events.py` reads a collection into exactly the plain events `MelodyCapture.learn(from:over:)` takes — harmony from a sidecar, from markers, or from a chord track, and a file with none still reads and says so — tested by `Scripts/verify.sh midi`. That is what feeds S6 and what lets a found collection reach the slot model and the chain today. What it does *not* do is let the plug-in open a file: Python isn't on the iPad. The in-app half is a Swift SMF parser behind a file picker, and the event shape it has to produce is now pinned by the Python one. Pairs with X4. |
 | S3 | **Style extraction** | XL | ✅ first cut done 2026-08-22. `StyleLearner.learn` measures the curated takes into `LearnedStyle` — density, rest share, register, step/skip/leap shares, direction changes, duration and onset histograms, harmonic role balance, and the tags — and renders it as prompt text shown in the interface in the words the model receives. The compression claim holds: 620 characters for 24 takes, against several hundred tokens for *one* quoted take. Still to do: a degree histogram conditioned on the chord (which is what generating from the style needs), per-facet styles, and a floor below which the description should say "not yet" rather than a confident number over three takes. |
-| S4 | **Named, saved styles** | M | Half done: `MelodyStyleModel` and `MelodyChain` are both `Codable` and round-trip through JSON (tested), and the slot model accumulates so a style can grow across sessions. What's missing is storage and a name — they're currently recomputed from the kept takes on every draw, which is correct and wasteful. Depends on where the library lives (I5). |
+| S4 | **Named, saved styles** | M | Half done: `MelodyStyleModel` and `MelodyChain` are both `Codable` and round-trip through JSON (tested), and the slot model accumulates so a style can grow across sessions. What's missing is storage and a name — they're currently recomputed from the kept takes on every draw, which is correct and wasteful. Depends on where the library lives (I5). **Reframed 2026-08-25**: because both types already round-trip through JSON, this is also the *interchange* point for a style fitted on a desktop over a corpus too big for an iPad — and the same slot a Core ML model would later compete for. That makes it the enabling item of the corpus route rather than a caching optimisation. |
 | S5 | **Style transfer onto an existing pattern** | L | Partly done and partly still interesting. `MelodyTransforms.applyRhythm` transfers a *rhythm* onto existing pitch material, and the morph interpolates between two lines. What's missing is transferring a learned style's distributions onto a pattern — redraw this line's durations and placement from that style, keep its contour. Now a small piece of work on top of `PatternProfile`. |
 | S6 | **A corpus, and a number to beat** | M | ✅ written 2026-08-24 and **compiled and run the same day** on merge — it works, and the first run found that the number it produces isn't yet a bar: `MelodyChain`'s held-out perplexity came out *worse than uniform over the vocabulary*, and moves 15× on the `--smoothing` default. So the baseline needs two floors (unigram from the train split, and uniform) before any figure from it is acted on, and the bar is the best of the three. Measurements in [COREML.md](COREML.md) §4. `Scripts/export-corpus.sh` compiles the real Melody sources rather than reimplementing them, turns exported histories and a MIDI collection into degree-relative patterns, tokenizes them as `ChainToken` keys unchanged, and reports what `MelodyChain` scores on held-out material. It deduplicates *and splits by line*, because 60 distinct lines behind 98 takes is otherwise the classic way to measure a model on its own training data. The baseline is the deliverable: it's what any later model has to beat, and it's worth having whether or not one is ever trained. |
 | S7 | **A trained model, converted to Core ML** | L | Gated on S6, and the gate is the item. `train_lstm.py` trains a next-token LSTM over the same tokens, conditioned on chord quality, root motion and where the harmony changes — which is exactly what the chain can't afford, since adding harmony to an n-gram context turns every context into one seen once and `trustThreshold` then correctly refuses it. `export_coreml.py` converts it statefully (`ct.StateType`, not hand-carried `h`/`c` — the target is iOS 27), with the vocabulary embedded in the `.mlpackage` so weights and token dictionary can't be separated by a file copy. The device side is deliberately unwritten: it needs a real `.mlpackage` to compile against, and it's a seventh `MaterialSource` returning a `MelodyPattern`, a sampler with a temperature and a seed, and nothing on the audio thread. **If the LSTM doesn't beat S6's baseline this item closes rather than continues** — that would mean more material, not more epochs, and `MelodyChain` stays the answer. Blocked on S6 being able to state a real bar: `train_lstm.py` compares against `chainNLL` alone, so as written it would declare a model that learned only the token frequencies "worth converting". |
@@ -358,7 +415,7 @@ would make it one.
 | X1 | **Export the current take as a MIDI file** | M | Standard MIDI File type 0, rendered notes (post-expression), with tempo. Still open — but **history export landed 2026-08-22**: the take log now writes out as JSON carrying every take's settings, note data, generation time and request count, via `fileExporter`. That covers reading and analysing takes outside the plug-in; MIDI export is what covers *using* them elsewhere. |
 | X2 | **Drag-and-drop out** | M | Drag a take (or library row) straight into a DAW track. On iOS this is `NSItemProvider` with a file promise; the interaction is the point — it's how this stops being a closed box. |
 | X3 | **Chord information in exported MIDI** | M | MIDIcurator has already reverse-engineered the Apple Loops chord format and built a system for embedding chord information in MIDI files. Reuse it rather than reinventing: MelGen knows the progression exactly, so its exports can be *the* well-formed example of the format. Needs that code extracted somewhere shareable. |
-| X4 | **Import MIDI, with chords if present** | L | The inverse. A file carrying chord information gives both pattern and harmonic context in one drop — which is exactly what re-harmonization (R1) needs. Pairs with S2. |
+| X4 | **Import MIDI, with chords if present** | L | The inverse. A file carrying chord information gives both pattern and harmonic context in one drop — which is exactly what re-harmonization (R1) needs. Pairs with S2. **Re-scoped 2026-08-25**: this is no longer the training story — the desktop pipeline reaches the shipping models more cheaply and already answers where harmony comes from. What's left here is the *interaction*, and it should be judged as one. |
 | X5 | **Drag-and-drop in** | M | Drop a MIDI file onto the plug-in window to load it as a pattern or a style source. |
 
 ### Input Routing
