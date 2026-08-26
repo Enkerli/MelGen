@@ -15,7 +15,9 @@
 //  *Yes is wider than No and Maybe.* It is not the good one and they are not the
 //  bad ones — weight and colour stay equal across all three. Only width differs,
 //  because Yes is the answer whose consequence is durable, and target size is
-//  how an interface says which tap you cannot afford to fat-finger.
+//  how an interface says which tap you cannot afford to fat-finger. Wider by a
+//  *minimum width*, though: the whole argument is about targets, so the two that
+//  are not Yes still have to clear 44pt at every window size.
 //
 //  *The advance buttons are filled by which one the swipe will use*, not by
 //  which is better. Tapping either both advances and makes it the swipe's mode,
@@ -48,11 +50,13 @@ struct RatingBar: View {
                             .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                             .lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity)
+                    // Yes is wider by a floor, not by a priority. Giving it a
+                    // higher layout priority against three `maxWidth: .infinity`
+                    // siblings hands it *all* the slack, which collapsed No and
+                    // Maybe to icon slivers well under the 44pt target — the
+                    // opposite of what a target-size argument was for.
+                    .frame(minWidth: rating == .yes ? 132 : 64, maxWidth: .infinity)
                     .frame(height: MelGenMetrics.controlHeight)
-                    // Yes carries more of the row, and nothing else about it
-                    // differs — see the file comment.
-                    .layoutPriority(rating == .yes ? 2 : 1)
                     .foregroundStyle(isSelected ? theme.accentText : theme.text)
                     .background(
                         RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
@@ -79,7 +83,7 @@ struct RatingBar: View {
                         .font(.system(size: 11))
                         .lineLimit(1)
                 }
-                .frame(width: 56)
+                .frame(width: 52)
                 .frame(height: MelGenMetrics.controlHeight)
                 .foregroundStyle(theme.textMuted)
                 .background(

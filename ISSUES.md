@@ -216,29 +216,25 @@ Ordered by how likely they are to bite.
    "what is sounding". Worth settling before more sections are moved on the
    present criterion, because every move made under it inherits the fault.
 
-2. **Three of the design pass's junk-drawer moves are still undone.** The
-   handoff bundle checked 2026-08-25 against `main` splits four ways: the
-   terminology file is byte-identical, the playflow spec shipped in
+2. **Two of the design pass's junk-drawer moves are still undone.** The handoff
+   bundle checked 2026-08-25 against `main` splits four ways: the terminology
+   file is byte-identical, the playflow spec shipped in
    [#3](https://github.com/Enkerli/MelGen/pull/3), the icon and the rating
-   controls landed the same day — and this is the residue. All three are about
-   the *same* `More` drawer on Decide, which still holds stored lines, capture,
-   authoring and export in one row grouped by the order they were built in.
+   controls landed the same day, and **"Your material"** was grouped the same
+   evening — listening and the stored lines above the learned readout, with the
+   readout out of the Review section where it was buried. What is left:
 
-   - **"Your material" was to become one surface** with a direction of flow —
-     listening and the pattern library on the way in, the learned style and the
-     chain on the way out. Today the readout is inside the review section and
-     the way to add material is in the drawer.
    - **Interval cells were to stop being a place to go** and become templates
      under the Composed source, so the mechanism isn't the name of the feature.
    - **Writing a template was to sit next to the template list**, since it is one
      model request that pays for itself forever, and **export was to be a menu
-     item** rather than a peer of either. Both are in the drawer. Authoring is
-     also still gated to line mode — item 3, and ROADMAP T3.
+     item** rather than a peer of it. Both are still the whole of Decide's `More`
+     drawer. Authoring is also still gated to line mode — item 3, and ROADMAP T3.
 
    The record is otherwise complete: the three promotions (drift to the top of
    Play, history as the spine of Decide, variants as the engine behind "another
-   like this") are all in, and the spec's third open question — which platform
-   is the fast path — was answered by the rating controls shipping a swipe.
+   like this") are all in, and the spec's third open question — which platform is
+   the fast path — was answered by the rating controls shipping a swipe.
 
 3. **The template proposal log is empty exactly when it's wanted.**
    `templateProposals` lives in `MelGenState`, so it saves with the host session

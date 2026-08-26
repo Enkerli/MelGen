@@ -79,9 +79,6 @@ struct MelGenExtensionMainView: View {
     /// Whether the review sweep is unfolded. Not session state: it's about what
     /// you're doing right now, not what the document is.
     @State private var showCuration = false
-    /// Same: which lines and briefs are in play is a session setting, but whether
-    /// the drawer is open isn't.
-    @State private var showRotation = false
     /// Redrawn when the library changes, since it lives outside the session state
     /// the rest of this view mirrors.
     @State private var libraryRevision = 0
@@ -112,6 +109,7 @@ struct MelGenExtensionMainView: View {
     @State private var showTexture = false
     @State private var showPlayMore = false
     @State private var showDecideMore = false
+    @State private var showMaterial = false
     @State private var showNoteTable = false
     /// The last template the model wrote, and what the gate made of it.
     @State private var authored: TemplateCharacter?
@@ -137,7 +135,6 @@ struct MelGenExtensionMainView: View {
     /// Not session state: a recording buffer isn't a document.
     @State private var isListening = false
     @State private var capturedEvents: [CapturedMIDIEvent] = []
-    @State private var showCapture = false
     @State private var showProgressionMaker = false
     /// The Roman numerals behind the current progression, when it was generated
     /// here. Worth showing: the numerals are what the corpus actually models, and
@@ -286,6 +283,7 @@ struct MelGenExtensionMainView: View {
             nextTakeSection
             nextTakeSettings
 
+            yourMaterialSection
             curationSection
 
             if state.currentTake != nil {
@@ -294,14 +292,11 @@ struct MelGenExtensionMainView: View {
 
             historySection
 
-            MoreRow(summary: "More: stored lines (\(PatternStore.library.count)) · "
-                           + "listen to what I play · write a template · export",
+            MoreRow(summary: "More: write a template · export",
                     isExpanded: $showDecideMore,
                     theme: theme)
             if showDecideMore {
                 VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                    lineLibrarySection
-                    captureSection
                     authorRow
                     HStack(spacing: MelGenMetrics.space2) {
                         exportButton
@@ -499,16 +494,24 @@ struct MelGenExtensionMainView: View {
     /// They sit side by side and they are not peers, so they don't look like
     /// peers: one costs about 1.8 seconds a note and the other costs nothing,
     /// and each says so.
+    /// Re-roll, and — only when there is nothing to rate yet — a plain Advance.
+    ///
+    /// Once a take is sounding the aimed pair above *is* the advance, and having
+    /// both meant two buttons on one screen that made a take, one of which
+    /// couldn't say where it was aiming. This keeps the unaimed one for the case
+    /// it is the only one that works: nothing playing, so nothing to vary.
     private var advanceRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: MelGenMetrics.space2) {
-                PrimaryAction(title: "Advance",
-                              subtitle: advanceSubtitle,
-                              systemImage: "forward.end.fill",
-                              isWorking: isGenerating,
-                              isEnabled: !state.progressionText.isEmpty,
-                              theme: theme) {
-                    advance()
+                if state.currentTake == nil {
+                    PrimaryAction(title: "Advance",
+                                  subtitle: advanceSubtitle,
+                                  systemImage: "forward.end.fill",
+                                  isWorking: isGenerating,
+                                  isEnabled: !state.progressionText.isEmpty,
+                                  theme: theme) {
+                        advance()
+                    }
                 }
 
                 Button {
@@ -540,7 +543,11 @@ struct MelGenExtensionMainView: View {
     }
 
     private var advanceExplanation: String {
-        source == .model && !modelIsDown
+        if state.currentTake != nil {
+            return "Re-roll changes what you are hearing without making a take. "
+                + "The two above make one."
+        }
+        return source == .model && !modelIsDown
             ? "The model takes about 1.8 seconds a note, so Advance fills the bar "
               + "immediately and swaps the model's take in on a lap boundary when it arrives."
             : "Re-roll changes what you are hearing without making a take. Advance makes one."
@@ -2333,14 +2340,46 @@ struct MelGenExtensionMainView: View {
     /// the notes off the wire, split them at the silences, read them back as
     /// degrees against the progression that was on screen, and hand them to the
     /// same two methods the kept takes go to.
-    private var captureSection: some View {
-        CollapsibleSection(title: "Listen",
-                           summary: isListening
-                               ? "listening · \(capturedEvents.filter(\.isOn).count) notes"
-                               : (capturedEvents.isEmpty ? "off" : "\(capturedEvents.filter(\.isOn).count) notes held"),
-                           isExpanded: $showCapture,
+    /// What goes in and what came out, on one surface, in that order.
+    ///
+    /// From the design pass's regroup: listening, the stored lines and the
+    /// learned models were three places in two different drawers on two
+    /// different tabs, grouped by the order they were built in. What actually
+    /// connects them is a direction of flow — material arrives, and the models
+    /// are what it turned into. Putting the readout directly under the ways to
+    /// add material is also the honest place to see how little there is: "6 kept"
+    /// sitting under an empty Listen panel says more than either does alone.
+    private var yourMaterialSection: some View {
+        CollapsibleSection(title: "Your material",
+                           summary: materialSummary,
+                           isExpanded: $showMaterial,
                            theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                Eyebrow(text: "What goes in", theme: theme)
+                listenControls
+                storedLineControls
+
+                Divider().overlay(theme.border)
+
+                Eyebrow(text: "What it turned into", theme: theme)
+                learnedStyleReadout
+            }
+        }
+    }
+
+    /// Both ends of the flow in one line, because the ratio is the point.
+    private var materialSummary: String {
+        let kept = state.curatedTakes.count
+        var parts = ["\(PatternStore.library.count) stored"]
+        parts.append(kept == 0 ? "nothing kept yet" : "\(kept) kept")
+        if isListening { parts.insert("listening", at: 0) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The Listen controls without their own heading, so they can sit inside
+    /// "Your material" as one step of a flow rather than as a place to visit.
+    private var listenControls: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
                 ToggleChip(title: isListening ? "Listening" : "Listen to what I play",
                            systemImage: isListening ? "waveform.circle.fill" : "waveform.circle",
                            isOn: Binding(get: { isListening },
@@ -2353,9 +2392,8 @@ struct MelGenExtensionMainView: View {
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if !capturedEvents.isEmpty {
-                    capturedReadout
-                }
+            if !capturedEvents.isEmpty {
+                capturedReadout
             }
         }
     }
@@ -2859,12 +2897,9 @@ struct MelGenExtensionMainView: View {
     /// *next take* is like, and a stored line is a specific piece of material.
     /// Merging those two was the thing that made the old Rotation section
     /// unreadable — two lists, two modes, one heading.
-    private var lineLibrarySection: some View {
-        CollapsibleSection(title: "Stored lines",
-                           summary: "\(PatternStore.library.count) · \(state.lineMode.label.lowercased())",
-                           isExpanded: $showRotation,
-                           theme: theme) {
-            VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+    /// The stored-line list without its own heading, for the same reason.
+    private var storedLineControls: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
                 ChipPicker(options: SelectionMode.allCases.map { ($0, $0.label) },
                            selection: binding(\.lineMode, reloadKernel: false),
                            theme: theme)
@@ -2876,17 +2911,16 @@ struct MelGenExtensionMainView: View {
                     }
                 }
 
-                if PatternStore.isEmpty {
-                    Text("The built-in lines are generic on purpose — the property that "
-                         + "makes them fit anything is the one that makes them plain. Keep a take "
-                         + "you liked as a line and it joins them here.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if PatternStore.isEmpty {
+                Text("The built-in lines are generic on purpose — the property that "
+                     + "makes them fit anything is the one that makes them plain. Keep a take "
+                     + "you liked as a line and it joins them here.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .id(libraryRevision)
         }
+        .id(libraryRevision)
     }
 
     private func lineRow(_ pattern: MelodyPattern) -> some View {
@@ -2985,7 +3019,6 @@ struct MelGenExtensionMainView: View {
                         }
                     }
 
-                    learnedStyleReadout
                     nextPassButton
                 }
             }
