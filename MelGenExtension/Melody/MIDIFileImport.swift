@@ -221,43 +221,32 @@ enum MIDIImport {
     }
 
     /// Tier three: harmony as pitches, named by the dictionary.
+    ///
+    /// The reading itself is `ChordDetection.changes`, shared with "what did I
+    /// just play" — an imported chord track and a captured comp are the same
+    /// question, and two implementations of it would drift apart.
     static func detectedProgression(from track: MIDIFileTrack,
                                     beatsPerBar: Double,
                                     endBeat: Double,
                                     warnings: inout [String]) -> String? {
-        let bar = max(1, beatsPerBar)
-        let barCount = max(1, Int(ceil(max(endBeat, 1) / bar)))
-        var bars: [String] = []
-        var named = 0
-
-        for index in 0..<barCount {
-            let start = Double(index) * bar
-            let end = start + bar
-            // Sounding *during* the bar, not merely starting in it — a whole
-            // note tied across is still the harmony of the bar it covers.
-            let sounding = track.notes.filter {
-                $0.startBeat < end - 0.001 && $0.startBeat + $0.durationBeats > start + 0.001
-            }
-            guard let chord = ChordDetection.detect(pitches: sounding.map(\.pitch)) else {
-                bars.append("")
-                continue
-            }
-            named += 1
-            bars.append(chord.symbol)
+        let notes = track.notes.map {
+            SequencedNote(note: UInt8(clamping: $0.pitch),
+                          velocity: UInt8(clamping: $0.velocity),
+                          startBeat: $0.startBeat,
+                          durationBeats: $0.durationBeats)
         }
-
-        while bars.last?.isEmpty == true { bars.removeLast() }
-        guard named > 0 else { return nil }
-        if named < bars.count {
-            warnings.append("\(bars.count - named) of \(bars.count) bars had no nameable chord "
-                            + "and hold the one before.")
+        guard let read = ChordDetection.changes(in: notes,
+                                                beatsPerBar: beatsPerBar,
+                                                endBeat: endBeat) else { return nil }
+        if read.namedBars < read.totalBars {
+            warnings.append("\(read.totalBars - read.namedBars) of \(read.totalBars) bars had no "
+                            + "nameable chord and hold the one before.")
         }
-        if isArpeggiated(track, beatsPerBar: bar) {
+        if read.looksArpeggiated {
             warnings.append("The chord track looks arpeggiated rather than blocked, so these "
                             + "names are a guess — one chord a bar read off a moving line.")
         }
-        let text = bars.joined(separator: "|")
-        return (try? ChordProgression.parse(text)) != nil ? text : nil
+        return read.text
     }
 
     // MARK: - Choosing tracks
@@ -287,16 +276,6 @@ enum MIDIImport {
         guard !track.notes.isEmpty else { return 0 }
         let starts = Set(track.notes.map { ($0.startBeat * 48).rounded() })
         return Double(track.notes.count) / Double(max(1, starts.count))
-    }
-
-    /// A chord track that moves: many distinct onsets a bar, almost none of
-    /// which sound together.
-    private static func isArpeggiated(_ track: MIDIFileTrack, beatsPerBar: Double) -> Bool {
-        guard track.notes.count >= 4 else { return false }
-        let span = (track.notes.map { $0.startBeat }.max() ?? 0) + beatsPerBar
-        let bars = max(1, span / beatsPerBar)
-        let onsetsPerBar = Double(Set(track.notes.map { ($0.startBeat * 48).rounded() }).count) / bars
-        return polyphony(of: track) < 1.5 && onsetsPerBar > 2.5
     }
 
     private static func matches(_ name: String, _ words: [String]) -> Bool {

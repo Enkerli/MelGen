@@ -2580,6 +2580,18 @@ struct MelGenExtensionMainView: View {
                 .buttonStyle(.plain)
                 .disabled(phrases.isEmpty)
 
+                // The other direction: "Learn from it" needs harmony already
+                // typed, which is the wrong way round when what you just played
+                // *was* the harmony. Now the chords can come from the playing.
+                Button {
+                    readChangesFromPlaying()
+                } label: {
+                    findLabel("Read the changes", systemImage: "text.magnifyingglass",
+                              detail: readChangesDetail)
+                }
+                .buttonStyle(.plain)
+                .disabled(readableChanges == nil)
+
                 Button {
                     capturedEvents = []
                     statusMessage = "Cleared what was played in."
@@ -2589,6 +2601,49 @@ struct MelGenExtensionMainView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    /// What the button will do, said before it does it — including when the
+    /// answer is a guess. A melody always spells *something*, so "inferred"
+    /// is the honest word for changes read off a line nobody voiced.
+    private var readChangesDetail: String {
+        guard let read = readableChanges else { return "nothing sounding together" }
+        return read.isConfident ? read.text : "\(read.text) — inferred from a line"
+    }
+
+    /// What playing chords in would fill the progression field with.
+    ///
+    /// Computed for the button's own subtitle as well as for the tap, so the
+    /// control says what it will do before it does it — the same rule the
+    /// advance controls follow.
+    private var readableChanges: ChordDetection.ReadChanges? {
+        guard !capturedEvents.isEmpty else { return nil }
+        return ChordDetection.changes(in: MelodyCapture.notes(from: capturedEvents))
+    }
+
+    /// Fills the progression from what was played, rather than the other way
+    /// round.
+    ///
+    /// This is `ChordDetection` — the MIDIcurator port — pointed at live
+    /// playing instead of at a file. Play the changes in on a keyboard and the
+    /// field fills; everything downstream then works as it always did.
+    private func readChangesFromPlaying() {
+        guard let read = readableChanges else {
+            statusMessage = "Nothing in that plays two notes at once, so there are no chords to read."
+            return
+        }
+        commit { $0.progressionText = read.text }
+        var sentence = "Read \(read.namedBars) bar\(read.namedBars == 1 ? "" : "s") of changes: \(read.text)."
+        if read.namedBars < read.totalBars {
+            sentence += " \(read.totalBars - read.namedBars) bar"
+                + (read.totalBars - read.namedBars == 1 ? "" : "s")
+                + " held the chord before."
+        }
+        if read.looksArpeggiated {
+            sentence += " That looked arpeggiated rather than blocked, so it's one chord a bar "
+                + "read off a moving line — check it."
+        }
+        statusMessage = sentence
     }
 
     /// Polls the kernel's capture ring while listening is on.

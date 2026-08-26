@@ -254,6 +254,49 @@ if let path = ProcessInfo.processInfo.environment["CHORD_VECTORS"],
     print("  SKIP  suite chord-detection vectors (set CHORD_VECTORS=…/chord-detection.json)")
 }
 
+// MARK: - The same reading, pointed at playing
+
+print("── changes read off notes, not off a file ─────────────")
+
+var played: [SequencedNote] = []
+for voicing in voicings {
+    for pitch in voicing.pitches {
+        played.append(SequencedNote(note: UInt8(pitch), velocity: 80,
+                                    startBeat: voicing.beat, durationBeats: 4))
+    }
+}
+let readLive = ChordDetection.changes(in: played)
+check("playing the changes in reads them back",
+      readLive?.text == "Dm7|G7|Cmaj7", readLive?.text ?? "nil")
+check("and every bar was nameable",
+      readLive?.namedBars == readLive?.totalBars && readLive?.namedBars == 3)
+check("block voicings don't read as arpeggiated",
+      readLive?.looksArpeggiated == false)
+check("an import and live playing agree, because it is one implementation",
+      readLive?.text == fromChords.progressionText)
+
+// The same notes, one at a time: still a chord track by pitch content, and
+// still a guess by construction — the import and this both have to say so.
+var rolled: [SequencedNote] = []
+for voicing in voicings {
+    for (index, pitch) in voicing.pitches.enumerated() {
+        rolled.append(SequencedNote(note: UInt8(pitch), velocity: 80,
+                                    startBeat: voicing.beat + Double(index) * 0.5,
+                                    durationBeats: 0.5))
+    }
+}
+check("an arpeggio is read, and flagged as a guess",
+      ChordDetection.changes(in: rolled)?.looksArpeggiated == true)
+// A melody will always spell *something* — four notes in a bar are four pitch
+// classes and the dictionary has 172 entries. The answer isn't to refuse it,
+// it's to never present it as read rather than inferred.
+check("a single line still names something, and is never presented as read",
+      ChordDetection.changes(in: line).map { !$0.text.isEmpty && $0.looksArpeggiated } == true,
+      ChordDetection.changes(in: line)?.text ?? "nil")
+check("which means only real voicings are confident",
+      ChordDetection.changes(in: line)?.isConfident == false
+        && readLive?.isConfident == true)
+
 print()
 print(failures == 0 ? "midifile: all checks passed" : "midifile: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

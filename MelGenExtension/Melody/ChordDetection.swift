@@ -194,6 +194,81 @@ enum ChordDetection {
         )
     }
 
+    // MARK: - A run of notes as changes
+
+    /// What one bar of a chord track, or of somebody's playing, is doing.
+    struct ReadChanges: Sendable {
+        /// Leadsheet text `ChordProgression.parse` accepts.
+        let text: String
+        /// How many bars could be named, out of how many there were. An empty
+        /// bar holds the chord before it, which is what the parser does with it.
+        let namedBars: Int
+        let totalBars: Int
+        /// Whether the material moves rather than blocks — an arpeggio read one
+        /// chord a bar is a guess, and the caller should say so.
+        let looksArpeggiated: Bool
+
+        var isConfident: Bool { namedBars > 0 && !looksArpeggiated }
+    }
+
+    /// Reads a progression off notes that were played rather than named.
+    ///
+    /// One chord a bar, from everything *sounding during* the bar rather than
+    /// merely starting in it — a whole note tied across is still the harmony of
+    /// the bar it covers. This is the shared implementation behind an imported
+    /// chord track and behind "what did I just play"; two of them would drift.
+    static func changes(in notes: [SequencedNote],
+                        beatsPerBar: Double = 4,
+                        endBeat: Double? = nil) -> ReadChanges? {
+        guard !notes.isEmpty else { return nil }
+        let bar = max(1, beatsPerBar)
+        let last = endBeat ?? (notes.map { $0.startBeat + $0.durationBeats }.max() ?? bar)
+        let barCount = max(1, Int(ceil(max(last, bar) / bar)))
+
+        var bars: [String] = []
+        var named = 0
+        for index in 0..<barCount {
+            let start = Double(index) * bar
+            let end = start + bar
+            let sounding = notes.filter {
+                $0.startBeat < end - 0.001 && $0.startBeat + $0.durationBeats > start + 0.001
+            }
+            guard let chord = detect(pitches: sounding.map { Int($0.note) }) else {
+                bars.append("")
+                continue
+            }
+            named += 1
+            bars.append(chord.symbol)
+        }
+        while bars.last?.isEmpty == true { bars.removeLast() }
+        guard named > 0, !bars.isEmpty else { return nil }
+
+        let text = bars.joined(separator: "|")
+        guard (try? ChordProgression.parse(text, beatsPerBar: bar)) != nil else { return nil }
+        return ReadChanges(text: text,
+                           namedBars: named,
+                           totalBars: bars.count,
+                           looksArpeggiated: isArpeggiated(notes, beatsPerBar: bar))
+    }
+
+    /// Whether the harmony is being *inferred from succession* rather than read
+    /// off notes that sound together.
+    ///
+    /// The threshold is deliberately strict: if almost nothing is simultaneous,
+    /// one chord a bar is a guess however plausible the name looks — and a
+    /// monophonic line will always spell *something*, because four notes in a
+    /// bar are four pitch classes and the dictionary has 172 entries. Naming
+    /// them without saying it was inferred is how a melody becomes a
+    /// progression nobody played.
+    static func isArpeggiated(_ notes: [SequencedNote], beatsPerBar: Double) -> Bool {
+        guard notes.count >= 3 else { return false }
+        let onsets = Set(notes.map { ($0.startBeat * 48).rounded() })
+        let polyphony = Double(notes.count) / Double(max(1, onsets.count))
+        let span = (notes.map { $0.startBeat }.max() ?? 0) + beatsPerBar
+        let onsetsPerBar = Double(onsets.count) / max(1, span / beatsPerBar)
+        return polyphony < 1.5 && onsetsPerBar > 1.0
+    }
+
     // MARK: - Fingerprints
 
     /// Pitch class `i` contributes 2^i — the suite's convention, leftmost-LSB.
