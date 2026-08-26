@@ -31,6 +31,24 @@ struct MelGenJSONDocument: FileDocument {
     }
 }
 
+/// The same wrapper for `.mid`, so a take can leave as a file another app opens
+/// rather than only as live MIDI.
+struct MelGenMIDIDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.midi] }
+
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
 struct MelGenExtensionMainView: View {
     var parameterTree: ObservableAUParameterGroup
     weak var audioUnit: MelGenExtensionAudioUnit?
@@ -68,6 +86,9 @@ struct MelGenExtensionMainView: View {
     @State private var isExporting = false
     @State private var exportDocument: MelGenJSONDocument?
     @State private var isImporting = false
+    @State private var isImportingMIDI = false
+    @State private var isExportingMIDI = false
+    @State private var midiDocument: MelGenMIDIDocument?
     @State private var showRefusedTemplates = false
     /// Which pass of which take was answered, and how. Not in `MelGenState`: it's
     /// about the performance happening now, not about the session.
@@ -302,6 +323,7 @@ struct MelGenExtensionMainView: View {
                         exportButton
                         importButton
                     }
+                    exportMIDIRow
                 }
             }
         }
@@ -2357,6 +2379,7 @@ struct MelGenExtensionMainView: View {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 Eyebrow(text: "What goes in", theme: theme)
                 listenControls
+                importMIDIRow
                 storedLineControls
 
                 Divider().overlay(theme.border)
@@ -2364,6 +2387,140 @@ struct MelGenExtensionMainView: View {
                 Eyebrow(text: "What it turned into", theme: theme)
                 learnedStyleReadout
             }
+        }
+    }
+
+    /// The take, out, with its changes attached.
+    ///
+    /// Written as markers plus the suite's own `MCURATOR:v1 PROG` payload, so
+    /// the file that leaves here is one MIDIcurator and ProgGenie can read as a
+    /// leadsheet rather than as anonymous notes — and one this plug-in can read
+    /// back with the harmony intact. Export and import are one feature; writing
+    /// them apart is how an interchange format rots.
+    @ViewBuilder
+    private var exportMIDIRow: some View {
+        if let take = state.currentTake {
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    midiDocument = MelGenMIDIDocument(
+                        data: MIDIExport.write(notes: state.renderedMelody,
+                                               progressionText: take.progressionText,
+                                               name: take.displayName))
+                    isExportingMIDI = true
+                } label: {
+                    findLabel("Export the take as MIDI", systemImage: "square.and.arrow.up",
+                              detail: "with the changes attached")
+                }
+                .buttonStyle(.plain)
+                .fileExporter(isPresented: $isExportingMIDI,
+                              document: midiDocument,
+                              contentType: .midi,
+                              defaultFilename: MIDIExport.fileName(
+                                for: take.displayName,
+                                progressionText: take.progressionText)) { result in
+                    if case .failure(let error) = result {
+                        statusMessage = "Export failed: \(error.localizedDescription)"
+                    } else {
+                        statusMessage = "Exported with its changes — another app can read them."
+                    }
+                }
+
+                Text("The notes as you hear them, with the progression carried as markers and "
+                     + "as the suite's leadsheet payload. No track of block chords: the harmony "
+                     + "rides as information, not as something else to play.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// A MIDI file as material.
+    ///
+    /// The desktop pipeline has read collections since 2026-08-24, but Python
+    /// isn't on the iPad, so a file somebody handed you could not become
+    /// anything. What arrives depends on what the file carries: one written by
+    /// MIDIcurator or ProgGenie brings its own changes, so the line reads as
+    /// degrees and is reusable over other harmony; one carrying nothing brings
+    /// rhythm and contour, and says so.
+    private var importMIDIRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                isImportingMIDI = true
+            } label: {
+                findLabel("Import a MIDI file", systemImage: "square.and.arrow.down.on.square",
+                          detail: "chords too, if the file has them")
+            }
+            .buttonStyle(.plain)
+            .fileImporter(isPresented: $isImportingMIDI,
+                          allowedContentTypes: [.midi],
+                          allowsMultipleSelection: true) { result in
+                importMIDIFiles(result)
+            }
+
+            Text("A file from MIDIcurator or ProgGenie carries its leadsheet, so the line "
+                 + "arrives as degrees and plays over any changes. Otherwise the chords are "
+                 + "read from markers, then from a chord track, and the import says which.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Reads every chosen file and turns it into material.
+    ///
+    /// Security-scoped for the same reason history import is: the plug-in isn't
+    /// the document's owner, and without the scope the read fails with a
+    /// permission error that reads like a corrupt file.
+    private func importMIDIFiles(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .failure(let error):
+            statusMessage = "Import failed: \(error.localizedDescription)"
+        case .success(let urls):
+            var added = 0
+            var withHarmony = 0
+            var notes: [String] = []
+            var recoveredProgression: String?
+
+            for url in urls {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let data = try Data(contentsOf: url)
+                    let imported = try MIDIImport.read(data, name: url.lastPathComponent)
+                    if imported.harmonySource.isTrustworthy {
+                        withHarmony += 1
+                        recoveredProgression = recoveredProgression ?? imported.progressionText
+                    }
+                    if let pattern = imported.pattern {
+                        _ = PatternStore.add(pattern)
+                        added += 1
+                    } else if imported.melody.isEmpty {
+                        notes.append("\(url.lastPathComponent) had no melodic track.")
+                    } else {
+                        notes.append("\(url.lastPathComponent): \(imported.harmonySource.label).")
+                    }
+                    notes.append(contentsOf: imported.warnings.prefix(1))
+                } catch {
+                    notes.append("\(url.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+
+            libraryRevision += 1
+            // The changes are loaded too when they came with the file: a line
+            // read as degrees is worth hearing against the harmony it was read
+            // against before it is asked to fit anything else.
+            if let recovered = recoveredProgression, !recovered.isEmpty,
+               (try? ChordProgression.parse(recovered)) != nil {
+                commit { $0.progressionText = recovered }
+            }
+
+            var sentence = added == 0
+                ? "Nothing became a line."
+                : "\(added) line\(added == 1 ? "" : "s") added"
+                    + (withHarmony > 0 ? ", \(withHarmony) with their own changes." : ".")
+            if !notes.isEmpty { sentence += " " + notes.prefix(2).joined(separator: " ") }
+            statusMessage = sentence
         }
     }
 
