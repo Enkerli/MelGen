@@ -410,6 +410,19 @@ would make it one.
 
 ### Interchange: MIDI Files & Drag-and-Drop
 
+*The MIDIcurator port, assessed 2026-08-25.* Its feature list was gone through
+item by item against this one. What was worth taking has been taken: MIDI in and
+out, the leadsheet-in-SMF bridge, and chord detection. What was already here in
+another form: the piano roll (U1), density variants (`MelodyTransforms`), the
+clip library with tags and search (L1–L3), grooves (comping and phrases), light
+and dark, keyboard shortcuts. What is deliberately **not** coming: WebAudio
+playback (an AUv3 sends MIDI and the host makes the sound), ZIP export of variant
+families (a share sheet per file is the iPad idiom), and the Apple Loops database
+— browser-only even in MIDIcurator's own plug-in build. The one real remainder is
+X3's Apple Loops chord *format*, which needs that code extracted somewhere
+shareable.
+
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | X1 | **Export the current take as a MIDI file** | M | ✅ **done 2026-08-25**. `MIDIExport.write` — format 0, the notes as you hear them (post-expression), tempo, and the changes. Written in the same file as the reader on purpose: export and import are one feature, and writing them apart is how an interchange format rots. The `midifile` suite asserts the round trip note for note, including a repeated pitch, which is where a note-off ordering bug shows up as one long note instead of two. |

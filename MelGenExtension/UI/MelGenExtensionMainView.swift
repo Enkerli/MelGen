@@ -2453,7 +2453,7 @@ struct MelGenExtensionMainView: View {
             }
             .buttonStyle(.plain)
             .fileImporter(isPresented: $isImportingMIDI,
-                          allowedContentTypes: [.midi],
+                          allowedContentTypes: midiContentTypes,
                           allowsMultipleSelection: true) { result in
                 importMIDIFiles(result)
             }
@@ -2465,6 +2465,14 @@ struct MelGenExtensionMainView: View {
                 .foregroundStyle(theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// `.midi` plus the extensions, because a `.mid` handed over by another app
+    /// is often typed as plain data and would otherwise be greyed out in the
+    /// picker — which reads as "MelGen can't open this".
+    private var midiContentTypes: [UTType] {
+        [.midi, UTType(filenameExtension: "mid"), UTType(filenameExtension: "midi")]
+            .compactMap { $0 }
     }
 
     /// Reads every chosen file and turns it into material.
