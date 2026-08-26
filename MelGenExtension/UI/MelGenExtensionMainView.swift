@@ -188,6 +188,15 @@ struct MelGenExtensionMainView: View {
                 // whole panel rather than about a take.
                 if modelIsDown { modelDownBanner }
 
+                // Above the tab content, on both tabs, because "what now" is
+                // not a property of either half — and because the two things it
+                // most often points at are drawers you can't see from here.
+                if let step = nextStep {
+                    NextStepRow(step: step,
+                                placeName: placeName(of: step.destination),
+                                theme: theme) { go(to: step.destination) }
+                }
+
                 switch panelTab {
                 case .play: playTab
                 case .decide: decideTab
@@ -2195,6 +2204,65 @@ struct MelGenExtensionMainView: View {
     }
 
     /// Refills both branches. Idempotent and cheap — both are deterministic.
+    // MARK: - What to do now
+
+    /// The one thing worth doing, or nothing.
+    ///
+    /// Recomputed on every render rather than cached: it is derived from state,
+    /// and a cached answer is one that can be wrong for exactly as long as
+    /// nobody notices. The ladder itself is in `NextStep.swift`.
+    private var nextStep: NextStep? {
+        NextSteps.step(for: state,
+                       context: StepContext(source: source,
+                                            hasSavedSetup: !SetupStore.all.isEmpty,
+                                            hasStoredLineOfYourOwn: !PatternStore.isEmpty,
+                                            hasCapturedPlaying: !capturedEvents.isEmpty,
+                                            modelIsAvailable: !modelIsDown))
+    }
+
+    /// Where a step lives, in the words on screen.
+    ///
+    /// The names are the section headings verbatim. A step that says "Setups"
+    /// when the heading says "Setup" sends someone looking for something that
+    /// isn't there, which is worse than saying nothing.
+    private func placeName(of destination: StepDestination) -> String {
+        switch destination {
+        case .progression: return "Decide · Progression"
+        case .source: return "Decide · Next take"
+        case .rating: return "Play · this take"
+        case .material: return "Decide · Your material"
+        case .pass: return "Decide · Review"
+        case .setups: return "Decide · Setup"
+        case .storedLines: return "Play · this take"
+        }
+    }
+
+    /// Takes you there: the right tab, and the drawer open.
+    ///
+    /// Opening the drawer is the whole point. Switching tab alone would land
+    /// someone on a screen where the thing they were sent for is still a
+    /// collapsed row indistinguishable from the others.
+    private func go(to destination: StepDestination) {
+        switch destination {
+        case .progression:
+            panelTab = .decide
+        case .source:
+            panelTab = .decide
+        case .rating, .storedLines:
+            panelTab = .play
+        case .material:
+            panelTab = .decide
+            showMaterial = true
+        case .pass:
+            panelTab = .decide
+            showCuration = true
+        case .setups:
+            panelTab = .decide
+            showSetups = true
+        }
+        statusMessage = "Opened \(placeName(of: destination))."
+    }
+
     /// Everything a held candidate depends on, so a stale one is impossible
     /// rather than merely unlikely.
     private var advanceRefillKey: String {

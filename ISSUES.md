@@ -216,7 +216,31 @@ Ordered by how likely they are to bite.
    "what is sounding". Worth settling before more sections are moved on the
    present criterion, because every move made under it inherits the fault.
 
-2. **Two of the design pass's junk-drawer moves are still undone.** The handoff
+   **Partly answered 2026-08-26, and deliberately not by moving anything.** A
+   second device session reported the flow still inscrutable. The diagnosis that
+   came out of it: the interface is arranged by *what things are*, and a session
+   is lived in the order things *matter*. Rearranging by time would break the
+   first arrangement without fixing the second, because a control belongs to one
+   group and matters at several moments. So the missing axis was added as one
+   line — `NextStep.swift`, above both tabs, naming the next thing and why it is
+   next, derived from state and silent when nothing is outstanding. It is a
+   cheap test of whether placement is even the problem: if following the line
+   still lands somewhere confusing, the destination is wrong and moving it is
+   justified. **Which controls live where is still open.**
+
+2. **The two collapsed drawers were unfindable, and are now pointed at rather
+   than moved.** Raised 2026-08-26 from a device session: "Setup" and "Your
+   material" are collapsed rows that say nothing about why you would open them,
+   and the moment each matters — after a session's worth of tuning, after enough
+   kept takes for the models to mean anything — is exactly when nobody is
+   reading a collapsed row. The next-step line now opens each at that moment,
+   with the count that makes it the moment. Two things it did **not** fix: the
+   drawers still teach nothing when opened cold, and "Setup" names the live
+   settings in this project's own vocabulary while the drawer holds saved ones
+   (corrected in [TERMINOLOGY.md](TERMINOLOGY.md) 2026-08-26 by retiring
+   "preset" — the label was right, the documentation was the drift).
+
+3. **Two of the design pass's junk-drawer moves are still undone.** The handoff
    bundle checked 2026-08-25 against `main` splits four ways: the terminology
    file is byte-identical, the playflow spec shipped in
    [#3](https://github.com/Enkerli/MelGen/pull/3), the icon and the rating
@@ -236,7 +260,7 @@ Ordered by how likely they are to bite.
    like this") are all in, and the spec's third open question — which platform is
    the fast path — was answered by the rating controls shipping a swipe.
 
-3. **The template proposal log is empty exactly when it's wanted.**
+4. **The template proposal log is empty exactly when it's wanted.**
    `templateProposals` lives in `MelGenState`, so it saves with the host session
    and exports with the history — which was the point, since a run of refusals is
    the only evidence about whether the gate is calibrated. But `TemplateStore`'s
@@ -244,30 +268,30 @@ Ordered by how likely they are to bite.
    halves of the same record have different lifetimes: all four exported histories
    from the device sessions carry **zero** proposals despite templates having been
    proposed and refused. Whichever store is right, it should be one of them.
-4. **Authoring is unavailable in chord mode**, though the gate would accept eight
+5. **Authoring is unavailable in chord mode**, though the gate would accept eight
    more comping templates. ROADMAP T3.
-5. **The interface has outgrown its structure.** Sixteen top-level sections in a
+6. **The interface has outgrown its structure.** Sixteen top-level sections in a
    3,000-line view. Every feature arrived as another section, which is how it got
    here. The 2026-08-23 redesign addressed the symptom by splitting Play from
    Decide; the view got *longer*, so the structural problem stands — see §5.
-6. **No contour measurement.** §1: the axis the complaints are actually about
+7. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-7. **A leading silence isn't treated as a rest.** §1.
-8. **The learned models are recomputed on every draw.** O(takes × notes) on the
+8. **A leading silence isn't treated as a rest.** §1.
+9. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-9. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+10. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-10. **Takes still can't be named.** `retitle` exists and nothing calls it.
-11. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+11. **Takes still can't be named.** `retitle` exists and nothing calls it.
+12. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-12. **The fit report is computed, tested and invisible.**
-13. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+13. **The fit report is computed, tested and invisible.**
+14. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-14. **The library is `UserDefaults`, not an App Group** (I5/L4).
-15. **`PatternStore` and the learned models have no export or import.**
-16. **`previousTakeID` is encoded but not decoded.**
+15. **The library is `UserDefaults`, not an App Group** (I5/L4).
+16. **`PatternStore` and the learned models have no export or import.**
+17. **`previousTakeID` is encoded but not decoded.**
 
 ---
 

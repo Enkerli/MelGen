@@ -32,7 +32,12 @@ its notes: a re-render is not a new take. `GenerationRecord`.
 
 **setup** — Everything that decides what the next take will be like: mode,
 source, template, progression, temperature, density, note duration. A take
-records its setup. "Another like this" re-rolls it. A preset is a saved one.
+records its setup. "Another like this" re-rolls it. A *saved* setup is still a
+setup — it has a name and one can be the default a new instance starts from.
+`MelGenSetup`. **"Preset" is retired**: it was used here for the saved kind, and
+one concept with two words is what this file exists to stop. Corrected
+2026-08-26, after the drawer labelled "Setup" was found to be inscrutable partly
+because the documentation called its contents something else.
 
 **loop** — The region being repeated: the take's `lengthBeats`, which is the
 progression's length. A place, not an event.
@@ -112,6 +117,11 @@ the pass it was made on plus what it was heard after.
 **rating** — The coarse three — yes, maybe, no — that most takes get. A rating
 *is* a disposition, chosen for you: yes→keep, maybe→later, no→skip. Never shown
 alongside the seven as a fourth option, and never stored as a number.
+
+**next step** — The single line above both tabs saying what to do now, derived
+from state and never scripted. It names an action, the fact that makes it the
+action, and where that lives; it goes quiet when nothing is outstanding. Not a
+tour, not a tooltip, not a checklist — those all keep talking. `NextStep`.
 
 **facet** — Measured, fixed, never typed: density, placement, register, colour,
 motion. How you find something on purpose.

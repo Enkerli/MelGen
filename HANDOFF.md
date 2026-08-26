@@ -1,14 +1,35 @@
 # Handoff — current state
 
-*Updated 2026-08-24. For whoever picks this up next, including the agent embedded
+*Updated 2026-08-26. For whoever picks this up next, including the agent embedded
 in Xcode. Written while moving fast on purpose: what landed, what's loose, and
 what is definitely not proven.*
 
 The `curation-and-training` branch this document started as a handoff for is
-merged, and so is the redesign that followed it. Everything is verified outside
-Xcode by `Scripts/verify.sh` and compiles in the extension target.
+merged, and so is the redesign that followed it, the UX-and-playflow pass, and
+the MIDI interchange work. Everything is verified outside Xcode by
+`Scripts/verify.sh` — **29 suites** — and compiles in the extension target.
 
-**It has now been heard on device four times, 2026-08-23 to 2026-08-24**, which
+**Since 2026-08-25**, five things landed that this document did not previously
+mention. Detail is in [ROADMAP.md](ROADMAP.md); the short version:
+
+- **The app icon** is an Icon Composer document, `MelGen/MelGen.icon`. Every fill
+  carries a `dark` specialization; without one the system keeps the light fill
+  and the ink stack vanishes into the dark ground, which *looks correct in every
+  editor* because editors show you the light artwork. `verify.sh icon` guards it.
+- **Rating and an aimed advance** (U10). Yes/Maybe/No are shortcuts to three of
+  the seven dispositions and never reach storage as anything else; "another like
+  this" and "something else" each carry a subtitle computed *before* the tap.
+  `TakeAdvance` cannot import FoundationModels by construction, which is how the
+  1.8s-a-note constraint is enforced rather than remembered.
+- **MIDI in and out**, with harmony, in four tiers — the top one being the
+  suite's own `MCURATOR:v1 PROG` payload, so MelGen ↔ MIDIcurator ↔ ProgGenie is
+  a real round trip. Plus `ChordDetection`, the MIDIcurator port (I6).
+- **"Your material"** groups listening, the stored lines and the learned readout
+  on one surface in flow order.
+- **A next-step line** (U11) above both tabs, which is the first answer to the
+  flow still reading as inscrutable. See [ISSUES.md](ISSUES.md) §4.1–4.2.
+
+**It has been heard on device several times, 2026-08-23 to 2026-08-26**, which
 retired the largest open risk this document used to name. What those sessions
 surfaced lives in [ISSUES.md](ISSUES.md); the two that mattered most — takes
 losing their first notes, and a rating that followed what was playing rather than
@@ -187,13 +208,25 @@ Ordered by how likely they are to bite.
 
 ## What to do next
 
-1. **Hear it.** A device session that exercises the whole loop: generate changes,
-   compose a phrase over them, mark a few takes, draw from the learned models,
-   comp the same changes, play something in and learn from it. Then
-   `analyse-history.sh` over the export.
-2. **Store the learned models** (S4). Fixes loose end 2 and makes styles savable
-   in one piece of work.
-3. **Trade fours** (N6). It was XL because the model couldn't answer in four
+1. **Run [TESTING.md](TESTING.md).** Five scenarios, about forty minutes, and
+   three of them are about things no suite can reach: whether the next-step line
+   is read or scrolled past, whether the two drawers make sense once you are sent
+   to them, and whether a MIDI round trip survives another application. Predict
+   before you look — that is the whole method, and every finding in ISSUES that
+   mattered came from a contradicted expectation.
+2. **Chord-mode authoring** (T3). One line: `authorRow` is gated on
+   `state.mode == .line` while the measured ceiling says chord mode has eight
+   template slots free. Cheapest real variety on the list.
+3. **Give the corpus baseline its floors** (S6 step 2b). Until then "beats the
+   baseline" is a sentence a model that learned nothing can satisfy — the chain's
+   held-out perplexity measured *worse than uniform*. Nothing downstream in the
+   S6/S7 family means anything until this lands.
+4. **Store the learned models** (S4). Fixes loose end 2, and the 2026-08-25
+   review reframed it as the bigger item: because both types already round-trip
+   through JSON, S4 is also the *interchange* slot for a style fitted off-device
+   — and the same slot a Core ML model would compete for. See
+   [COREML.md](COREML.md).
+5. **Trade fours** (N6). It was XL because the model couldn't answer in four
    bars. The chain answers in microseconds and is *about* what it just heard, so
    what's left is bar-accurate switching — the most interesting item on the
    roadmap and no longer the most expensive.

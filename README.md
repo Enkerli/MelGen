@@ -25,6 +25,7 @@ or locked to the host's playhead.
 | **Templates** | Fifteen — nine line templates and six comping figures. The mode chooses which half is in play; select any subset and cycle, shuffle or lock it |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
 | **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
+| **What to do now** | One line above both tabs naming the next thing and why it's next, derived from the session's own state — and going quiet when nothing is outstanding |
 | **Curation** | Yes / Maybe / No on what is sounding — or a swipe on the roll — with the seven (keep, tweak, try again, right elsewhere, partly, later, skip) one tap away, in passes, so the same take can be answered differently next time. A rating is a shortcut to three of the seven, never a score |
 | **Variations** | Every variant, mutation, morph and drifted pass is judged in its own right, and says what its parent was called |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
@@ -115,6 +116,7 @@ Scripts/verify.sh chords     # one suite
 | `analysis` | Take measurement — variety, harmonic roles — and the dead-air guard |
 | `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
 | `midifile` | Reading and writing `.mid` — the codec round trip, the four harmony tiers, and chord detection against the suite's own vectors |
+| `nextstep` | The line that says what to do now — every rung against the state it claims, and that it goes quiet |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
@@ -149,11 +151,17 @@ alike — the same measurement, the same curation, the same performance controls
 | Source | Cost | What it is |
 |---|---|---|
 | **The model** | ~1.8s per note | Foundation Models writes the line, or chooses when a comp lands |
-| **Composed phrases** | Instant | A phrase grammar assembles gestures into lines that state, answer and land |
-| **Stored lines** | Instant | A degree-relative line from the library, fitted to whatever changes are loaded |
-| **Your own style** | Instant | Drawn from slot statistics and a variable-order chain over what you kept |
-| **Interval cells** | Instant | Self-sequencing figures described as moves rather than positions |
-| **Comping** | Instant | Voicings under the changes, voice-led, in six figures |
+| **Composed** | Instant | A phrase grammar assembles gestures into lines that state, answer and land |
+| **Stored line** | Instant | A degree-relative line from the library, fitted to whatever changes are loaded |
+| **Your material** | Instant | Drawn from slot statistics and a variable-order chain over what you kept |
+| **What you play** | Instant | Your own playing, captured and read against the changes |
+| **Comp** | Instant | Voicings under the changes, voice-led, in six figures |
+
+Which of the six are offered depends on the mode: Chords narrows it to the three
+that can produce a voicing, because offering the others would be offering
+something the mode can't deliver. Material also arrives from outside — a MIDI
+file, or a take kept as a line — and once it is a `MelodyPattern` nothing
+downstream can tell where it came from.
 
 The model is the slowest by a wide margin — measured at roughly four times
 slower than real time — so it is never what feeds continuous playback. It adds
@@ -165,9 +173,12 @@ new material; the deterministic sources keep the changes moving meanwhile.
         make ──▶ hear ──▶ judge ──▶ keep ──▶ learn ──▶ make
 ```
 
-Judging is one tap per take from a vocabulary of seven next actions — keep,
-tweak, again, elsewhere, partly, later, skip — none of them terminal, so the same
-take can be answered differently on a later pass. What survives feeds two learned
+Judging is one tap — or one swipe on the roll. Most takes get one of three coarse
+answers, Yes, Maybe and No, which are shortcuts to three of a vocabulary of seven
+next actions: keep, tweak, again, elsewhere, partly, later, skip. None of the
+seven is terminal, so the same take can be answered differently on a later pass,
+and a rating is never stored as a number — it *is* one of the seven, chosen for
+you. What survives feeds two learned
 models: slot statistics over kept takes, and a variable-order chain of what
 follows what. Both are transparent statistics rather than anything trained; see
 [TRAINING.md](TRAINING.md) for why that boundary is where it is.
@@ -256,7 +267,7 @@ Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
 
 ## Documentation
 
-Seven documents, each with one job. Kept apart so that a finding lands in exactly
+Eight documents, each with one job. Kept apart so that a finding lands in exactly
 one of them:
 
 | Document | What belongs in it | What doesn't |
@@ -268,6 +279,8 @@ one of them:
 | [HANDOFF.md](HANDOFF.md) | Current state, open risks, and where to pick up | Durable design rationale — that goes in the code |
 | [COREML.md](COREML.md) | Training off-device and running the result on the iPad | On-device learning — that's TRAINING.md |
 | [DESIGN_BRIEF.md](DESIGN_BRIEF.md) | The experience: vocabulary, playflows, what's being asked of a design pass | Implementation, and anything already settled |
+| [TESTING.md](TESTING.md) | What `verify.sh` can't answer, and the device sessions that can | Anything a suite could check instead |
+| [TERMINOLOGY.md](TERMINOLOGY.md) | One word per concept, and the retired ones | Anything not a naming decision |
 
 ### Hygiene
 
@@ -292,10 +305,14 @@ say what the state *is*, not why each decision was made.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned work. The near list: harmonic rhythm,
-time signatures, shuffled tonalities, note-duration distributions that change over
-time, and reaching the stored lines from the mode that plays them. [TRAINING.md](TRAINING.md) works out what
-"learning from your material" can actually mean on device, and what it can't.
+See [ROADMAP.md](ROADMAP.md) for planned work. The near list, after the
+2026-08-25 review: authoring a comping template (the gate would accept eight more
+and the control is closed to it), giving the corpus baseline its floors, and
+having the corpus exporter write a history export so a found MIDI collection
+reaches the models that already ship. Then harmonic rhythm, time signatures and
+shuffled tonalities. [TRAINING.md](TRAINING.md) works out what "learning from
+your material" can actually mean on device, and what it can't;
+[COREML.md](COREML.md) is the off-device half.
 
 ---
 
