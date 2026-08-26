@@ -29,6 +29,8 @@ or locked to the host's playhead.
 | **Variations** | Every variant, mutation, morph and drifted pass is judged in its own right, and says what its parent was called |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
 | **Lines from takes** | Keep a take as a degree-relative line and it plays over any changes, instantly, with no model |
+| **MIDI files, both ways** | Import a `.mid` as material and export a take as one. A file from MIDIcurator or ProgGenie carries its own leadsheet, so the line arrives as degrees; otherwise the chords are read from markers, then from a chord track, and the import says which |
+| **Chord detection** | Names a chord from the notes sounding — 172 qualities by fingerprint, checked against the suite's own cross-language vectors |
 | **Learned style** | What you kept, measured — as prompt text, as slot statistics, and as a chain of what follows what |
 | **Composed phrases** | Gestures with rhythmic identity, composed by a phrase grammar into lines that state, answer and land |
 | **Interval cells** | Hanon's self-sequencing figures and Samchillian-style interval streams, described as moves rather than positions |
@@ -112,6 +114,7 @@ Scripts/verify.sh chords     # one suite
 | `templates` | That the templates actually differ, and the gate that refuses one that doesn't |
 | `analysis` | Take measurement — variety, harmonic roles — and the dead-air guard |
 | `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
+| `midifile` | Reading and writing `.mid` — the codec round trip, the four harmony tiers, and chord detection against the suite's own vectors |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
