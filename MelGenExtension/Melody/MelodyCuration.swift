@@ -150,6 +150,104 @@ enum TakeDisposition: String, Codable, CaseIterable, Sendable {
     static let unmarkedPriority = 4
 }
 
+// MARK: - The coarse layer
+
+/// The coarse answer most takes get, as a shortcut to three of the seven.
+///
+/// Not a scale and not a score: the three cases are the three dispositions a
+/// sweep reaches for, named the way a listener names them. The seven stay
+/// reachable, and a mark made from one of the other four is displayed as
+/// itself — never bucketed into a rating it didn't come from.
+///
+/// This exists only at the point of *input*. Nothing downstream knows about it:
+/// a rating writes exactly the mark its disposition writes, so eviction, the
+/// review queue and everything learned from the record are untouched.
+enum TakeRating: String, Codable, CaseIterable, Sendable {
+    case no, maybe, yes
+
+    var disposition: TakeDisposition {
+        switch self {
+        case .yes: return .keep
+        case .maybe: return .later
+        case .no: return .skip
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .yes: return "Yes"
+        case .maybe: return "Maybe"
+        case .no: return "No"
+        }
+    }
+
+    /// What the rating actually does to the take, for the accessibility value —
+    /// "Yes" alone doesn't say that nothing is being discarded.
+    var consequence: String {
+        switch self {
+        case .yes: return "keeps this take for now"
+        case .maybe: return "sets this take aside for a further pass"
+        case .no: return "skips this take for this pass — it comes back last"
+        }
+    }
+
+    /// The single key, macOS only, alongside the seven that already have one.
+    var shortcut: Character {
+        switch self {
+        case .yes: return "y"
+        case .maybe: return "m"
+        case .no: return "n"
+        }
+    }
+
+    var symbolName: String { disposition.symbolName }
+
+    /// Which rating a disposition reads back as, if any.
+    ///
+    /// The other four are deliberately nil: `tweak`, `again`, `context` and
+    /// `partial` are not coarser versions of anything, and showing them as one
+    /// of these three would be the collapse this design refuses.
+    static func of(_ disposition: TakeDisposition) -> TakeRating? {
+        switch disposition {
+        case .keep: return .yes
+        case .later: return .maybe
+        case .skip: return .no
+        default: return nil
+        }
+    }
+}
+
+/// Which way the listener is aiming the next take.
+///
+/// The aim is the feature. An advance that can't say what it will do is a
+/// shuffle with extra steps, which is what the sweep had before.
+enum AdvanceMode: String, Codable, CaseIterable, Sendable {
+    /// Same setup, rolled again — a variant of the current take when there is
+    /// one, otherwise the same source and template with a fresh seed.
+    case anotherLikeThis
+    /// Advance the setup: the rotation moves on, so the next take is a
+    /// different template.
+    case somethingElse
+
+    var label: String {
+        self == .anotherLikeThis ? "Another like this" : "Something else"
+    }
+
+    var symbolName: String {
+        self == .anotherLikeThis ? "arrow.trianglehead.2.clockwise" : "arrow.turn.up.right"
+    }
+
+    /// The two dispositions that are the same wish as "another like this", said
+    /// in the seven's own words. Answering either sets the aim without
+    /// advancing — saying something specific is not sweeping.
+    static func aimed(by disposition: TakeDisposition) -> AdvanceMode? {
+        switch disposition {
+        case .tweak, .again: return .anotherLikeThis
+        default: return nil
+        }
+    }
+}
+
 /// Which part of a take a `partial` mark is about.
 ///
 /// A small controlled vocabulary rather than free text, because these are the

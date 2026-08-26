@@ -426,6 +426,14 @@ struct MelGenState: Codable, Sendable {
     /// emerged rather than one somebody guessed at.
     var tagVocabulary = TagVocabulary()
 
+    /// Which way an advance aims, and therefore what a swipe does.
+    ///
+    /// Session state rather than view state: it is a working preference that
+    /// should survive reopening the host project, the way `briefMode` does. It
+    /// is also what makes the indicator under the rating strip true — the words
+    /// under the strip name this, so a swipe is never a surprise.
+    var advanceMode: AdvanceMode = .anotherLikeThis
+
     init() {}
 
     init(from decoder: any Decoder) throws {
@@ -469,6 +477,7 @@ struct MelGenState: Codable, Sendable {
         currentTakeID = try container.decodeIfPresent(UUID.self, forKey: .currentTakeID)
         curationPass = try container.decodeIfPresent(Int.self, forKey: .curationPass) ?? 1
         tagVocabulary = try container.decodeIfPresent(TagVocabulary.self, forKey: .tagVocabulary) ?? TagVocabulary()
+        advanceMode = try container.decodeIfPresent(AdvanceMode.self, forKey: .advanceMode) ?? .anotherLikeThis
     }
 
     var currentTake: GenerationRecord? {
@@ -576,6 +585,35 @@ extension MelGenState {
             heardAfter: takeID == currentTakeID ? previousTakeID : currentTakeID,
             note: note
         ))
+    }
+
+    /// Rates the current take, and returns the disposition that was written so
+    /// the caller can say it without re-deriving it.
+    ///
+    /// A rating is not a new kind of judgement — it goes through `mark` and
+    /// lands as one of the seven. Which is why re-rating on the same pass
+    /// replaces, and why an undo after a mistaken swipe is already correct.
+    @discardableResult
+    mutating func rate(_ takeID: UUID,
+                       _ rating: TakeRating,
+                       now: Date = Date()) -> TakeDisposition {
+        mark(takeID, as: rating.disposition, now: now)
+        return rating.disposition
+    }
+
+    /// Records one of the seven, and lets the two that *are* a request to
+    /// re-roll set the aim while they're at it.
+    ///
+    /// "Affords tweaks" and "Worth another try" are the same wish as "another
+    /// like this", and until now saying either one did nothing but get written
+    /// down. Neither advances on its own: setting the aim is enough.
+    mutating func judge(_ takeID: UUID,
+                        as disposition: TakeDisposition,
+                        aspects: [TakeAspect] = [],
+                        note: String = "",
+                        now: Date = Date()) {
+        mark(takeID, as: disposition, aspects: aspects, note: note, now: now)
+        if let aim = AdvanceMode.aimed(by: disposition) { advanceMode = aim }
     }
 
     /// Takes back what was said about a take on this pass, leaving earlier passes

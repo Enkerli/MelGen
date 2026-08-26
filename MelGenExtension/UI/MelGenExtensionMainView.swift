@@ -47,6 +47,23 @@ struct MelGenExtensionMainView: View {
     /// reopened session should start from what was actually playing.
     @State private var pendingTake: GenerationRecord?
     @State private var pendingReadyPass: Int64 = 0
+    /// Which aim produced the held take, so the rotation is only advanced by the
+    /// branch that promised to advance it.
+    @State private var pendingAim: AdvanceMode?
+
+    /// One candidate held per aim, refilled after every rating and every
+    /// advance. Working state, not a document — for the same reason
+    /// `pendingTake` isn't one: a reopened session should start from what was
+    /// actually playing, not from something nobody heard.
+    ///
+    /// Never more than one per branch. Both branches are deterministic and cheap
+    /// to refill, and a deep buffer is a buffer that goes stale silently when the
+    /// setup changes under it.
+    @State private var buffered: [AdvanceMode: GenerationRecord] = [:]
+    /// The four that aren't ratings, opened from "more".
+    @State private var showAllDispositions = false
+    /// What a swipe just moved off, so Back can reselect it.
+    @State private var ratedTakeID: UUID?
 
     @State private var isExporting = false
     @State private var exportDocument: MelGenJSONDocument?
@@ -181,6 +198,16 @@ struct MelGenExtensionMainView: View {
         }
         .task(id: isListening) {
             await collectPlaying()
+        }
+        .task(id: pendingTake?.id) {
+            await runPendingSwap()
+        }
+        // Both branches are refilled whenever what they would produce changes:
+        // the take they'd vary, the source and template they'd draw from, or the
+        // changes they'd play over. A buffer nobody refreshes is a buffer that
+        // promises last minute's take.
+        .task(id: advanceRefillKey) {
+            refillAdvances()
         }
         // Drift runs on its own, not inside auto-regeneration: it's a property of
         // playing rather than of generating, and tying it to Auto meant it only
@@ -1776,6 +1803,14 @@ struct MelGenExtensionMainView: View {
                           lengthBeats: state.currentTake?.lengthBeats ?? 0,
                           theme: theme,
                           playheadBeat: playheadBeat)
+                    // The sweep, as a gesture: right Yes, left No, up Maybe,
+                    // each one rating and advancing by the aim shown in words
+                    // under the strip. Long press reaches the seven.
+                    .rateOnSwipe(onSwipe: { rating in
+                        guard let take = state.currentTake else { return }
+                        rate(rating, of: take, mark: take.mark(onPass: state.curationPass))
+                    }, onMore: { showAllDispositions = true })
+                    .accessibilityHint("Swipe right to keep, left to skip, up to set aside")
             }
 
             rollKey
@@ -1969,15 +2004,32 @@ struct MelGenExtensionMainView: View {
             // have to be on screen at the moment of judging.
             lineage(of: take)
 
-            // While drift is running the bar answers for the *pass*, so it shows
+            // While drift is running these answer for the *pass*, so they show
             // what was said about this pass rather than about the take. Without
             // that it read as unjudged the instant after a tap, which looks like
             // the tap was lost.
-            DispositionBar(current: judgingDrift ? markForThisPass : mark?.disposition,
-                           theme: theme,
-                           onSelect: { disposition in
-                judge(disposition, of: take, mark: mark)
-            }, startExpanded: true)
+            RateAndAdvanceStrip(
+                current: judgingDrift ? markForThisPass : mark?.disposition,
+                aim: state.advanceMode,
+                theme: theme,
+                subtitle: { TakeAdvance.subtitle(mode: $0, state: state, source: source) },
+                onRate: { rate($0, of: take, mark: mark) },
+                onAdvance: { advance(aiming: $0) },
+                onMore: { showAllDispositions = true },
+                onBack: ratedTakeID.flatMap { id in
+                    id == take.id ? nil : { reselect(id) }
+                })
+
+            // The seven, as the "more" destination rather than the default. The
+            // model didn't change — a rating writes one of these — so this bar
+            // is unchanged from what it always was.
+            if showAllDispositions {
+                DispositionBar(current: judgingDrift ? markForThisPass : mark?.disposition,
+                               theme: theme,
+                               onSelect: { disposition in
+                    judge(disposition, of: take, mark: mark)
+                }, startExpanded: true)
+            }
 
             if judgingDrift {
                 Text("Drift is running, so this judges the roll you're hearing — "
@@ -2044,6 +2096,106 @@ struct MelGenExtensionMainView: View {
     /// When that's the take, it marks the take. When it's a drifted pass, the
     /// pass is frozen as a variation first and the mark lands on that — which is
     /// what makes "rate each variation" true rather than approximately true.
+    // MARK: - Rate, then advance
+
+    /// One coarse answer, and the next take.
+    ///
+    /// The mark belongs to the take you were listening to, not to the one that
+    /// replaced it — so it is written *before* anything advances, from the take
+    /// that was passed in rather than from whatever `currentTake` becomes.
+    private func rate(_ rating: TakeRating,
+                      of take: GenerationRecord,
+                      mark: CurationMark?) {
+        if judgingDrift {
+            judge(rating.disposition, of: take, mark: mark)
+            return
+        }
+        commit(reloadKernel: false) { $0.rate(take.id, rating) }
+        ratedTakeID = take.id
+        statusMessage = "\(rating.label) — \(rating.disposition.label.lowercased()), "
+            + "pass \(liveState.curationPass)."
+        advance(aiming: state.advanceMode, quietly: true)
+    }
+
+    /// Makes the next take the way the listener aimed it, and makes that aim the
+    /// swipe's mode — so the words under the strip stay true.
+    private func advance(aiming mode: AdvanceMode, quietly: Bool = false) {
+        if liveState.advanceMode != mode {
+            commit(reloadKernel: false) { $0.advanceMode = mode }
+        }
+
+        let record = buffered[mode] ?? candidate(for: mode)
+        buffered[mode] = nil
+        guard let record else {
+            if !quietly { statusMessage = "Nothing to aim at yet." }
+            return
+        }
+
+        // The model is never what an advance waits on: if one is wanted it runs
+        // alongside and swaps in on a lap boundary through the same path
+        // auto-regeneration uses.
+        if TakeAdvance.backgroundRequest(mode: mode, state: liveState, source: source) != nil {
+            generate(auto: true, holdForLoopPoint: true)
+        }
+
+        deliver(record, aimed: mode, quietly: quietly)
+        refillAdvances()
+    }
+
+    /// Puts a take in front of the listener without cutting a bar in half.
+    ///
+    /// Running: it waits for the next lap boundary, on the path that already
+    /// exists for it. Stopped: there is no boundary to wait for, so it lands now.
+    private func deliver(_ record: GenerationRecord, aimed mode: AdvanceMode, quietly: Bool) {
+        if playParameter.boolValue, let pass = audioUnit?.currentPass {
+            pendingTake = record
+            pendingReadyPass = pass
+            pendingAim = mode
+            if !quietly {
+                statusMessage = "\(mode.label): \(record.briefName) on the next lap."
+            }
+            return
+        }
+        commit {
+            $0.add(record)
+            if mode == .somethingElse { $0.briefCursor += 1 }
+        }
+        if !quietly {
+            statusMessage = "\(mode.label): \(record.briefName), \(record.noteCount) notes."
+        }
+    }
+
+    /// Refills both branches. Idempotent and cheap — both are deterministic.
+    /// Everything a held candidate depends on, so a stale one is impossible
+    /// rather than merely unlikely.
+    private var advanceRefillKey: String {
+        [state.currentTakeID?.uuidString ?? "-",
+         source.rawValue,
+         String(state.briefCursor),
+         state.mode.rawValue,
+         state.progressionText].joined(separator: "·")
+    }
+
+    private func refillAdvances() {
+        for mode in AdvanceMode.allCases { buffered[mode] = candidate(for: mode) }
+    }
+
+    private func candidate(for mode: AdvanceMode) -> GenerationRecord? {
+        guard let changes = try? ChordProgression.parse(liveState.progressionText) else { return nil }
+        return TakeAdvance.candidate(mode: mode, state: liveState,
+                                     source: source, progression: changes)
+    }
+
+    /// Puts back the take a swipe moved off. Not an undo of the mark — re-rating
+    /// on the same pass already replaces — but of the *advance*.
+    private func reselect(_ takeID: UUID) {
+        guard liveState.history.contains(where: { $0.id == takeID }) else { return }
+        commit { $0.currentTakeID = takeID }
+        ratedTakeID = nil
+        refillAdvances()
+        statusMessage = "Back to \(liveState.currentTake?.displayName ?? "that take")."
+    }
+
     private func judge(_ disposition: TakeDisposition?,
                        of take: GenerationRecord,
                        mark: CurationMark?) {
@@ -2068,8 +2220,9 @@ struct MelGenExtensionMainView: View {
         }
 
         commit(reloadKernel: false) { state in
-            state.mark(take.id, as: disposition, aspects: mark?.aspects ?? [])
+            state.judge(take.id, as: disposition, aspects: mark?.aspects ?? [])
         }
+        refillAdvances()
         if let parent = liveState.parentMark(of: take) {
             statusMessage = "\(disposition.label) — \(take.derivationLabel) of a take "
                 + "you called \(parent.disposition.label.lowercased())."
@@ -3454,6 +3607,30 @@ struct MelGenExtensionMainView: View {
     /// silently became "every loop generation could keep up with". Holding the
     /// finished take until the pass counter ticks fixes both: the swap is musical,
     /// and the work happens during the loop before the one it plays in.
+    /// Swaps a held take in on the next lap when auto-regeneration isn't running.
+    ///
+    /// Auto owns the boundary while it's on, and two writers to `pendingTake`
+    /// would race — so this is deliberately the *same* rule for the times auto is
+    /// off, rather than a second path that also runs when it's on.
+    private func runPendingSwap() async {
+        guard pendingTake != nil, !liveState.autoRegenerate else { return }
+        while !Task.isCancelled, let ready = pendingTake {
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !liveState.autoRegenerate else { return }
+            guard let pass = audioUnit?.currentPass else { return }
+            guard pass > pendingReadyPass else { continue }
+            let aim = pendingAim
+            pendingTake = nil
+            pendingAim = nil
+            commit {
+                $0.add(ready)
+                if aim == .somethingElse { $0.briefCursor += 1 }
+            }
+            refillAdvances()
+            return
+        }
+    }
+
     private func runAutoRegeneration() async {
         guard state.autoRegenerate else { return }
 
@@ -3479,10 +3656,14 @@ struct MelGenExtensionMainView: View {
             // A model take finished during the last loop: it wins, so swap it in
             // now the loop has come round.
             if let ready = pendingTake, pass > pendingReadyPass {
+                let aim = pendingAim
                 pendingTake = nil
+                pendingAim = nil
                 commit {
                     $0.add(ready)
-                    $0.briefCursor += 1
+                    // An aimed advance only moves the rotation when that is what
+                    // it promised; a model take that nobody aimed still does.
+                    if aim == nil || aim == .somethingElse { $0.briefCursor += 1 }
                 }
                 statusMessage = "\(ready.briefName): \(ready.noteCount) notes"
                     + timingNote(for: ready)

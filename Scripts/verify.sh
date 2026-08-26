@@ -14,6 +14,8 @@
 #   chunking — how a progression is split into model requests (context window)
 #   patterns — stored generic lines fitted to real harmony, with no model
 #   extraction — takes read back as degree-relative patterns, and the fit report
+#   advance — the aimed advance: it always answers, the two aims differ,
+#             and neither one waits on the model
 #   curation — dispositions, passes, facets and the review queue
 #   phrases — gestures, the phrase grammar, and the lines it composes
 #   stylemodel — slot statistics over kept takes, and sampling new lines from them
@@ -281,6 +283,14 @@ run_terminology() {
     python3 "$REPO/Scripts/tests/terminology.py" || status=1
 }
 
+run_advance() {
+    echo "── advance ────────────────────────────────────────"
+    cp "$REPO/Scripts/tests/advance-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/advance" || { status=1; return 0; }
+    "$BUILD/advance" || status=1
+}
+
 run_icon() {
     echo "── icon ───────────────────────────────────────────"
     python3 "$REPO/Scripts/tests/icon-audit.py" || status=1
@@ -301,13 +311,14 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
     patterns) run_patterns ;;
     extraction) run_extraction ;;
     curation) run_curation ;;
+    advance)  run_advance ;;
     phrases)  run_phrases ;;
     stylemodel) run_stylemodel ;;
     chain)    run_chain ;;
@@ -328,7 +339,7 @@ case "$which" in
     terminology) run_terminology ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
 esac
 
 echo

@@ -284,6 +284,81 @@ check("quoting is capped and excerpted",
 print()
 print(learned.promptText.split(separator: "\n").map { "        " + $0 }.joined(separator: "\n"))
 
+
+// MARK: - The coarse layer never reaches storage
+
+// The rating strip exists at the point of input and nowhere else. If any of
+// these fail, three of the seven have quietly become a scale.
+
+print("── a rating is a shortcut, not a scale ────────────────")
+
+var rated = MelGenState()
+let rateMe = take(70)
+rated.add(rateMe)
+
+for rating in TakeRating.allCases {
+    var one = MelGenState()
+    let record = take(71)
+    one.add(record)
+    let written = one.rate(record.id, rating)
+    let marks = one.history.first { $0.id == record.id }?.marks ?? []
+    check("\(rating.label) writes exactly one mark",
+          marks.count == 1, "\(marks.count) written")
+    check("\(rating.label) writes \(rating.disposition.rawValue)",
+          written == rating.disposition && marks.first?.disposition == rating.disposition)
+    check("\(rating.label) is stamped with the current pass",
+          marks.first?.pass == one.curationPass)
+}
+
+check("the three round-trip through TakeRating.of",
+      TakeRating.allCases.allSatisfy { TakeRating.of($0.disposition) == $0 })
+check("the other four are not coarser versions of anything",
+      [TakeDisposition.tweak, .again, .context, .partial]
+        .allSatisfy { TakeRating.of($0) == nil })
+
+rated.rate(rateMe.id, .no)
+rated.rate(rateMe.id, .yes)
+check("rating twice on one pass replaces",
+      rated.history.first { $0.id == rateMe.id }?.marks.count == 1)
+check("the replacement is the second answer",
+      rated.history.first { $0.id == rateMe.id }?.latestMark?.disposition == .keep)
+
+rated.curationPass += 1
+rated.rate(rateMe.id, .maybe)
+check("rating on a later pass appends rather than replaces",
+      rated.history.first { $0.id == rateMe.id }?.marks.count == 2)
+check("both answers survive, disagreement included",
+      Set((rated.history.first { $0.id == rateMe.id }?.marks ?? []).map(\.disposition))
+        == [.keep, .later])
+
+var skipped = MelGenState()
+let skipMe = take(72)
+skipped.add(skipMe)
+skipped.rate(skipMe.id, .no)
+check("No is not destructive — the take is still in the queue",
+      skipped.reviewQueue.contains { $0.id == skipMe.id })
+check("No puts it last rather than out",
+      TakeDisposition.skip.reviewPriority
+        > TakeDisposition.allCases.filter { $0 != .skip }.map(\.reviewPriority).max()!)
+
+// MARK: - Two of the seven set the aim
+
+print("── the two that are a request to re-roll ──────────────")
+
+for disposition in TakeDisposition.allCases {
+    var aiming = MelGenState()
+    let record = take(73)
+    aiming.add(record)
+    aiming.advanceMode = .somethingElse
+    aiming.judge(record.id, as: disposition)
+    let expected: AdvanceMode = (disposition == .tweak || disposition == .again)
+        ? .anotherLikeThis : .somethingElse
+    check("\(disposition.label) leaves the aim at \(expected.label)",
+          aiming.advanceMode == expected)
+    check("\(disposition.label) still records its own mark",
+          aiming.history.first { $0.id == record.id }?.latestMark?.disposition == disposition)
+}
+
 print()
 print(failures == 0 ? "curation: all checks passed" : "curation: \(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

@@ -25,7 +25,7 @@ or locked to the host's playhead.
 | **Templates** | Fifteen — nine line templates and six comping figures. The mode chooses which half is in play; select any subset and cycle, shuffle or lock it |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
 | **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
-| **Curation** | One tap per take — keep, tweak, try again, right elsewhere, partly, later, skip — in passes, so the same take can be answered differently next time |
+| **Curation** | Yes / Maybe / No on what is sounding — or a swipe on the roll — with the seven (keep, tweak, try again, right elsewhere, partly, later, skip) one tap away, in passes, so the same take can be answered differently next time. A rating is a shortcut to three of the seven, never a score |
 | **Variations** | Every variant, mutation, morph and drifted pass is judged in its own right, and says what its parent was called |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
 | **Lines from takes** | Keep a take as a degree-relative line and it plays over any changes, instantly, with no model |
@@ -96,7 +96,8 @@ Scripts/verify.sh chords     # one suite
 | `patterns` | Stored generic lines fitted to real harmony, with no model |
 | `state` | Session-state round-trip, and the expression / density / note-length passes |
 | `extraction` | Takes read back as degree-relative lines, round-tripped by replaying, plus the fit report |
-| `curation` | Dispositions, passes, eviction, facets, the tag vocabulary, the rotation, and what gets learned |
+| `curation` | Dispositions, passes, eviction, facets, the tag vocabulary, the rotation, what gets learned, and that a rating stays a shortcut to three of the seven |
+| `advance` | The aimed advance — it always answers, the two aims differ, and neither waits on the model |
 | `phrases` | Gestures, the phrase grammar, and the lines it composes |
 | `stylemodel` | Slot statistics over kept takes, and sampling new lines from them |
 | `chain` | The variable-order model: what follows what, with backoff |
