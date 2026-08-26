@@ -197,7 +197,26 @@ measurements, not assumed better.
 
 Ordered by how likely they are to bite.
 
-1. **The template proposal log is empty exactly when it's wanted.**
+1. **The tab criterion sorts making in with judging.** Found by playing the
+   2026-08-25 design pass, and it is a fault in the criterion rather than in the
+   implementation of it. The design's test for Decide is *"touching it changes
+   nothing until you ask for a take"*, and the progression passes that test,
+   which is why it was moved there. But the test is incomplete: **creating
+   options and choosing among them are both upstream of a take, and only the
+   second is deciding.** The progression is the most generative control in the
+   app — it is where the options come from — so grouping it with the sweep and
+   the library puts a making tool in the judging half.
+
+   The same objection applies to source and template, which moved for the same
+   reason and are equally about creating options rather than judging them.
+
+   Note that §5's own reading of the value — the productive loop is *vary →
+   hear → judge* — names three activities, not two. So the likely answer is
+   either a third grouping, or Play owning "what I am working with" alongside
+   "what is sounding". Worth settling before more sections are moved on the
+   present criterion, because every move made under it inherits the fault.
+
+2. **The template proposal log is empty exactly when it's wanted.**
    `templateProposals` lives in `MelGenState`, so it saves with the host session
    and exports with the history — which was the point, since a run of refusals is
    the only evidence about whether the gate is calibrated. But `TemplateStore`'s
@@ -205,30 +224,30 @@ Ordered by how likely they are to bite.
    halves of the same record have different lifetimes: all four exported histories
    from the device sessions carry **zero** proposals despite templates having been
    proposed and refused. Whichever store is right, it should be one of them.
-2. **Authoring is unavailable in chord mode**, though the gate would accept eight
+3. **Authoring is unavailable in chord mode**, though the gate would accept eight
    more comping templates. ROADMAP T3.
-3. **The interface has outgrown its structure.** Sixteen top-level sections in a
+4. **The interface has outgrown its structure.** Sixteen top-level sections in a
    3,000-line view. Every feature arrived as another section, which is how it got
    here. The 2026-08-23 redesign addressed the symptom by splitting Play from
    Decide; the view got *longer*, so the structural problem stands — see §5.
-4. **No contour measurement.** §1: the axis the complaints are actually about
+5. **No contour measurement.** §1: the axis the complaints are actually about
    isn't measured, so claims about it can't be settled.
-5. **A leading silence isn't treated as a rest.** §1.
-6. **The learned models are recomputed on every draw.** O(takes × notes) on the
+6. **A leading silence isn't treated as a rest.** §1.
+7. **The learned models are recomputed on every draw.** O(takes × notes) on the
    main thread, per button press and per interface refresh. Fine at fifty takes,
    not at five hundred. Storing them (S4) fixes it.
-7. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
+8. **`StyleLearner` measures comping takes as if they were lines**, so a corpus
    with comps in it reports nonsense — 57% "leaps" in one session, which were
    simultaneous voices.
-8. **Takes still can't be named.** `retitle` exists and nothing calls it.
-9. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
+9. **Takes still can't be named.** `retitle` exists and nothing calls it.
+10. **`partial` aspects are recorded and unused.** "The rhythm works" should be a
    transform; the vocabulary was chosen for it.
-10. **The fit report is computed, tested and invisible.**
-11. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
+11. **The fit report is computed, tested and invisible.**
+12. **The eighth-note grid is the binding constraint** (D1). No triplets, no swung
    triplet feel.
-12. **The library is `UserDefaults`, not an App Group** (I5/L4).
-13. **`PatternStore` and the learned models have no export or import.**
-14. **`previousTakeID` is encoded but not decoded.**
+13. **The library is `UserDefaults`, not an App Group** (I5/L4).
+14. **`PatternStore` and the learned models have no export or import.**
+15. **`previousTakeID` is encoded but not decoded.**
 
 ---
 

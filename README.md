@@ -112,6 +112,7 @@ Scripts/verify.sh chords     # one suite
 | `analysis` | Take measurement — variety, harmonic roles — and the dead-air guard |
 | `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
+| `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 

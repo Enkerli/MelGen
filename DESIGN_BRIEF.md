@@ -241,7 +241,7 @@ mode.
   `Scripts/verify.sh contrast` fails if that stops being true.
 - **Touch targets** are on the theme's own token, not a smaller one — WCAG 2.5.5
   is enforced, not aspirational.
-- **The interface has outgrown its structure** (ISSUES §4.1): thirteen sections
+- **The interface has outgrown its structure** (ISSUES §4.4): thirteen sections
   in a 3,600-line view, each feature having arrived as another section. Design
   is welcome to propose a structure rather than more sections.
 
@@ -279,7 +279,7 @@ whether the seven curation dispositions are right. Those are settled and working
 - **[ISSUES.md](ISSUES.md) §3** is the fixed list, and it is worth reading as a
   record of which confusions have already caused bugs. Three of this week's
   fixes were the take/pass/loop distinction failing in code.
-- **[ISSUES.md](ISSUES.md) §4** is what's still wrong; §4.1 is the structural
+- **[ISSUES.md](ISSUES.md) §4** is what's still wrong; §4.4 is the structural
   one this brief is really about.
 - **`Scripts/verify.sh`** is 24 suites and 2,300-odd checks. Design changes that
   break a measured claim will fail it, which is the intended behaviour.
