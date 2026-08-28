@@ -57,6 +57,59 @@ for style in VoicingStyle.allCases {
     }
 }
 
+// The drawn style is the only one that asks the chord what it can carry, so the
+// checks on it are about *difference between chords* rather than about a recipe.
+print()
+print("── the voicing the chord chooses ──────────────────")
+
+func drawn(_ symbol: String) -> [Int] {
+    let chord = try! ChordProgression.parseChordSymbol(symbol)
+    return ChordVoicings.drawnIntervals(of: chord, reach: 0.85).map { $0 % 12 }.sorted()
+}
+
+check("a major seventh takes the ninth, not the sharp eleventh",
+      drawn("C∆").contains(2) && !drawn("C∆").contains(6),
+      "\(drawn("C∆").map { IntervalNames.all[$0] })")
+check("a minor seventh takes the eleventh, which nothing damps there",
+      drawn("Dm7").contains(5),
+      "\(drawn("Dm7").map { IntervalNames.all[$0] })")
+check("neither of those is written down — the scale decides",
+      drawn("C∆") != drawn("Cm7"))
+check("an alteration the symbol names replaces the degree it alters",
+      drawn("C7♯11").contains(6) && !drawn("C7♯11").contains(7),
+      "\(drawn("C7♯11").map { IntervalNames.all[$0] })")
+check("but a sharp eleventh that only came from the scale evicts nothing",
+      drawn("C∆").contains(7))
+check("no two tones a semitone apart, on any chord in the dictionary",
+      ChordDictionary.allQualities.allSatisfy { quality in
+          guard let chord = try? ChordProgression.parseChordSymbol(
+              "C" + ChordDictionary.displaySuffix(forKey: quality.key)) else { return true }
+          let tones = ChordVoicings.drawnIntervals(of: chord, reach: 0.85).map { $0 % 12 }
+          return !tones.contains { left in
+              tones.contains { right in
+                  guard left != right else { return false }
+                  let gap = abs(left - right)
+                  return min(gap, 12 - gap) == 1
+              }
+          }
+      })
+check("and never fewer than three voices",
+      ChordDictionary.allQualities.allSatisfy { quality in
+          guard let chord = try? ChordProgression.parseChordSymbol(
+              "C" + ChordDictionary.displaySuffix(forKey: quality.key)) else { return true }
+          return ChordVoicings.voice(chord, style: .drawn).pitches.count >= 3
+      })
+check("reaching further changes what comes in",
+      ChordVoicings.drawnIntervals(of: dm7, reach: 0.3)
+        != ChordVoicings.drawnIntervals(of: dm7, reach: 1))
+check("it keeps the third and seventh whatever the weights say",
+      {
+          let tones = ChordVoicings.drawnIntervals(of: dm7, reach: 0).map { $0 % 12 }
+          return tones.contains(3) && tones.contains(10)
+      }(),
+      "the two notes that name the chord")
+
+print()
 let shell = ChordVoicings.voice(dm7, style: .shell)
 check("a shell is root, third and seventh",
       classes(shell.pitches) == [2, 5, 0], names(shell.pitches))
@@ -197,8 +250,25 @@ state.add(GenerationRecord(progressionText: changes.text, temperature: 0.6,
 check("a comping take renders polyphonically from the session",
       MelodyComping.maximumPolyphony(of: state.renderedMelody) >= 3,
       "up to \(MelodyComping.maximumPolyphony(of: state.renderedMelody)) voices")
+// The polyphony decision is the take's, not the mode's, so a line loaded while
+// the mode says Chords still renders as a line. Checked as that property rather
+// than by counting the modes, which is what this used to do and which said
+// nothing about rendering — it also broke the day a third mode was added, which
+// is a test failing for the one reason it should never fail.
+var lineState = MelGenState()
+lineState.mode = .comping
+lineState.add(GenerationRecord(progressionText: changes.text, temperature: 0.6,
+                               briefName: "Long tones", source: .pattern,
+                               lengthBeats: changes.totalBeats,
+                               notes: MelodyPatterns.realize(MelodyPatterns.longTones,
+                                                             over: changes)))
 check("and a line take still renders as a line",
-      PlayMode.allCases.count == 2 && PlayMode.line.label == "Line")
+      MelodyComping.maximumPolyphony(of: lineState.renderedMelody) == 1,
+      "up to \(MelodyComping.maximumPolyphony(of: lineState.renderedMelody)) voices")
+check("every mode says which it is and whether it can stack notes",
+      PlayMode.allCases.allSatisfy { !$0.label.isEmpty && !$0.explanation.isEmpty }
+        && PlayMode.allCases.filter(\.isPolyphonic) == [.comping],
+      "\(PlayMode.allCases.map(\.label))")
 
 // MARK: - Varying a comp
 
