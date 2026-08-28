@@ -1,6 +1,7 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-28, after the bass mode and the two histograms — see
+*Last updated: 2026-08-28, after the bass mode, the two histograms and the pass
+over the operation manual that corrected the pad — see
 [What landed on `bassline-and-histograms`](#what-landed-on-bassline-and-histograms).
 The previous review is [Reviewed 2026-08-25](#reviewed-2026-08-25--where-the-next-value-actually-is).*
 
@@ -81,8 +82,35 @@ doesn't have.
 | A key | `DiatonicHarmony` — a key and a minorness become a one-chord progression, so nothing downstream changes. Minorness is a position on the modal brightness ladder (Lydian → Locrian, each rung one flattened degree darker), and a fractional setting blends the two neighbouring modes' histograms while the chord commits to the nearer rung |
 | Modal tokens | `C(dorian)` parses, which is how a modal take round-trips through its own progression text. Parentheses are required, because the dictionary already spells two triads "major" and "minor" |
 | The mode | `PlayMode.bass`, its own three sources, its own eight templates, and `isPolyphonic` in place of the dozen comparisons against `.comping` that a third mode would otherwise have silently broken |
-| The bass line | `BasslineGenerator` — two figure banks, a diamond that mixes four corners into one figure, a register range, eight seeds and a morph between one draw and the next |
+| The bass line | `BasslineGenerator` — two figure banks played as two layers at once, a pad that balances them on one axis and walks both banks sparse-to-busy on the other, a shift, a register range, eight seeds and a morph between one draw and the next |
 | Verification | Two suites, `histograms` and `bassline`, and `docs` now counts the bass banks and checks they are the same size, since the diamond's symmetry depends on it |
+
+**What the operation manual corrected**, after a second pass over it:
+
+- **The pad's axes.** The first version mixed four corner figures
+  barycentrically, which needed `|x| + |y| ≤ 1` and therefore a diamond. The
+  device does something simpler and better: it plays an on-beat pattern and an
+  off-beat pattern *at the same time*, with a velocity knob per layer, and its
+  own pad picks which two of 64-per-bank patterns are in play. So the axes are
+  now balance (west to east) and selection (south to north), the banks are
+  ordered by their own measured onset weight the way the device orders its
+  patterns sparse-to-busy, and the region became a square — with two
+  independent axes the diamond constraint stopped describing anything and
+  started forbidding a straight walking bass with no syncopation in it.
+- **Minorness was already right, and for a better reason than was known.** The
+  manual's Minorness is an integer 1–4 that forces intervals to their minor
+  versions cumulatively: major sevenths, then thirds, then sixths, then seconds.
+  That is *exactly* the modal brightness ladder, in order —
+  Ionian→Mixolydian→Dorian→Aeolian→Phrygian — which the implementation here
+  arrived at independently from the observation that each mode differs from its
+  neighbour by one flattened degree. MelGen's version extends it by a rung at
+  each end (Lydian above, Locrian below) and makes it continuous.
+- **Shift**, which the device has and this didn't. Cheap, and the highest ratio
+  of variation to control on the panel.
+- **Note Range means something else there.** The device's stretches the
+  *intervals* away from the root; MelGen's Range is register, and the
+  interval-widening idea lives on Reach and Leaps. Named differently on purpose,
+  since a bass part's register is the thing you most need to set.
 
 Two decisions worth keeping visible, both recorded next to the code:
 
@@ -371,6 +399,9 @@ whole picture. What's left is what the histograms unlock elsewhere.
 | H6 | **Learn a degree histogram per template, per facet** | M | `observed(in:)` already counts what a set of takes played over the harmony it played it over. Grouping that by template — or by facet, or by tag — gives "what does my *sparse* material land on", which is a question the single learned style can't answer. Needs no new machinery, only a grouping and somewhere to show it |
 | H7 | **Show the histograms** | S | Both types render a readable profile and nothing in the interface draws one. The stated reason this project keeps statistics rather than training anything is that you can look at them, and right now you can only look at them from a test |
 | H8 | **Let the transition histogram choose between voicings** | M | `agreement(with:)` scores a set of voice movements against what this material does. Comping's leading is settled and shouldn't become probabilistic — but *choosing between* voicings that all lead well is open, and "which of these moves the way my material moves" is an answer this can give. Deliberately not wired in: replacing a settled rule with a distribution is a decision to make on purpose |
+| H10 | **Independent on-beat and off-beat selection** | S | The pad's vertical walks both banks together, which is one axis doing what the device does with two sliders. Sparse-on-beat against busy-off-beat is a real bass part and is currently unreachable. Wants a second vertical, or a modifier drag, rather than a second pad |
+| H11 | **Variators** | M | The device's repeating variation shapes — square, pulse and ramp, at one, two and four cycles over the pattern, plus inverted versions — which briefly move the pattern selection during the loop. MelGen has `LiveMutation` for per-lap variation and the seed morph for a global blend, and neither is this: a variator is a *cyclic* excursion inside one loop. The cheapest version is the morph made a function of bar position |
+| H12 | **Two banks per layer** | S | The device has Bank A and Bank B for each of on-beat and off-beat, 64 patterns each. There are four figures per bank here. More figures is the whole feature, and the figure type is three vectors of numbers |
 | H9 | **A bass part and a line at once** | L | The mode is exclusive, so a bass part and a comp are two instances. Everything needed for two parts from one instance exists — the kernel loops one take, so this is a second take and a second MIDI channel, not a second generator |
 
 ### Templates & Motifs

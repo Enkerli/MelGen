@@ -15,11 +15,19 @@ two distributions the roadmap had been naming as missing since G10. Detail is in
 [ROADMAP.md](ROADMAP.md#what-landed-on-bassline-and-histograms). The short
 version: `DegreeHistogram` says which note as weights over the twelve semitones
 above the chord's root, `TransitionHistogram` says how far to the next one, and
-`MelodicWalk` multiplies them; `BasslineGenerator` draws through a rhythmic
-figure mixed on a diamond, inside a stated register; `DiatonicHarmony` turns a
-key and a minorness into a one-chord progression so nothing downstream has to
-know the difference. Two new suites, `histograms` and `bassline`, and both build
-targets compile.
+`MelodicWalk` multiplies them; `BasslineGenerator` plays an on-beat and an
+off-beat figure at once, balanced and selected on a pad, inside a stated
+register; `DiatonicHarmony` turns a key and a minorness into a one-chord
+progression so nothing downstream has to know the difference. Comping draws on
+the histograms too, through the `drawn` voicing style. Two new suites,
+`histograms` and `bassline`, and both build targets compile.
+
+The pad was a diamond first and is a square now — see [the manual pass in
+ROADMAP.md](ROADMAP.md#what-landed-on-bassline-and-histograms) for what changed
+and why. The one open risk this leaves is the usual one: **none of it has been
+heard on device.** `README.md` has a section explaining the mode, and the
+next-step line offers it once a session has six takes and no bass part in it,
+which is the only thing on screen that says the mode exists.
 
 **Since 2026-08-25**, five things landed that this document did not previously
 mention. Detail is in [ROADMAP.md](ROADMAP.md); the short version:

@@ -205,6 +205,122 @@ to stay within an octave of their predecessor, out-of-scale pitches are moved to
 the nearest tone that fits, holes left by an under-producing phrase are patched
 from the stored library, and the line is made strictly monophonic.
 
+### Bass, and the two histograms
+
+The newest half of the plug-in, and the least discoverable: **Bass** is a mode
+chip beside Line and Chords, and everything below is behind it.
+
+#### Which note: the degree histogram
+
+A weight for each of the twelve semitones above the sounding chord's root.
+Chromatic buckets rather than scale degrees, because degree space cannot say
+"a semitone above the third" — and that is exactly the material the histogram
+was built for. A drawn semitone becomes the `(degree, alteration, role)` the
+pattern format speaks on the way out, so nothing downstream has to know.
+
+| Control | What it does |
+|---|---|
+| **Reach** | How far up the note stack the line goes: root, fifth, third, seventh, eleventh, ninth, thirteenth. That is the order an improviser arrives in, and the order of arrival *is* the histogram — what you reach for first is what you play most. One continuous dial, not seven presets: at 0 it is the root alone, at 1 everything through the thirteenth, and the weights stay in arrival order all the way up |
+| **Outside** | Weight on the notes the scale doesn't contain. Small, always — at three per cent an outside note is colour and at thirty it is a wrong note. Left slightly on by default, which is where the chromatic approaches come from |
+| **Side-slip** | The pentatonic on the third of the chord, and the one a semitone above it. Over Cm7 that is E♭ F G B♭ C, then E F♯ G♯ B C♯ — which shares no note with the chord's scale and lands anyway. The dial is how much of the second one you get |
+
+The **avoid** notes the chord dictionary already derives are damped rather than
+removed, so a colour note the harmony can't carry gets quieter instead of
+disappearing.
+
+#### How far: the transition histogram
+
+A weight for each interval to the next note, from a twelfth down to a twelfth up.
+It is **multiplied** by the degree histogram rather than chosen between: for
+every candidate pitch in range, how likely a move of that size is times how
+likely that landing note is over the chord now sounding. So a line steps mostly
+by step *and* lands mostly on chord tones, with neither being a rule that
+overrides the other.
+
+| Control | What it does |
+|---|---|
+| **Chromatic** | How much the transitions like semitones |
+| **Runs** | How much a move that continues the last one is favoured. This is what turns a chromatic approach into a run: a run is one decision to move by semitone and several to keep doing it, so it belongs here rather than in the note weights |
+| **Leaps** | How wide the line reaches. Blended with an arpeggiating shape, because roots to fifths to octaves is how a bass moves and an exponential over interval size alone never produces it |
+
+Both histograms can also be **learned** from what you kept — `observed(in:)`
+counts what a set of takes actually played against the harmony it played it over
+— and blended with the dialled shape, with the weight given to the observation
+rising as there is more of it.
+
+#### The figure pad
+
+Bass plays two layers at once, merged into one monophonic line: an **on-beat**
+figure and an **off-beat** one. A figure is eight onset chances, lengths and
+accents over a bar — probabilities rather than a fixed mask, which is what makes
+mixing two of them mean something and what makes two bars of one differ.
+
+- **Left to right is the balance.** All the way left you hear only the on-beat
+  layer; all the way right only the off-beat one; in the middle both at full.
+  This is the syncopation axis — moving right is the part getting pushed off the
+  beat without a single figure changing.
+- **Up and down is which figures.** One position walking both banks at once,
+  each ordered sparse to busy by its own measured onset weight. Between two
+  entries the figures blend, so the axis is continuous rather than four steps.
+
+The region is a square and every corner is reachable, including the one a
+diamond would forbid: the busiest on-beat figure with the off-beat layer
+silent, which is a straight walking bass and about the most ordinary bass part
+there is.
+
+**Shift** moves the whole figure along the bar and wraps it. It is the cheapest
+variation available — an on-beat figure shifted by one eighth *is* an off-beat
+figure, and not one note changed.
+
+**Range** is register: where the part sits, as two note numbers. (Distinct from
+Reach, which is how far up the chord it goes, and from Leaps, which is how wide
+each move is.)
+
+**Seed** is one of eight draws of the same settings — nothing is stored behind
+them, because a draw *is* its seed, so all eight are always there and every one
+can be got back exactly. **Morph** dials from this seed's draw into the next
+one's, note by note, rather than switching at the boundary.
+
+#### A key instead of changes
+
+Bass can read the typed progression chord by chord, or work from a key. A key
+becomes a progression of exactly one chord lasting the whole form, so nothing
+downstream changes.
+
+**Minorness** is one dial across the modal brightness ladder:
+
+```
+Lydian ──♯4→4── Ionian ──7→♭7── Mixolydian ──3→♭3── Dorian
+       ──6→♭6── Aeolian ──2→♭2── Phrygian ──5→♭5── Locrian
+```
+
+Each rung flattens exactly one degree, which is checked rather than tabulated.
+A fractional setting blends the two neighbouring modes' histograms while the
+chord commits to the nearer rung, so between Mixolydian and Dorian both thirds
+carry weight and the one the scale doesn't contain arrives as an altered degree
+with its role recorded.
+
+A mode can also be typed straight into the progression field, as `C(dorian)` or
+`E♭(phrygian)`. The parentheses are required: the chord dictionary already
+spells two triads `major` and `minor`, so a bare `Cminor` stays the triad it
+always was. This is the only way to reach Ionian, Aeolian and Phrygian, because
+several modes share a tonic seventh chord and the chord-scale classifier can
+only give one answer for all of them.
+
+#### Comping draws on it too
+
+The **Drawn** voicing style takes its tones from a degree histogram over each
+chord's own scale rather than from a recipe in intervals. So a major seventh
+gets its ninth and a minor seventh gets its eleventh — a major seventh's scale
+is Lydian, its eleventh sits a semitone under the fifth, and the no-cluster rule
+drops it in favour of the ninth. On a minor seventh nothing damps the eleventh
+and it comes in. Neither is written down anywhere; both fall out of the scale
+the dictionary already derives.
+
+Two rules the histogram can't supply: no two tones a semitone apart, and an
+alteration the symbol names replaces the degree it alters — voicing a `7♯11`
+with its natural fifth and without the alteration voices a different chord.
+
 ### Playback
 
 Raw notes are stored per take. What you hear is a deterministic render of them

@@ -137,6 +137,11 @@ check("and never once one is saved",
 print("── the sweep, and what a kept take is still missing ───")
 
 var swept = settled(takes: NextSteps.sweepThreshold + 2, keeping: 1)
+// Already in Bass, so the capability rung above this one is satisfied. The
+// capability rungs sit above "start the next pass" on purpose and each of them
+// extinguishes itself once taken; a fixture that hasn't taken them is testing
+// the wrong rung rather than finding a bug.
+swept.mode = .bass
 check("a finished sweep offers the next pass",
       NextSteps.step(for: swept, context: StepContext(source: .composed,
                                                       hasSavedSetup: true,
@@ -160,6 +165,45 @@ if let current = backlog.history.first {
 check("a backlog of unanswered takes is named as a backlog",
       NextSteps.step(for: backlog, context: plain)?.destination == .pass,
       NextSteps.step(for: backlog, context: plain)?.title ?? "nil")
+
+// MARK: - The newest drawer
+
+print()
+print("── a mode nothing points at ───────────────────────────")
+
+let unexplored = settled(takes: NextSteps.materialThreshold, keeping: 1)
+check("a session that has never made a bass part is told there is one",
+      NextSteps.step(for: unexplored,
+                     context: StepContext(source: .learned, hasSavedSetup: true,
+                                          hasStoredLineOfYourOwn: true))?
+        .destination == .bass,
+      NextSteps.step(for: unexplored,
+                     context: StepContext(source: .learned, hasSavedSetup: true,
+                                          hasStoredLineOfYourOwn: true))?.title ?? "nil")
+check("and it says what is behind the mode rather than repeating its name",
+      NextSteps.step(for: unexplored,
+                     context: StepContext(source: .learned, hasSavedSetup: true,
+                                          hasStoredLineOfYourOwn: true))?
+        .reason.contains("pad") == true)
+
+var explored = unexplored
+explored.mode = .bass
+check("never once you are in it",
+      NextSteps.step(for: explored,
+                     context: StepContext(source: .learned, hasSavedSetup: true,
+                                          hasStoredLineOfYourOwn: true))?
+        .destination != .bass)
+
+var drawn = unexplored
+if var first = drawn.history.first {
+    first.source = .bassline
+    drawn.history[0] = first
+}
+check("nor once a bass part has been made, whatever mode you are in now",
+      NextSteps.step(for: drawn,
+                     context: StepContext(source: .learned, hasSavedSetup: true,
+                                          hasStoredLineOfYourOwn: true))?
+        .destination != .bass)
 
 let kept = settled(takes: 6, keeping: 2)
 check("a kept take that isn't a line yet says why a line is different",
@@ -202,7 +246,12 @@ for takes in [0, 1, 3, 6, 12] {
             for saved in [false, true] {
                 for line in [false, true] {
                     for captured in [false, true] {
-                        let state = settled(takes: takes, keeping: keptCount)
+                    // Mode is part of the state the ladder reads now, so a sweep
+                    // that only visits Line can't reach the rungs below the one
+                    // that offers Bass.
+                    for mode in PlayMode.allCases {
+                        var state = settled(takes: takes, keeping: keptCount)
+                        state.mode = mode
                         let context = StepContext(source: source,
                                                   hasSavedSetup: saved,
                                                   hasStoredLineOfYourOwn: line,
@@ -211,6 +260,7 @@ for takes in [0, 1, 3, 6, 12] {
                         let twice = NextSteps.step(for: state, context: context)
                         if once != twice { deterministic = false }
                         if let once { everyStepIsReachable.insert(once.destination) }
+                    }
                     }
                 }
             }

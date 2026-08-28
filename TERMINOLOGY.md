@@ -116,11 +116,21 @@ eight of them are offered as a row, because a bass part is something you auditio
 several of. Nothing is stored behind them — a draw *is* its seed — which is why
 there are eight rather than as many as will fit.
 
-**figure mix** — The diamond in Bass. Four corner figures, a point between them,
-and the weights that point names. On the beat at the top, off it at the bottom,
-anchored to the left, running to the right; the centre is all four at a quarter.
-The shape is the constraint drawn: `|x| + |y| ≤ 1` is what makes the four weights
-a partition rather than a contradiction.
+**pad** — The two-axis control in Bass. Left to right is the **balance** between
+the on-beat layer and the off-beat one — only the first at the west edge, only
+the second at the east, both at full in the middle. Up and down is the
+**selection**: which pair of figures, walking both banks from sparsest to
+busiest, blended between entries. Square rather than diamond-shaped, because the
+two axes mean independent things and a shape that traded one against the other
+made a straight walking bass unreachable. `BasslinePad`. **"Diamond" is retired**
+— it named the first version, which mixed four corner figures barycentrically.
+
+**shift** — Moving a bass figure along the bar, wrapping. In eighths. The same
+notes, in different places: an on-beat figure shifted by one is an off-beat one.
+
+**layer** — One of the two things a bass part is made of at once: the on-beat
+figure and the off-beat figure, merged into a single monophonic line. What the
+pad's horizontal balances. Not a voice — a bass part has one.
 
 **reach** — How far up the note stack a line goes: root, fifth, third, seventh,
 eleventh, ninth, thirteenth, in that order, because that is the order an

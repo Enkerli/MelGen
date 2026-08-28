@@ -50,7 +50,7 @@ import Foundation
 /// place, not the route, which is also what keeps this file compilable by
 /// `verify.sh` without dragging SwiftUI in behind it.
 enum StepDestination: String, Codable, Sendable, CaseIterable {
-    case progression, source, rating, material, pass, setups, storedLines
+    case progression, source, rating, material, pass, setups, storedLines, bass
 }
 
 /// What to do now, and why now.
@@ -189,6 +189,20 @@ enum NextSteps {
                 reason: "A kept take is still tied to these changes. As a line it is scale "
                     + "degrees, and plays over any others instantly.",
                 destination: .storedLines)
+        }
+
+        // The fourth drawer problem, and the newest. A mode is a chip at the top
+        // of Next take, so Bass is one tap away and nothing says what is behind
+        // it — the pad, the note stack, the key. Named for the part rather than
+        // for the mode, because "Bass" is the label already on screen and
+        // repeating it teaches nothing.
+        if state.mode != .bass, !state.history.contains(where: { $0.source == .bassline }),
+           state.history.count >= materialThreshold {
+            return NextStep(
+                title: "Try a bass part",
+                reason: "Bass draws from a note stack and a figure pad instead of a template, "
+                    + "and it can work from a key rather than from the changes.",
+                destination: .bass)
         }
 
         // A sweep is finished. Saying so is the only thing that makes passes
