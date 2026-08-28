@@ -65,6 +65,40 @@ struct ChordSymbol: Hashable, Sendable {
         self.avoidPitchClasses = scale?.avoid ?? []
         self.scaleName = scale?.scaleName ?? ""
     }
+
+    /// A chord whose scale is stated rather than classified.
+    ///
+    /// Everywhere else the scale is derived from the notes, which is right: a
+    /// symbol is what a player writes and the scale is what it implies. The
+    /// modal path inverts that — the scale is the thing being chosen and the
+    /// chord is whatever sits on top of it — and the classifier can't express
+    /// the difference, because several modes share a tonic seventh chord and it
+    /// resolves each of them to one answer. C Ionian and C Lydian are both maj7;
+    /// C Dorian, C Aeolian and C Phrygian are all m7. Reaching those means
+    /// saying which, so this initializer exists and is used by exactly one
+    /// caller.
+    init(rootPitchClass: Int,
+         quality: ChordQuality,
+         scale: Scale,
+         bassPitchClass: Int? = nil,
+         text: String) {
+        self.text = text
+        self.rootPitchClass = rootPitchClass
+        self.quality = quality
+        self.bassPitchClass = bassPitchClass
+
+        let tones = quality.pitchClasses.map { (rootPitchClass + $0 % 12 + 12) % 12 }
+        let scalePcs = scale.intervals.map { (rootPitchClass + $0) % 12 }
+        let chordSet = Set(tones)
+        let avoid = scalePcs.filter { !chordSet.contains($0) && chordSet.contains(($0 + 11) % 12) }
+        let avoidSet = Set(avoid)
+
+        self.tonePitchClasses = tones
+        self.scalePitchClasses = scalePcs
+        self.tensionPitchClasses = scalePcs.filter { !chordSet.contains($0) && !avoidSet.contains($0) }
+        self.avoidPitchClasses = avoid
+        self.scaleName = scale.displayName
+    }
 }
 
 /// A chord positioned on the timeline of a progression, in quarter-note beats.
@@ -133,6 +167,14 @@ struct ChordProgression: Sendable {
         }
 
         let suffix = String(rest)
+
+        // A modal token — "C(dorian)" — names the scale instead of implying one.
+        // The parentheses are what keep it out of the dictionary's way: "Cminor"
+        // is a triad somebody wrote, and only "C(minor)" is a mode.
+        if bass == nil, let modal = DiatonicHarmony.symbol(root: root, suffix: suffix) {
+            return modal
+        }
+
         guard let quality = ChordDictionary.quality(forSuffix: suffix) else {
             throw ChordParseError.unknownQuality(chord: token, quality: suffix)
         }
