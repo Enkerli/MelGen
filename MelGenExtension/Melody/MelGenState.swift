@@ -35,6 +35,10 @@ enum TakeSource: String, Codable, Sendable {
     case captured
     /// Chords rather than a line.
     case comping
+    /// A bass part, drawn from a degree histogram and a transition histogram
+    /// through a rhythmic figure. Instant, and the only source that decides a
+    /// register rather than inheriting one.
+    case bassline
 
     var label: String {
         switch self {
@@ -46,6 +50,7 @@ enum TakeSource: String, Codable, Sendable {
         case .mutated: return "variant"
         case .captured: return "played"
         case .comping: return "comp"
+        case .bassline: return "bass"
         }
     }
 }
@@ -331,6 +336,12 @@ struct MelGenState: Codable, Sendable {
     /// Which comping figure is in play, by name.
     var compingFigureName: String = CompingFigure.charleston.name
 
+    /// Everything that decides what the next bass line is like: the diamond, the
+    /// key or changes it reads against, the reach up the note stack, and the
+    /// register. In session state rather than in the view because it is a setup
+    /// in the sense TERMINOLOGY.md means — a saved one should bring it back.
+    var bassline = BasslineSettings()
+
     /// How each chord relates to the one before it, and how a line crosses a
     /// change. Smooth by default: register-only leading makes every chord the
     /// same shape transposed, which is what "the chords are all in the same
@@ -456,6 +467,7 @@ struct MelGenState: Codable, Sendable {
         progressionModulation = try container.decodeIfPresent(Int.self, forKey: .progressionModulation) ?? 0
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
+        bassline = try container.decodeIfPresent(BasslineSettings.self, forKey: .bassline) ?? BasslineSettings()
         voiceLeading = try container.decodeIfPresent(VoiceLeadingMode.self, forKey: .voiceLeading) ?? .smooth
         showShape = try container.decodeIfPresent(Bool.self, forKey: .showShape) ?? true
         showFeel = try container.decodeIfPresent(Bool.self, forKey: .showFeel) ?? true

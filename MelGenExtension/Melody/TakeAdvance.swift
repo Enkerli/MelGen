@@ -46,6 +46,18 @@ enum TakeAdvance {
     private static func again(state: MelGenState,
                               source: MaterialSource,
                               over progression: ChordProgression) -> GenerationRecord? {
+        // Bass takes never go through the variant path, and the reason is the
+        // register. `explore` works on extracted patterns, and an extracted
+        // pattern has no octave in it — realizing one back fold by fold puts the
+        // line wherever the folding lands rather than inside the range that was
+        // set. Redrawing the same settings at a new seed is the honest reading
+        // of "another like this" here anyway: the figure and the histograms are
+        // the idea, and a draw from them is a take of it.
+        if state.mode == .bass {
+            return bassline(state: state, over: progression, salt: 0x5EED_A11E,
+                            settings: state.bassline)
+        }
+
         guard let take = state.currentTake,
               let parent = MelodyPatterns.extract(from: take.notes,
                                                   over: progression,
@@ -104,6 +116,14 @@ enum TakeAdvance {
                                source: MaterialSource,
                                template: MelGenTemplate,
                                over progression: ChordProgression) -> GenerationRecord? {
+        // In Bass the rotation names a figure, so moving it on means putting a
+        // different figure on the diamond — which is exactly what "something
+        // else" should mean in a mode whose character lives there.
+        if state.mode == .bass {
+            let settings = template.basslineFigure.map(state.bassline.placing) ?? state.bassline
+            return bassline(state: state, over: progression, salt: 0xBA55, settings: settings)
+        }
+
         let style = StyleLearner.learn(from: state.curatedTakes)
         let bars = max(2, Int(ceil(progression.totalBeats / 4)))
         let pattern = MelodyPhrases.compose(bars: min(bars, 8),
@@ -125,6 +145,28 @@ enum TakeAdvance {
                       source: state.mode == .comping ? .comping : .composed)
     }
 
+    /// A bass line under the settings given, as a take.
+    private static func bassline(state: MelGenState,
+                                 over progression: ChordProgression,
+                                 salt: UInt64,
+                                 settings: BasslineSettings) -> GenerationRecord? {
+        let changes = settings.overKey ? nil : progression
+        let notes = BasslineGenerator.line(settings, over: changes,
+                                           seed: seed(state, salt: salt))
+        guard !notes.isEmpty,
+              let sounded = BasslineGenerator.progression(for: settings, changes: changes)
+        else { return nil }
+
+        var record = record(notes: notes, over: sounded, state: state,
+                            briefName: settings.leadingFigure.name, source: .bassline)
+        // Over a key the take's harmony is the modal chord, not whatever is in
+        // the progression field — otherwise the take replays against changes it
+        // was never drawn over, and every measurement of it is about a
+        // progression it has never heard.
+        record.progressionText = sounded.text
+        return record
+    }
+
     // MARK: - What the button says before it is tapped
 
     /// The subtitle, derivable without producing the take.
@@ -138,6 +180,7 @@ enum TakeAdvance {
                          source: MaterialSource) -> String? {
         switch mode {
         case .anotherLikeThis:
+            if state.mode == .bass { return "\(state.bassline.leadingFigure.name) · redrawn" }
             guard let take = state.currentTake else { return nil }
             let name = take.title.isEmpty ? take.briefName : take.title
             guard !name.isEmpty else { return nil }
