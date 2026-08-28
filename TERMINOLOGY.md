@@ -20,6 +20,7 @@ than discovered. A term marked **retired** must not appear in the interface.
 | mutation (offline) | **variant** | A transform of a take, offered as a candidate |
 | line (library item) | **stored line** | A take read back as scale degrees |
 | line (mode) | **Line** | Monophonic output, as against Chords |
+| variant (bass) | **seed** | One of eight draws of one setting, not a transform |
 
 ---
 
@@ -27,7 +28,7 @@ than discovered. A term marked **retired** must not appear in the interface.
 
 **take** — One candidate, stored. Raw notes before expression, plus the setup
 that made it, its measurement, its marks and its tags. The unit everything
-downstream treats alike, whichever of the six sources produced it. Immutable in
+downstream treats alike, whichever of the seven sources produced it. Immutable in
 its notes: a re-render is not a new take. `GenerationRecord`.
 
 **setup** — Everything that decides what the next take will be like: mode,
@@ -63,10 +64,12 @@ model is unavailable the button must not say it.
 state, answer, land. Instant, and unlike a stored line it has never existed
 before.
 
-**template** — The character of the next take. Fifteen: nine melodic and six
-comping figures, the mode choosing which half is in play. Carries a brief for
-the model *and* gesture rhythms and contours for the deterministic path, so
-choosing one means the same thing whichever source is asked.
+**template** — The character of the next take. Twenty-three: nine melodic, six
+comping figures and eight bass figures, the mode choosing which set is in play.
+A melodic template carries a brief for the model *and* gesture rhythms and
+contours for the deterministic path, so choosing one means the same thing
+whichever source is asked. A bass template is narrower and honestly so: it
+carries a figure and no brief, because the model is not the thing drawing that.
 `MelGenTemplate`. State identifiers still say `brief`
 (`selectedBriefNames`, `briefCursor`, `briefMode`, `lockedBriefName`) —
 outstanding rename.
@@ -75,33 +78,72 @@ outstanding rename.
 Interpreted, never executed: a sentence a machine could follow belongs in a
 figure. Internal — never shown as a label.
 
-**figure** — A pattern the deterministic path executes exactly. For comping, a
-rhythm plus a voicing policy. The counterpart to a brief, and the distinction is
+**figure** — A pattern the deterministic path executes rather than interprets.
+For comping, a rhythm plus a voicing policy, played exactly. For bass, per-slot
+onset chances, lengths and accents over one bar — executed as written, though
+what is written is a probability, which is what lets two of them be *mixed*
+rather than switched between. The counterpart to a brief, and the distinction is
 load-bearing: handing the model a figure pays 1.8s a note to reproduce what a
 four-line function does instantly.
 
 **stored line** — A take read back as scale degrees, so it plays over any
 changes instantly with no model. Always two words. `MelodyPattern`.
 
-**Line / Chords** — The mode. Line writes a monophonic part; Chords comps under
-the changes. Explicit and visible because the receiving instrument differs — the
-one setting that changes what you should plug the output into. It changes which
-sources exist, not what one button does.
+**Line / Chords / Bass** — The mode. Line writes a monophonic part; Chords comps
+under the changes; Bass draws a bass part inside a stated register. Explicit and
+visible because the receiving instrument differs — the one setting that changes
+what you should plug the output into. It changes which sources exist, not what
+one button does. `PlayMode.isPolyphonic` is the question to ask about a mode;
+comparing against `.comping` is how a third mode broke a dozen decisions that
+had never considered one.
 
 **comping** — Playing voicings under the changes. A *comp* is a take in Chords
 mode. Voice-led across the whole progression before being rhythmicized.
 **Retired sense:** "comping" as in assembling one good pass out of several is
 not what MelGen does. If that ever exists here it is **splicing**.
 
-**source** — Where a take's material comes from, of six, each carrying whose
+**source** — Where a take's material comes from, of seven, each carrying whose
 vocabulary it is and what it costs. Filtered by mode rather than duplicated.
 
 **variant** — A candidate produced by one named transform of an existing take,
 offered with its scores side by side and never summed. Keeping one records it as
-a take of its own, with its parent. **"Variation" is not a term.**
+a take of its own, with its parent. **"Variation" is not a term**, and neither is
+a variant one of Bass's eight draws — those are **seeds**.
 
-**morph** — A dial between two takes, in rhythm and in pitch separately. A
-position on it becomes a take when kept.
+**seed** — The number every random choice in a draw comes from, so a draw that
+sounded good can be got back rather than being gone. Mostly invisible; in Bass
+eight of them are offered as a row, because a bass part is something you audition
+several of. Nothing is stored behind them — a draw *is* its seed — which is why
+there are eight rather than as many as will fit.
+
+**figure mix** — The diamond in Bass. Four corner figures, a point between them,
+and the weights that point names. On the beat at the top, off it at the bottom,
+anchored to the left, running to the right; the centre is all four at a quarter.
+The shape is the constraint drawn: `|x| + |y| ≤ 1` is what makes the four weights
+a partition rather than a contradiction.
+
+**reach** — How far up the note stack a line goes: root, fifth, third, seventh,
+eleventh, ninth, thirteenth, in that order, because that is the order an
+improviser arrives in and therefore the order of how often each is played. One
+dial across all seven, not seven settings. Not to be confused with **range**,
+which is register.
+
+**minorness** — Where a key sits on the modal brightness ladder: Lydian at
+nought, Dorian at half, Locrian at one, each rung one flattened degree darker
+than the one above it. A dial rather than a major/minor switch, because the thing
+between them is where most of the music is.
+
+**outside** — Weight given to the notes the scale doesn't contain. Small, always:
+at three per cent an outside note is colour and at thirty it is a wrong note.
+
+**side-slip** — The pentatonic on the third of the chord, and the one a semitone
+above it, which shares no note with the chord's scale and lands anyway. A dial
+between the two.
+
+**morph** — A dial between two lines, in rhythm and in pitch separately. A
+position on it becomes a take when kept. In Bass it dials between one seed's draw
+and the next on one axis, because what it is between is two draws of one setting
+rather than two takes with independent rhythms.
 
 **drift** — Probabilities re-rolled every lap, applied at render time and never
 written back. A performance of a take, not a version of it. Five axes: note

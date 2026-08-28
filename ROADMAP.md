@@ -1,7 +1,8 @@
 # MelGen — Feature Roadmap
 
-*Last updated: 2026-08-25, after the second design pass and a review of where the
-next value is — see [Reviewed 2026-08-25](#reviewed-2026-08-25--where-the-next-value-actually-is).*
+*Last updated: 2026-08-28, after the bass mode and the two histograms — see
+[What landed on `bassline-and-histograms`](#what-landed-on-bassline-and-histograms).
+The previous review is [Reviewed 2026-08-25](#reviewed-2026-08-25--where-the-next-value-actually-is).*
 
 A consolidated inventory of planned work, backlog items and exploratory ideas.
 Items are split between **this plug-in**, **shared suite infrastructure** (things
@@ -59,6 +60,48 @@ seventh source is a file, not a subsystem.
 
 ---
 
+## What landed on `bassline-and-histograms`
+
+2026-08-28. A seventh source, a third mode, and the two distributions the
+roadmap had been asking for by name since G10 and S3.
+
+The starting point was Reason Studios' Bassline Generator — specifically four
+things it does that MelGen didn't: it separates on-beat from off-beat pattern
+banks, it mixes between sources on a pad rather than switching, it puts "how
+minor is this" on one knob, and it works from a key. None of it is ported; the
+question asked of each was what it would mean over a harmonic model that device
+doesn't have.
+
+| Area | What landed |
+|---|---|
+| Which note | `DegreeHistogram` — weights over the twelve semitones above the chord's root. Chromatic buckets rather than scale degrees, because the material this was built for (outside notes, a pentatonic transposed by a semitone) can't be *said* in degree space. `DegreePlacement` converts a draw back into the `(degree, alteration, role)` the pattern format speaks |
+| The stack | The `reach` dial walks the order an improviser arrives in — root, fifth, third, seventh, eleventh, ninth, thirteenth. The order of arrival *is* a histogram: the notes you reach for first are the ones you play most, so one continuous dial replaces seven presets |
+| Playing out | `sideSlip` — the pentatonic on the third of the chord, and the one a semitone above it, which shares no note with the chord's scale and lands anyway. Both, as a dial |
+| How far | `TransitionHistogram` — weights over the interval to the next note. Multiplied by the degree histogram in `MelodicWalk`, so a line steps mostly by step *and* lands mostly on chord tones with neither being a rule that overrides the other. `momentum` is what makes a chromatic approach become a run rather than a scattering |
+| A key | `DiatonicHarmony` — a key and a minorness become a one-chord progression, so nothing downstream changes. Minorness is a position on the modal brightness ladder (Lydian → Locrian, each rung one flattened degree darker), and a fractional setting blends the two neighbouring modes' histograms while the chord commits to the nearer rung |
+| Modal tokens | `C(dorian)` parses, which is how a modal take round-trips through its own progression text. Parentheses are required, because the dictionary already spells two triads "major" and "minor" |
+| The mode | `PlayMode.bass`, its own three sources, its own eight templates, and `isPolyphonic` in place of the dozen comparisons against `.comping` that a third mode would otherwise have silently broken |
+| The bass line | `BasslineGenerator` — two figure banks, a diamond that mixes four corners into one figure, a register range, eight seeds and a morph between one draw and the next |
+| Verification | Two suites, `histograms` and `bassline`, and `docs` now counts the bass banks and checks they are the same size, since the diamond's symmetry depends on it |
+
+Two decisions worth keeping visible, both recorded next to the code:
+
+- **The bass line emits notes, not a pattern.** Every other source produces a
+  `MelodyPattern` and lets `realize` place it. A bass part can't survive that:
+  folded realization keeps each note within an octave of the last, which is
+  exactly the register decision the range control exists to make, and stepwise
+  realization loses a chromatic alteration through its "nearest scale member"
+  step. So the walk is in absolute pitch and the result is read *back* by
+  `MelodyPatterns.extract` — the same route every take already takes to become a
+  stored line. The material still ends up degree-relative; it just isn't born
+  that way.
+- **`TransitionHistogram` is not a replacement for `MelodyChain`.** The chain is
+  the better model where it applies — real order, learned from real material,
+  rhythm in the token — and it needs material. This is the prior that works at
+  zero takes, and both can be *informed* by observation as observation arrives.
+
+---
+
 ## Contents
 
 1. [Where This Is Going](#where-this-is-going)
@@ -67,6 +110,7 @@ seventh source is a file, not a subsystem.
 4. [Roadmap: This Plug-in](#roadmap-this-plug-in)
    - [Generation: Limits & Quality](#generation-limits--quality)
    - [Deterministic Lines](#deterministic-lines)
+   - [Bass & Histograms](#bass--histograms)
    - [Templates & Motifs](#templates--motifs)
    - [Rhythm & Duration](#rhythm--duration)
    - [Polyphony & Comping](#polyphony--comping)
@@ -311,6 +355,24 @@ reading the code.
 | G11 | **Mutate, score, morph** | L | ✅ **done 2026-08-23**. Fourteen transforms, each moving one axis so a variant that works can be traced to what made it work; three scores kept separate rather than summed; a morph that aligns notes proportionally rather than by onset. Original note: Deterministic transforms over a pattern (displacement, degree and duration substitution, density adjustment, inversion, retrograde, ornament insertion, register displacement), scored against the learned style, presented as variants to audition — then an interpolation between two you like, where "finding the satisfying point" means marking a position on the morph slider, which lands back in curation as a take whose provenance names both parents. Curation applied to variants rather than takes. Needs G10 first, so mutations can be scored against something |
 | G9 | **Report the cost of a generation before running it** | S | With ~2s per note measured, expected duration is predictable from bars × notes-per-bar. Say so before starting — "about 40s for 16 bars at 5 notes/bar" — rather than leaving a spinner running for two minutes. Also lets Auto refuse a configuration it can't sustain instead of quietly falling behind. |
 
+### Bass & Histograms
+
+Landed 2026-08-28 — see [What landed on
+`bassline-and-histograms`](#what-landed-on-bassline-and-histograms) for the
+whole picture. What's left is what the histograms unlock elsewhere.
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| H1 | **A degree histogram, chord-conditioned** | M | ✅ **done 2026-08-28**. `DegreeHistogram`, in chromatic buckets relative to the chord root. This is the thing G10 and S3 both named as missing and neither built — S3 said "a degree histogram conditioned on the chord (which is what generating from the style needs)", and it is now a type with a prior, a learned half, and a blend between them whose trust rises with how much material there is |
+| H2 | **A transition histogram** | M | ✅ **done 2026-08-28**. `TransitionHistogram` plus `MelodicWalk`, which multiplies the two rather than choosing between them |
+| H3 | **Bass mode** | L | ✅ **done 2026-08-28**. Figures, the diamond, minorness, range, seeds and the morph |
+| H4 | **A key instead of changes** | M | ✅ **done 2026-08-28**. `DiatonicHarmony`, and `C(dorian)` in the progression field |
+| H5 | **Point the melodic sources at the histograms** | M | Comping is done — the `drawn` voicing style takes its tones from a degree histogram per chord. The melodic sources are the harder half, and the obstacle is structural rather than effort: a pattern is composed *before* it knows which chord each of its repetitions will fall under, so a chord-conditioned histogram has nothing to condition on at composition time. Where it can apply in the line path is the seam — `MelodyPatterns.ledToChord` already makes a per-chord "which note" decision and currently takes the nearest chord tone, which a histogram could weight instead. That changes behaviour the `patterns` and `extraction` suites pin down, so it wants its own pass with someone listening |
+| H6 | **Learn a degree histogram per template, per facet** | M | `observed(in:)` already counts what a set of takes played over the harmony it played it over. Grouping that by template — or by facet, or by tag — gives "what does my *sparse* material land on", which is a question the single learned style can't answer. Needs no new machinery, only a grouping and somewhere to show it |
+| H7 | **Show the histograms** | S | Both types render a readable profile and nothing in the interface draws one. The stated reason this project keeps statistics rather than training anything is that you can look at them, and right now you can only look at them from a test |
+| H8 | **Let the transition histogram choose between voicings** | M | `agreement(with:)` scores a set of voice movements against what this material does. Comping's leading is settled and shouldn't become probabilistic — but *choosing between* voicings that all lead well is open, and "which of these moves the way my material moves" is an answer this can give. Deliberately not wired in: replacing a settled rule with a distribution is a decision to make on purpose |
+| H9 | **A bass part and a line at once** | L | The mode is exclusive, so a bass part and a comp are two instances. Everything needed for two parts from one instance exists — the kernel loops one take, so this is a second take and a second MIDI channel, not a second generator |
+
 ### Templates & Motifs
 
 The nine style briefs in `StyleBriefs.swift` currently rotate blindly. They want
@@ -349,7 +411,7 @@ The single biggest addition, and a genuine fork in the plug-in's identity.
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
 | P1 | **Mode: melodic line vs polyphonic comping** | L | ✅ **done 2026-08-23**, and the model path added the same day: it chooses when chords land and which tones are in them, `CompingVoicer` does register, spacing and voice leading. A model asked for MIDI notes jumps register between chords, because keeping voicings near each other is arithmetic. **Corrected the same evening**: the first version handed the model the comping *figure's* description and asked it to reproduce that, which is a language model doing at two seconds a request what a four-line function does exactly — and why every take came out alike. A figure is a pattern for the deterministic path; a brief is a character for the model. See `CompingBriefs`. and cheaper than expected: the kernel was already polyphonic and the realization axis already per-note. The one real change was teaching `MelodyExpression` that a comping take must skip the passes that reason about "the next note". Original note: These must be explicit and visible, because the *receiving instrument* differs: a mono synth given comping chords plays whichever note wins its note-priority rule, which is not music. The mode changes the schema (chords not notes), the post-processing (no monophonic truncation; voice-leading applies between chord voicings instead of between notes) and the kernel's active-note budget. |
-| P2 | **Voicing model** | L | ✅ **done 2026-08-23**. `ChordVoicing.swift`: shell, rootless A and B, drop 2, quartal and close, with tones classified by interval rather than by position in the dictionary's list — which is what makes them right on suspended, quartal and altered chords. Original note: Comping needs voicings, not pitch sets: register, spacing, inversion, which chord tones are omitted, and whether the bass is included. The suite's chord dictionary provides the pitch classes; voicing is the missing layer and is a good candidate for shared theory code. |
+| P2 | **Voicing model** | L | ✅ **done 2026-08-23**. `ChordVoicing.swift`: shell, rootless A and B, drop 2, quartal and close — and, since 2026-08-28, **drawn**, which takes its tones from a `DegreeHistogram` over the chord's own scale rather than from a recipe in intervals, so the colour differs per chord instead of being tabulated. All of them classify tones by interval rather than by position in the dictionary's list — which is what makes them right on suspended, quartal and altered chords. Original note: Comping needs voicings, not pitch sets: register, spacing, inversion, which chord tones are omitted, and whether the bass is included. The suite's chord dictionary provides the pitch classes; voicing is the missing layer and is a good candidate for shared theory code. |
 | P3 | **Voice-leading between voicings** | L | ✅ **done 2026-08-23**. The voicing moves as a *unit*: re-placing each voice independently finds lower total movement and destroys the voicing doing it, because internal spacing is what makes a rootless A one. Original note: The melodic version folds octaves to keep a line singable. The comping version needs the analogous constraint between successive voicings — minimize total movement, keep common tones. |
 | P4 | **Rhythmic comping figures** | M | ✅ **done 2026-08-23**, and the guess was right — a comping figure is a rhythm plus a voicing policy, and the rhythms are the melodic side's `GestureRhythm` vocabulary, so both modes share one sense of time. Original note: Charleston, bossa, stabs, pad. Overlaps with the template system (T-series): a comping template is a rhythm plus a voicing policy. |
 | P5 | **Split or dual output** | M | Line and comping in one instance, on separate MIDI channels or separate output ports, so one MelGen can feed a mono lead and a poly pad. Decide after P1: two instances may be the cleaner answer. |

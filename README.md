@@ -22,7 +22,7 @@ or locked to the host's playhead.
 | **Note duration** | The written rhythm — even, long–short, short–long or mixed |
 | **Gate length** | How much of each note's slot sounds: staccato through as-written to legato, applied live |
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
-| **Templates** | Fifteen — nine line templates and six comping figures. The mode chooses which half is in play; select any subset and cycle, shuffle or lock it |
+| **Templates** | Twenty-three — nine line templates, six comping figures and eight bass figures. The mode chooses which set is in play; select any subset and cycle, shuffle or lock it |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
 | **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
 | **What to do now** | One line above both tabs naming the next thing and why it's next, derived from the session's own state — and going quiet when nothing is outstanding |
@@ -38,13 +38,17 @@ or locked to the host's playhead.
 | **Variants and morphs** | Fourteen transforms, scored against your material, and a dial between two lines you like |
 | **Listening** | Play something in and it becomes library material, read against the changes on screen |
 | **Comping** | Voicings under the changes, voice-led, in six figures |
+| **Bass** | On-beat and off-beat figure banks mixed on a diamond, over the changes or over a key, with a range, eight seeds and a morph between them |
+| **Degree histogram** | Which note, as weights over the twelve semitones above the chord's root. One `reach` dial walks the order an improviser arrives in — root, fifth, third, seventh, eleventh, ninth, thirteenth — and separate dials let the outside notes and a side-slipped pentatonic in. Comping draws on it too: the **Drawn** voicing asks each chord's own scale which colour it can carry, so a major seventh gets its ninth and a minor seventh gets its eleventh without either being written down |
+| **Transition histogram** | How far to the next note, as weights over the interval. Multiplied by the degree histogram, so a line steps mostly by step *and* lands mostly on chord tones without either being a rule that overrides the other |
+| **Diatonic mode** | A key instead of changes, and a single **minorness** dial across the modal brightness ladder — Lydian, Ionian, Mixolydian, Dorian, Aeolian, Phrygian, Locrian, each one flattened degree darker than the last. A mode can also be typed into the progression, as `C(dorian)` |
 | **Voice leading** | Off, register, or smooth — minimal taxicab leading, ported from the suite's reference implementation and held to its shared vectors. In line mode it smooths the seam where a line crosses a chord change |
 | **Progressions** | Generated here from corpus transition tables, rather than pasted in |
 | **Setups** | Name the settings that decide what comes next and come back to them; mark one the default and new instances start there |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Two tabs** | **Play** makes material and performs it; **Decide** judges it and shows what's been learned |
-| **Two modes** | **Line** writes a monophonic part, **Chords** comps under the changes. Explicit because the receiving instrument differs — a mono synth handed chords plays whichever note wins its note-priority rule |
+| **Three modes** | **Line** writes a monophonic part, **Chords** comps under the changes, **Bass** draws a bass part in its own register. Explicit because the receiving instrument differs — a mono synth handed chords plays whichever note wins its note-priority rule, and a lead sound handed a bass part plays the right notes two octaves too low |
 | **Themes** | Light (default) and Dark, MelGen's own setting rather than the host's |
 
 ---
@@ -108,6 +112,8 @@ Scripts/verify.sh chords     # one suite
 | `retrieval` | Finding a line rather than making one, and being surprised on purpose |
 | `topics` | Grouping the library so the vocabulary can come from the material |
 | `steps` | Interval cells: self-sequencing figures and interval streams |
+| `histograms` | Which note and how far to the next one — the note stack in its stated order, the side slip, the modal ladder, and the two histograms multiplied |
+| `bassline` | The bass mode: the two figure banks, the diamond that mixes them, and that the line stays in its range, stays one voice and states every chord |
 | `capture` | Pairing, segmenting and quantizing what was played in |
 | `comping` | The voicing layer, taxicab voice leading against the suite's shared vectors, and chords instead of a line |
 | `progression` | Generating the changes, and a drift check on the corpus tables |
@@ -143,9 +149,9 @@ hierarchy. VoiceOver on a device is unaffected.
 
 ## How it works
 
-### Six sources, one loop
+### Seven sources, one loop
 
-A take can come from any of six places, and everything downstream treats them
+A take can come from any of seven places, and everything downstream treats them
 alike — the same measurement, the same curation, the same performance controls:
 
 | Source | Cost | What it is |
@@ -156,10 +162,12 @@ alike — the same measurement, the same curation, the same performance controls
 | **Your material** | Instant | Drawn from slot statistics and a variable-order chain over what you kept |
 | **What you play** | Instant | Your own playing, captured and read against the changes |
 | **Comp** | Instant | Voicings under the changes, voice-led, in six figures |
+| **Bassline** | Instant | A degree histogram and a transition histogram, drawn through a rhythmic figure, inside a stated register |
 
-Which of the six are offered depends on the mode: Chords narrows it to the three
-that can produce a voicing, because offering the others would be offering
-something the mode can't deliver. Material also arrives from outside — a MIDI
+Which of the seven are offered depends on the mode: Chords narrows it to the
+three that can produce a voicing and Bass to the three that can put a part in the
+right register, because offering the others would be offering something the mode
+can't deliver. Material also arrives from outside — a MIDI
 file, or a take kept as a line — and once it is a `MelodyPattern` nothing
 downstream can tell where it came from.
 

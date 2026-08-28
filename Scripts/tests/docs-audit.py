@@ -59,16 +59,24 @@ def main() -> None:
     else:
         check("history limits are findable in the code", False)
 
-    # 3. Template counts, which are two lists the README totals.
+    # 3. Template counts, which are three lists the README totals.
     templates = read("MelGenExtension/Melody/MelGenTemplate.swift")
     comping = read("MelGenExtension/Melody/MelodyComping.swift")
+    bassline = read("MelGenExtension/Melody/Bassline.swift")
     line_count = len(re.findall(r"MelGenTemplate\(brief:", templates))
     figures = re.search(r"static let all: \[CompingFigure\] = \[([^\]]*)\]", comping)
     figure_count = len([f for f in figures.group(1).split(",") if f.strip()]) if figures else 0
-    total = line_count + figure_count
+    banks = re.findall(r"static let (?:on|off)BeatBank: \[BasslineFigure\] = \[([^\]]*)\]",
+                       bassline)
+    bass_count = sum(len([f for f in bank.split(",") if f.strip()]) for bank in banks)
+    total = line_count + figure_count + bass_count
     check("the README's template count matches the code",
           str(total) in readme or _spelled(total) in readme.lower(),
-          f"{line_count} line + {figure_count} chord = {total}")
+          f"{line_count} line + {figure_count} chord + {bass_count} bass = {total}")
+    check("the two bass banks are the same size, so the diamond is symmetrical",
+          len(banks) == 2 and len(set(
+              len([f for f in bank.split(",") if f.strip()]) for bank in banks)) == 1,
+          f"{[len([f for f in bank.split(',') if f.strip()]) for bank in banks]}")
 
     # 4. A concept renamed in code is renamed in the docs. "Style brief" is the
     #    old name for what the code now calls a template.
@@ -96,7 +104,8 @@ def main() -> None:
 
 
 def _spelled(number: int) -> str:
-    words = {9: "nine", 6: "six", 14: "fourteen", 15: "fifteen", 16: "sixteen", 22: "twenty-two"}
+    words = {9: "nine", 6: "six", 8: "eight", 14: "fourteen", 15: "fifteen",
+             16: "sixteen", 22: "twenty-two", 23: "twenty-three", 24: "twenty-four"}
     return words.get(number, str(number))
 
 

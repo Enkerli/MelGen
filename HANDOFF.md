@@ -1,13 +1,25 @@
 # Handoff — current state
 
-*Updated 2026-08-26. For whoever picks this up next, including the agent embedded
+*Updated 2026-08-28. For whoever picks this up next, including the agent embedded
 in Xcode. Written while moving fast on purpose: what landed, what's loose, and
 what is definitely not proven.*
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and
 the MIDI interchange work. Everything is verified outside Xcode by
-`Scripts/verify.sh` — **29 suites** — and compiles in the extension target.
+`Scripts/verify.sh` — **31 suites** — and compiles in the extension target.
+
+**On `bassline-and-histograms` (2026-08-28)**, the newest work and the one thing
+here that has *not* been heard on device: a third mode, a seventh source, and the
+two distributions the roadmap had been naming as missing since G10. Detail is in
+[ROADMAP.md](ROADMAP.md#what-landed-on-bassline-and-histograms). The short
+version: `DegreeHistogram` says which note as weights over the twelve semitones
+above the chord's root, `TransitionHistogram` says how far to the next one, and
+`MelodicWalk` multiplies them; `BasslineGenerator` draws through a rhythmic
+figure mixed on a diamond, inside a stated register; `DiatonicHarmony` turns a
+key and a minorness into a one-chord progression so nothing downstream has to
+know the difference. Two new suites, `histograms` and `bassline`, and both build
+targets compile.
 
 **Since 2026-08-25**, five things landed that this document did not previously
 mention. Detail is in [ROADMAP.md](ROADMAP.md); the short version:
@@ -41,8 +53,8 @@ turned into the parentage model, which is the more interesting outcome.
 
 ## The shape of it
 
-The branch turns MelGen from "a model writes a line" into a loop with six sources
-of material, one curation model over all of them, and two learned models fed by
+The branch turns MelGen from "a model writes a line" into a loop with seven
+sources of material, one curation model over all of them, and two learned models fed by
 what survives curation.
 
 ```
@@ -53,7 +65,9 @@ what survives curation.
         ├─ a chain walk over what you kept                   │  MelodyPattern
         ├─ variants and morphs of any of the above          ─┘
         ├─ what you played in
-        └─ comping (chords rather than a line)
+        ├─ comping (chords rather than a line)
+        └─ a bass line (two histograms through a figure) ── emits notes, read
+                                                            back as a pattern
                     │
                     ▼
             realized over harmony  ──►  heard  ──►  judged (disposition, this pass)
@@ -62,9 +76,13 @@ what survives curation.
                                 (keep / tweak / partly)
 ```
 
-The through-line: **everything produces `MelodyPattern`s** — degrees, not
+The through-line: **everything ends up a `MelodyPattern`** — degrees, not
 pitches — so everything is realized, curated, mutated and learned from by the
-same machinery. A seventh source would be a file, not a subsystem.
+same machinery. The bass line is the one source that doesn't *start* there, and
+the reason is written next to it: a register is the whole point of a bass part
+and the pattern format deliberately doesn't carry one, so the walk happens in
+absolute pitch and `MelodyPatterns.extract` reads it back. An eighth source
+would be a file, not a subsystem.
 
 ---
 
@@ -91,6 +109,7 @@ same machinery. A seventh source would be a file, not a subsystem.
 | Lead the voices | Minimal L1 (taxicab) leading ported from the suite's reference implementation and held to its shared vectors; three modes, and a seam pass for lines |
 | Judge a variation as one | Takes carry the take they were made from and what was done to get there, so a variant, mutation, morph or drifted pass is judged in its own right with its parent's mark for context |
 | Keep a setup | `MelGenSetup` — the settings that decide what comes next, and none of the material; one can be the default a new instance starts from |
+| Draw a bass line | `DegreeHistogram` and `TransitionHistogram`, multiplied by `MelodicWalk` and drawn through a figure mixed on a diamond; a key as an alternative to changes, with minorness as one dial across the modal brightness ladder |
 | Keep what the gate refused | Every proposed template is logged with the bar it was held to; the bar is now derived from the existing set's own spacing rather than from a mis-taken constant |
 
 ---
@@ -104,8 +123,8 @@ file format 110. Use the beta toolchain:
 /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project MelGen.xcodeproj -scheme MelGenExtension -destination 'generic/platform=iOS Simulator' -configuration Debug build CODE_SIGNING_ALLOWED=NO
 ```
 
-`Scripts/verify.sh` is unaffected and now runs fifteen suites, compiling every
-Melody source each time:
+`Scripts/verify.sh` is unaffected and now runs every suite in the README's table,
+compiling every Melody source each time:
 
 ```bash
 Scripts/verify.sh
@@ -114,7 +133,8 @@ Scripts/verify.sh
 New suites on this branch: `extraction`, `curation`, `phrases`, `stylemodel`,
 `chain`, `mutation`, `retrieval`, `topics`, `steps`, `capture`, `comping`,
 `progression`. The last one also fails if the generated ProgGenie tables have
-drifted from music-suite.
+drifted from music-suite. Added on `bassline-and-histograms`: `histograms` and
+`bassline`.
 
 Not part of `verify.sh`, because it needs data rather than fixtures:
 
