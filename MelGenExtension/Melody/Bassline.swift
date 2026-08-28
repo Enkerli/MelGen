@@ -29,8 +29,8 @@
 //  · **Pitch** is `DegreeHistogram` and `TransitionHistogram`, multiplied by
 //    `MelodicWalk`. The bass line's register, its preference for roots and
 //    fifths, and its chromatic approaches are all settings on those two.
-//  · **Mixing** is the diamond: four corner figures, a point inside, and a
-//    weighted sum of their per-slot numbers.
+//  · **Mixing** is the pad: left to right balances the on-beat layer against the
+//    off-beat one, up and down walks both figure banks from sparse to busy.
 //
 //  ## Why this emits notes and not a pattern
 //
@@ -155,8 +155,8 @@ extension BasslineFigure {
         reachBias: 0.2
     )
 
-    /// One note, held. The floor of the whole diamond, and the thing a range
-    /// control is easiest to hear on.
+    /// One note, held. The floor of the whole pad, and the thing a range control
+    /// is easiest to hear on.
     static let pedal = BasslineFigure(
         "Pedal",
         "One note under the whole bar",
@@ -214,154 +214,259 @@ extension BasslineFigure {
 
     /// Every figure either bank holds, for a picker that wants one list.
     static var all: [BasslineFigure] { onBeatBank + offBeatBank }
+
+    /// How much of the bar a figure expects to fill — its onset weight.
+    ///
+    /// What orders a bank. The Bassline Generator's own manual is explicit that
+    /// low pattern numbers are sparse and high ones are busy, and that ordering
+    /// is what makes a slider through 64 patterns a *control* rather than a list
+    /// of presets. Measured rather than declared, so adding a figure puts itself
+    /// in the right place and can't claim a busyness it doesn't have.
+    var weight: Double { onsets.reduce(0, +) }
+
+    /// The figure a bank names at a position from 0 (sparsest) to 1 (busiest).
+    ///
+    /// Between two entries they are blended, which is what makes the pad's
+    /// vertical continuous. A blend of two figures is a figure: the type is
+    /// three vectors of numbers and nothing about it wants to be one of a fixed
+    /// set.
+    static func inBank(_ bank: [BasslineFigure], at position: Double) -> BasslineFigure {
+        let ordered = ordered(bank)
+        guard !ordered.isEmpty else { return .downbeats }
+        guard ordered.count > 1 else { return ordered[0] }
+
+        let scaled = max(0, min(1, position)) * Double(ordered.count - 1)
+        let lower = Int(scaled.rounded(.down))
+        let upper = min(ordered.count - 1, lower + 1)
+        return ordered[lower].blended(with: ordered[upper], scaled - Double(lower))
+    }
+
+    /// A bank, sparsest first. One definition, because a position on the pad's
+    /// vertical and the position a named figure sits at have to agree — they
+    /// didn't when one sorted and the other used the order they were written in,
+    /// and the symptom was a template chip that moved the pad somewhere else.
+    static func ordered(_ bank: [BasslineFigure]) -> [BasslineFigure] {
+        bank.sorted { ($0.weight, $0.name) < ($1.weight, $1.name) }
+    }
+
+    /// Two figures, mixed. `t` of 0 is all self, 1 is all other.
+    func blended(with other: BasslineFigure, _ t: Double) -> BasslineFigure {
+        let t = max(0, min(1, t))
+        guard t > 1e-9 else { return self }
+        guard t < 1 - 1e-9 else { return other }
+        func lerp(_ left: [Double], _ right: [Double]) -> [Double] {
+            zip(left, right).map { $0 * (1 - t) + $1 * t }
+        }
+        // Named for both when it is genuinely between them. A blend that calls
+        // itself by its nearer neighbour's name is a control that reads as
+        // stuck: the pad moves, the figure changes, and the caption doesn't.
+        let blendedName = (0.15...0.85).contains(t) ? "\(name)→\(other.name)"
+                                                    : (t < 0.5 ? name : other.name)
+        return BasslineFigure(
+            blendedName,
+            t < 0.5 ? summary : other.summary,
+            onsets: lerp(onsets, other.onsets),
+            lengths: lerp(lengths, other.lengths),
+            accents: lerp(accents, other.accents),
+            reachBias: reachBias * (1 - t) + other.reachBias * t,
+            chordTonePull: chordTonePull * (1 - t) + other.chordTonePull * t
+        )
+    }
+
+    /// The same figure, moved along the bar and wrapped.
+    ///
+    /// The manual's Shift, which is the cheapest variation in the whole device:
+    /// an on-beat figure shifted by one eighth *is* an off-beat figure, and
+    /// nothing about the notes changed. Wrapped rather than clipped, because a
+    /// figure is a cycle and a shift that loses its first note has edited it.
+    func shifted(by eighths: Int) -> BasslineFigure {
+        let offset = ((eighths % Self.slots) + Self.slots) % Self.slots
+        guard offset != 0 else { return self }
+        func roll(_ values: [Double]) -> [Double] {
+            (0..<Self.slots).map { values[(($0 - offset) % Self.slots + Self.slots) % Self.slots] }
+        }
+        return BasslineFigure(name, summary,
+                              onsets: roll(onsets),
+                              lengths: roll(lengths),
+                              accents: roll(accents),
+                              reachBias: reachBias,
+                              chordTonePull: chordTonePull)
+    }
 }
 
-// MARK: - The diamond
+// MARK: - The pad
 
-/// Which corner of the diamond a figure sits at.
-enum BasslineCorner: String, CaseIterable, Codable, Sendable {
-    case onBeat, offBeat, anchored, running
+/// Which end of an axis a label belongs to.
+enum BasslineAxisEnd: String, CaseIterable, Codable, Sendable {
+    case onBeat, offBeat, busiest, sparsest
 
     var label: String {
         switch self {
         case .onBeat: return "On the beat"
         case .offBeat: return "Off the beat"
-        case .anchored: return "Anchored"
-        case .running: return "Running"
+        case .busiest: return "Busiest"
+        case .sparsest: return "Sparsest"
         }
     }
 }
 
-/// Four figures, a point between them, and the figure that point names.
+/// The pad: what you hear on the horizontal, which figures on the vertical.
 ///
-/// Two axes, because that is what a bass line has two of. North and south are
-/// the on-beat and off-beat banks — the distinction the Bassline Generator makes
-/// and the one that turned out to be worth copying, because it is the axis a
-/// bass part is actually described along. East and west are how much of it there
-/// is: a pedal at one end, eighths at the other. The centre is an even blend of
-/// all four, which is a real place rather than a default, and the reason the
-/// control is a pad rather than two sliders is that the interesting settings are
-/// the ones between corners.
-struct BasslineDiamond: Codable, Hashable, Sendable {
-    /// −1 anchored, +1 running.
+/// The Bassline Generator plays an on-beat pattern and an off-beat pattern *at
+/// the same time*, merged into one monophonic line, with a velocity knob per
+/// layer — turn the off-beat one off and the part stops being syncopated. Its
+/// own pad picks which two of its 64-per-bank patterns are in play, ordered so
+/// that low numbers are sparse and high ones are busy.
+///
+/// This is those two ideas on two axes:
+///
+/// · **West to east is the balance.** All the way west you hear only the
+///   on-beat layer; all the way east only the off-beat one; in the middle both
+///   at full. That is the device's two velocity knobs as one control, and it is
+///   the syncopation axis — moving east is the part getting pushed off the beat
+///   without a single figure changing.
+/// · **South to north is which figures.** One position walking both banks at
+///   once, each ordered sparse to busy by its own measured onset weight rather
+///   than by the order they were written in. Between two entries the figures are
+///   blended, so the axis is continuous rather than four steps — which is what
+///   makes the two banks behave like the device's sliders rather than like a
+///   pair of pickers.
+///
+/// **Why the region is a square and not a diamond.** It was a diamond first,
+/// because the first version mixed four corner figures barycentrically and
+/// `|x| + |y| ≤ 1` is what makes four weights a partition rather than a
+/// contradiction. Once the axes became two independent things that constraint
+/// stopped describing anything and started removing settings: at the top vertex
+/// there is no width left, so the busiest on-beat figure could only ever be
+/// heard *with* the off-beat layer — and a straight quarter-note walking bass
+/// with no syncopation in it is about the most ordinary bass part there is. A
+/// shape that forbids that is a decoration deciding what music you can make.
+struct BasslinePad: Codable, Hashable, Sendable {
+    /// −1 is the on-beat layer alone, +1 the off-beat layer alone, 0 both.
     var x: Double = 0
-    /// −1 off the beat, +1 on it.
-    var y: Double = 0.5
-    /// Which figure from the on-beat bank sits north.
-    var onBeatName: String = BasslineFigure.downbeats.name
-    /// Which figure from the off-beat bank sits south.
-    var offBeatName: String = BasslineFigure.tresillo.name
+    /// −1 is the sparsest pair, +1 the busiest.
+    var y: Double = 0
 
-    init(x: Double = 0,
-         y: Double = 0.5,
-         onBeatName: String = BasslineFigure.downbeats.name,
-         offBeatName: String = BasslineFigure.tresillo.name) {
-        self.onBeatName = onBeatName
-        self.offBeatName = offBeatName
+    init(x: Double = 0, y: Double = 0) {
         self.setPoint(x: x, y: y)
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(x: try container.decodeIfPresent(Double.self, forKey: .x) ?? 0,
-                  y: try container.decodeIfPresent(Double.self, forKey: .y) ?? 0.5,
-                  onBeatName: try container.decodeIfPresent(String.self, forKey: .onBeatName)
-                      ?? BasslineFigure.downbeats.name,
-                  offBeatName: try container.decodeIfPresent(String.self, forKey: .offBeatName)
-                      ?? BasslineFigure.tresillo.name)
+                  y: try container.decodeIfPresent(Double.self, forKey: .y) ?? 0)
     }
 
-    /// Moves the point, clamped onto the diamond.
-    ///
-    /// A square would let both axes run to their extremes at once, which is a
-    /// corner that means "entirely on the beat and entirely running" — two
-    /// different figures claiming the whole mix. `|x| + |y| ≤ 1` is what makes
-    /// the four weights a partition instead of a contradiction, and it is why
-    /// the shape is a diamond rather than a pad.
+    /// Moves the point. Each axis is clamped on its own, because each means
+    /// something on its own.
     mutating func setPoint(x: Double, y: Double) {
-        let x = max(-1, min(1, x))
-        let y = max(-1, min(1, y))
-        let magnitude = abs(x) + abs(y)
-        if magnitude > 1 {
-            self.x = x / magnitude
-            self.y = y / magnitude
-        } else {
-            self.x = x
-            self.y = y
+        self.x = max(-1, min(1, x))
+        self.y = max(-1, min(1, y))
+    }
+
+    /// −1 on-beat only, +1 off-beat only, 0 both at full.
+    var balance: Double { x }
+
+    /// Where the point sits from the sparsest pair (0) to the busiest (1).
+    var selection: Double { (y + 1) / 2 }
+
+    /// How loud each layer is. Both at full in the middle, which is the point of
+    /// a crossfade rather than a share: a bass part with both layers should be
+    /// busier than either alone, not the average of them.
+    var onBeatLevel: Double { max(0, min(1, 1 - balance)) }
+    var offBeatLevel: Double { max(0, min(1, 1 + balance)) }
+
+    /// The two figures the vertical currently names.
+    var onBeatFigure: BasslineFigure {
+        BasslineFigure.inBank(BasslineFigure.onBeatBank, at: selection)
+    }
+
+    var offBeatFigure: BasslineFigure {
+        BasslineFigure.inBank(BasslineFigure.offBeatBank, at: selection)
+    }
+
+    /// The layer doing most of the work, for a subtitle and a take's name.
+    var leadingFigure: BasslineFigure {
+        balance < 0 ? onBeatFigure : offBeatFigure
+    }
+
+    /// Where a point has to sit vertically for a figure to be the one its bank
+    /// names.
+    static func selection(of figure: BasslineFigure) -> Double? {
+        for bank in [BasslineFigure.onBeatBank, BasslineFigure.offBeatBank] {
+            let ordered = BasslineFigure.ordered(bank)
+            if let index = ordered.firstIndex(where: { $0.name == figure.name }) {
+                return ordered.count > 1 ? Double(index) / Double(ordered.count - 1) : 0
+            }
         }
+        return nil
     }
 
-    /// The figure at each corner.
-    func figure(at corner: BasslineCorner) -> BasslineFigure {
-        switch corner {
-        case .onBeat: return BasslineFigure.named(onBeatName, in: BasslineFigure.onBeatBank)
-        case .offBeat: return BasslineFigure.named(offBeatName, in: BasslineFigure.offBeatBank)
-        case .anchored: return .pedal
-        case .running: return .ands
-        }
-    }
-
-    /// How much of each corner the current point asks for.
+    /// The one figure the two layers add up to.
     ///
-    /// Whatever the point doesn't spend on a direction is spread evenly over all
-    /// four, so the centre is every corner at a quarter and the weights always
-    /// sum to one.
-    var weights: [BasslineCorner: Double] {
-        let spare = max(0, 1 - abs(x) - abs(y)) / 4
-        return [
-            .onBeat: max(0, y) + spare,
-            .offBeat: max(0, -y) + spare,
-            .running: max(0, x) + spare,
-            .anchored: max(0, -x) + spare
-        ]
-    }
-
-    /// The mixed figure this point names.
-    ///
-    /// Per-slot arithmetic on all three vectors at once. Onsets and accents are
-    /// plain weighted sums; lengths are weighted by *onset* share rather than by
-    /// corner weight, because a corner that isn't going to put a note there has
-    /// no business having an opinion about how long it is — which is what stopped
-    /// the pedal's eight-eighth notes stretching every mix that included it.
+    /// Onsets add and are capped rather than averaged: two layers playing at
+    /// once is the whole idea, and a slot both of them want is a slot that gets
+    /// a note. Lengths and accents are weighted by *contribution* rather than by
+    /// level, because a layer that was never going to put a note in a slot has
+    /// no business having an opinion about how long it is — which is what
+    /// stopped the pedal's eight-eighth notes stretching every mix it was in.
     func mixed() -> BasslineFigure {
-        let weights = self.weights
+        let layers = [(onBeatFigure, onBeatLevel), (offBeatFigure, offBeatLevel)]
         var onsets = Array(repeating: 0.0, count: BasslineFigure.slots)
         var lengths = Array(repeating: 0.0, count: BasslineFigure.slots)
         var accents = Array(repeating: 0.0, count: BasslineFigure.slots)
-        var lengthShare = Array(repeating: 0.0, count: BasslineFigure.slots)
+        var share = Array(repeating: 0.0, count: BasslineFigure.slots)
         var reachBias = 0.0
         var chordTonePull = 0.0
-        var names: [String] = []
+        var weight = 0.0
 
-        for corner in BasslineCorner.allCases {
-            let weight = weights[corner] ?? 0
-            guard weight > 0 else { continue }
-            let figure = figure(at: corner)
-            if weight > 0.2 { names.append(figure.name) }
-            reachBias += figure.reachBias * weight
-            chordTonePull += figure.chordTonePull * weight
+        for (figure, level) in layers where level > 0 {
+            weight += level
+            reachBias += figure.reachBias * level
+            chordTonePull += figure.chordTonePull * level
             for slot in 0..<BasslineFigure.slots {
-                let contribution = figure.onsets[slot] * weight
-                onsets[slot] += contribution
-                accents[slot] += figure.accents[slot] * weight
+                let contribution = figure.onsets[slot] * level
+                onsets[slot] = min(1, onsets[slot] + contribution)
+                accents[slot] += figure.accents[slot] * contribution
                 lengths[slot] += figure.lengths[slot] * contribution
-                lengthShare[slot] += contribution
+                share[slot] += contribution
             }
         }
 
         for slot in 0..<BasslineFigure.slots {
-            lengths[slot] = lengthShare[slot] > 0 ? lengths[slot] / lengthShare[slot] : 2
+            lengths[slot] = share[slot] > 0 ? lengths[slot] / share[slot] : 2
+            accents[slot] = share[slot] > 0 ? accents[slot] / share[slot] : 0
         }
 
         return BasslineFigure(
-            names.isEmpty ? "Mixed" : names.joined(separator: " + "),
-            "mixed at \(Int((x * 100).rounded()))% running, \(Int((y * 100).rounded()))% on the beat",
+            name,
+            "on-beat \(Int((onBeatLevel * 100).rounded()))%, "
+            + "off-beat \(Int((offBeatLevel * 100).rounded()))%",
             onsets: onsets,
             lengths: lengths,
             accents: accents,
-            reachBias: reachBias,
-            chordTonePull: max(0.2, chordTonePull)
+            reachBias: weight > 0 ? reachBias / weight : 0,
+            chordTonePull: weight > 0 ? max(0.2, chordTonePull / weight) : 1
         )
+    }
+
+    /// What the pad currently names, in words rather than in coordinates.
+    var name: String {
+        if onBeatLevel <= 0.01 { return offBeatFigure.name }
+        if offBeatLevel <= 0.01 { return onBeatFigure.name }
+        return "\(onBeatFigure.name) + \(offBeatFigure.name)"
+    }
+
+    /// The reading under the pad: which figures, at what levels.
+    var readout: String {
+        var parts: [String] = []
+        if onBeatLevel > 0.01 {
+            parts.append("\(onBeatFigure.name) \(Int((onBeatLevel * 100).rounded()))%")
+        }
+        if offBeatLevel > 0.01 {
+            parts.append("\(offBeatFigure.name) \(Int((offBeatLevel * 100).rounded()))%")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -371,7 +476,7 @@ struct BasslineDiamond: Codable, Hashable, Sendable {
 struct BasslineSettings: Codable, Hashable, Sendable {
 
     /// Where the notes go.
-    var diamond = BasslineDiamond()
+    var pad = BasslinePad()
 
     /// Whether the harmony is the typed changes or a key.
     ///
@@ -410,6 +515,13 @@ struct BasslineSettings: Codable, Hashable, Sendable {
 
     /// Scales every onset probability. 1 plays the figure as written.
     var density: Double = 1
+    /// Moves the whole figure along the bar, wrapping. In eighths.
+    ///
+    /// The manual's Shift, and the cheapest variation the device has: an on-beat
+    /// figure shifted by one eighth is an off-beat figure and not one note
+    /// changed. Kept to one bar because the figure is one bar; the device's ±32
+    /// steps only means more because its patterns are longer.
+    var shift: Int = 0
 
     /// Which of the eight seeds is in play.
     ///
@@ -442,7 +554,7 @@ struct BasslineSettings: Codable, Hashable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        diamond = try container.decodeIfPresent(BasslineDiamond.self, forKey: .diamond) ?? BasslineDiamond()
+        pad = try container.decodeIfPresent(BasslinePad.self, forKey: .pad) ?? BasslinePad()
         overKey = try container.decodeIfPresent(Bool.self, forKey: .overKey) ?? false
         key = try container.decodeIfPresent(Int.self, forKey: .key) ?? 0
         minorness = try container.decodeIfPresent(Double.self, forKey: .minorness) ?? 0.5
@@ -456,6 +568,7 @@ struct BasslineSettings: Codable, Hashable, Sendable {
         lowNote = try container.decodeIfPresent(Int.self, forKey: .lowNote) ?? 28
         highNote = try container.decodeIfPresent(Int.self, forKey: .highNote) ?? 52
         density = try container.decodeIfPresent(Double.self, forKey: .density) ?? 1
+        shift = try container.decodeIfPresent(Int.self, forKey: .shift) ?? 0
         seedIndex = try container.decodeIfPresent(Int.self, forKey: .seedIndex) ?? 0
         morph = try container.decodeIfPresent(Double.self, forKey: .morph) ?? 0
     }
@@ -465,7 +578,7 @@ struct BasslineSettings: Codable, Hashable, Sendable {
         let harmony = overKey
             ? "\(ChordProgression.flatNoteNames[ChordScales.pitchClass(key)]) \(DiatonicHarmony.label(forMinorness: minorness).lowercased())"
             : "the changes"
-        return "\(diamond.mixed().name.lowercased()) over \(harmony), "
+        return "\(pad.name.lowercased()) over \(harmony), "
              + "\(ChordProgression.noteName(forMIDINote: range.lowerBound))–"
              + "\(ChordProgression.noteName(forMIDINote: range.upperBound))"
     }
@@ -473,30 +586,28 @@ struct BasslineSettings: Codable, Hashable, Sendable {
 
 extension BasslineSettings {
 
-    /// The same settings with a figure moved onto the diamond.
+    /// The same settings with the pad moved to where a figure lives.
     ///
-    /// Which corner it lands at is a property of the figure rather than a choice
-    /// — that is what the two banks *are* — so selecting a bass template is one
-    /// tap and never asks a follow-up question. Selecting one also pulls the
-    /// point toward that corner, because putting a figure on a diamond that is
-    /// nowhere near it changes nothing audible and reads as the control being
-    /// broken.
+    /// A figure's position is a property of the figure — where its own bank's
+    /// density ordering puts it — so choosing a bass template is one tap and
+    /// never asks a follow-up question. It also leans the balance toward the
+    /// layer that figure belongs to, because selecting an off-beat figure while
+    /// the off-beat layer is silent changes nothing audible and reads as the
+    /// control being broken.
     func placing(_ figure: BasslineFigure) -> BasslineSettings {
+        guard let selection = BasslinePad.selection(of: figure) else { return self }
+        let isOnBeat = BasslineFigure.onBeatBank.contains { $0.name == figure.name }
         var copy = self
-        if BasslineFigure.onBeatBank.contains(where: { $0.name == figure.name }) {
-            copy.diamond.onBeatName = figure.name
-            copy.diamond.setPoint(x: diamond.x, y: max(diamond.y, 0.4))
-        } else {
-            copy.diamond.offBeatName = figure.name
-            copy.diamond.setPoint(x: diamond.x, y: min(diamond.y, -0.4))
-        }
+        // Keep the lean that is already there when it points the right way; take
+        // a modest one when it doesn't. Snapping straight to the edge would
+        // silence the other layer, which nobody asked for by tapping a chip.
+        let lean = isOnBeat ? min(pad.x, -0.35) : max(pad.x, 0.35)
+        copy.pad.setPoint(x: lean, y: selection * 2 - 1)
         return copy
     }
 
     /// The figure currently doing most of the work, for a subtitle.
-    var leadingFigure: BasslineFigure {
-        diamond.figure(at: diamond.y < 0 ? .offBeat : .onBeat)
-    }
+    var leadingFigure: BasslineFigure { pad.leadingFigure }
 }
 
 // MARK: - Generating
@@ -585,7 +696,7 @@ enum BasslineGenerator {
                              over progression: ChordProgression,
                              seed: UInt64,
                              index: Int) -> [SequencedNote] {
-        let figure = settings.diamond.mixed()
+        let figure = settings.pad.mixed().shifted(by: settings.shift)
         let transitions = transitions(for: settings)
         let range = settings.range
         let bars = Int(ceil(progression.totalBeats / MelodyPatterns.beatsPerBar))

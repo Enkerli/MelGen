@@ -336,7 +336,7 @@ struct MelGenState: Codable, Sendable {
     /// Which comping figure is in play, by name.
     var compingFigureName: String = CompingFigure.charleston.name
 
-    /// Everything that decides what the next bass line is like: the diamond, the
+    /// Everything that decides what the next bass line is like: the pad, the
     /// key or changes it reads against, the reach up the note stack, and the
     /// register. In session state rather than in the view because it is a setup
     /// in the sense TERMINOLOGY.md means — a saved one should bring it back.

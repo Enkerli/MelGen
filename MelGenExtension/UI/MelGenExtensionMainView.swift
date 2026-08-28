@@ -635,7 +635,7 @@ struct MelGenExtensionMainView: View {
 
     /// Everything that shapes a bass line, in the order the decisions are made.
     ///
-    /// The diamond first, because it is the one control that is worth watching
+    /// The pad first, because it is the one control that is worth watching
     /// while it moves. Then the harmony — changes or a key — because that is the
     /// question the mode asks that no other mode does. Then the notes, then the
     /// register, and the rest behind a disclosure, because a bass part is mostly
@@ -644,8 +644,15 @@ struct MelGenExtensionMainView: View {
     private var basslineSection: some View {
         WhenGroup(legend: "Bass", theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
-                DiamondPad(diamond: binding(\.bassline.diamond, reloadKernel: false),
-                           theme: theme)
+                FigurePad(pad: binding(\.bassline.pad, reloadKernel: false),
+                          theme: theme)
+                Text("Left and right balance the two layers — only the on-beat figure at "
+                     + "one end, only the off-beat one at the other, both at full in the "
+                     + "middle. Up and down choose which pair of figures, sparsest at the "
+                     + "bottom.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 harmonySourceRow
 
@@ -656,11 +663,12 @@ struct MelGenExtensionMainView: View {
 
                 rangeRow
 
-                MoreRow(summary: "More: outside · side-slip · chromatic · seeds",
+                MoreRow(summary: "More: shift · outside · side-slip · chromatic · seeds",
                         isExpanded: $showBasslineMore,
                         theme: theme)
                 if showBasslineMore {
                     VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                        shiftRow
                         LabelledSlider(title: "Outside", lowLabel: "in the scale",
                                        highLabel: "anything",
                                        value: binding(\.bassline.outside, reloadKernel: false),
@@ -756,6 +764,35 @@ struct MelGenExtensionMainView: View {
                                }),
                            theme: theme,
                            format: { ChordProgression.noteName(forMIDINote: 24 + Int(($0 * 48).rounded())) })
+        }
+    }
+
+    /// Moving the whole figure along the bar.
+    ///
+    /// The cheapest variation there is, and worth its own control rather than
+    /// being buried: a figure shifted by one eighth is the same notes and a
+    /// different feel, which is the one thing the pad's balance axis can't do.
+    private var shiftRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Text("Shift")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: 0)
+                Text(state.bassline.shift == 0
+                     ? "as written"
+                     : "\(state.bassline.shift > 0 ? "+" : "")\(state.bassline.shift) eighths")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(theme.text)
+            }
+            ChipPicker(options: (0..<BasslineFigure.slots).map { ($0, "\($0)") },
+                       selection: binding(\.bassline.shift, reloadKernel: false),
+                       theme: theme)
+            Text("Moves the figure along the bar and wraps it. An on-beat figure shifted "
+                 + "by one is an off-beat figure, with not one note changed.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1615,7 +1652,7 @@ struct MelGenExtensionMainView: View {
     private func useTemplate(_ name: String) {
         commit(reloadKernel: false) { state in
             // In Bass a template *is* a figure, so choosing one has to move it
-            // onto the diamond as well as pinning the rotation — otherwise the
+            // onto the pad as well as pinning the rotation — otherwise the
             // chip lights up and nothing about the next take changes.
             if state.mode == .bass,
                let figure = MelGenTemplates.named(name, mode: .bass)?.basslineFigure {
@@ -2410,6 +2447,7 @@ struct MelGenExtensionMainView: View {
         case .pass: return "Decide · Review"
         case .setups: return "Decide · Setup"
         case .storedLines: return "Play · this take"
+        case .bass: return "Decide · Bass"
         }
     }
 
@@ -2435,6 +2473,15 @@ struct MelGenExtensionMainView: View {
         case .setups:
             panelTab = .decide
             showSetups = true
+        case .bass:
+            // Switching the mode *is* going there: the section only exists in
+            // Bass, so landing on Decide with the mode still on Line would be
+            // sending someone to a heading that isn't drawn.
+            panelTab = .decide
+            commit(reloadKernel: false) { $0.mode = .bass }
+            if !MaterialSource.all(for: .bass).contains(source) {
+                source = MaterialSource.first(for: .bass)
+            }
         }
         statusMessage = "Opened \(placeName(of: destination))."
     }

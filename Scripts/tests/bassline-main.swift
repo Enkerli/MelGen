@@ -1,23 +1,33 @@
-// Checks the bass mode: the figures, the diamond that mixes them, and the line
-// that comes out.
+// Checks the bass mode: the figures, the pad that mixes them, and the line that
+// comes out.
 //
 // Three claims, and each of them is a thing a listener would notice going wrong.
 //
 // *The banks are what they say.* An on-beat figure whose weight is off the beat
-// is a mislabelled figure, and the diamond's whole vertical axis is that label.
+// is a mislabelled figure, and the pad's whole horizontal axis is that label.
 // So the split is measured rather than asserted — the same gate `templates`
 // puts on a template that doesn't differ from the others.
 //
-// *The diamond is a partition.* Four weights summing to one, whatever the point
-// is, with the corners reachable and the centre an even blend. If the weights
-// don't sum the mix isn't a mix, and moving the puck changes the amount of
-// material rather than its character.
+// *The pad's two axes mean two things, independently.* Left to right is the
+// balance between the two layers and up and down is which pair of figures, and
+// neither constrains the other — which is why the region is a square. It was a
+// diamond while four corner figures were being mixed barycentrically; with two
+// independent axes that constraint only removed settings, and the one it
+// removed first was a straight walking bass with no syncopation in it.
 //
 // *The line stays inside its range, stays one voice, and states the harmony.*
 // The range is most of what makes a bass part a bass part, one voice is what a
 // bass is, and a chord change with no note under it leaves the harmony unstated
 // — which no amount of right notes afterwards recovers.
 import Foundation
+
+extension Sequence where Element == Double {
+    /// Every neighbouring pair, for checking that a sweep is monotonic.
+    func adjacentPairs() -> [(Double, Double)] {
+        let values = Array(self)
+        return zip(values, values.dropFirst()).map { ($0, $1) }
+    }
+}
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {
@@ -61,58 +71,139 @@ check("no two figures are the same figure",
       Set(BasslineFigure.all.map { $0.onsets.map { String(format: "%.2f", $0) }.joined() }).count
         == BasslineFigure.all.count)
 check("the pedal is the sparsest thing in either bank",
-      BasslineFigure.pedal.onsets.reduce(0, +)
-        == BasslineFigure.all.map { $0.onsets.reduce(0, +) }.min())
+      BasslineFigure.pedal.weight == BasslineFigure.all.map(\.weight).min())
+check("no two figures in a bank weigh the same, so the ordering is total",
+      Set(BasslineFigure.onBeatBank.map(\.weight)).count == BasslineFigure.onBeatBank.count
+        && Set(BasslineFigure.offBeatBank.map(\.weight)).count == BasslineFigure.offBeatBank.count,
+      "\(BasslineFigure.all.map { String(format: "%.2f", $0.weight) })")
 
-// MARK: - The diamond
+// A bank is walked by density, and the walk is continuous: between two entries
+// the figures blend, which is what makes the pad's vertical a control rather
+// than four chips.
+for bank in [BasslineFigure.onBeatBank, BasslineFigure.offBeatBank] {
+    let sparsest = BasslineFigure.inBank(bank, at: 0)
+    let busiest = BasslineFigure.inBank(bank, at: 1)
+    check("a bank runs from its sparsest figure to its busiest",
+          sparsest.weight == bank.map(\.weight).min()
+            && busiest.weight == bank.map(\.weight).max(),
+          "\(sparsest.name) → \(busiest.name)")
+    check("and never gets sparser on the way up",
+          stride(from: 0.0, through: 1.0, by: 0.05)
+            .map { BasslineFigure.inBank(bank, at: $0).weight }
+            .adjacentPairs().allSatisfy { $0 <= $1 + 1e-9 })
+    check("a position between two entries is between them",
+          {
+              let ordered = bank.sorted { ($0.weight, $0.name) < ($1.weight, $1.name) }
+              let step = 1 / Double(ordered.count - 1)
+              let between = BasslineFigure.inBank(bank, at: step / 2)
+              return between.weight > ordered[0].weight
+                  && between.weight < ordered[1].weight
+          }())
+}
+
+// Shift is the cheapest variation the device has, and the claim is exact: the
+// same notes, moved and wrapped.
+let shifted = BasslineFigure.downbeats.shifted(by: 1)
+check("a shift moves every onset along by one and wraps",
+      shifted.onsets == [0] + BasslineFigure.downbeats.onsets.dropLast(),
+      "\(shifted.onsets.map { String(format: "%.2f", $0) })")
+check("and a shift of a whole bar changes nothing",
+      BasslineFigure.downbeats.shifted(by: BasslineFigure.slots).onsets
+        == BasslineFigure.downbeats.onsets)
+check("shifting an on-beat figure by one makes an off-beat one",
+      BasslineFigure.downbeats.offbeatShare < 0.35
+        && BasslineFigure.downbeats.shifted(by: 1).offbeatShare > 0.65,
+      String(format: "%.0f%% → %.0f%% off the beat",
+             BasslineFigure.downbeats.offbeatShare * 100,
+             BasslineFigure.downbeats.shifted(by: 1).offbeatShare * 100))
+
+// MARK: - The pad
 
 print()
-print("── the diamond ────────────────────────────────────")
+print("── the pad ────────────────────────────────────────")
 
 for (x, y) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0),
                (0.7, 0.7), (-0.9, -0.9), (0.3, -0.4), (5.0, -5.0)] {
-    let diamond = BasslineDiamond(x: x, y: y)
-    let total = diamond.weights.values.reduce(0, +)
-    check("(\(x), \(y)) stays on the diamond and its weights sum to one",
-          abs(diamond.x) + abs(diamond.y) <= 1 + 1e-9 && abs(total - 1) < 1e-9,
-          String(format: "→ (%.2f, %.2f), sum %.4f", diamond.x, diamond.y, total))
+    let pad = BasslinePad(x: x, y: y)
+    check("(\(x), \(y)) is clamped per axis, so every corner is reachable",
+          (-1...1).contains(pad.x) && (-1...1).contains(pad.y)
+            && (abs(x) <= 1 ? pad.x == x : abs(pad.x) == 1)
+            && (abs(y) <= 1 ? pad.y == y : abs(pad.y) == 1),
+          String(format: "→ (%.2f, %.2f)", pad.x, pad.y))
 }
 
-let centre = BasslineDiamond(x: 0, y: 0)
-check("the centre is every corner at a quarter",
-      BasslineCorner.allCases.allSatisfy { abs((centre.weights[$0] ?? 0) - 0.25) < 1e-9 })
-let north = BasslineDiamond(x: 0, y: 1)
-check("a corner is that corner and nothing else",
-      abs((north.weights[.onBeat] ?? 0) - 1) < 1e-9
-        && (north.weights[.offBeat] ?? 1) < 1e-9)
+// The corner the diamond used to forbid, and the reason it stopped being one: a
+// straight quarter-note walking bass with nothing off the beat in it.
+let corner = BasslinePad(x: -1, y: 1)
+check("the busiest on-beat figure can be heard with no off-beat layer at all",
+      corner.offBeatLevel == 0 && corner.selection == 1
+        && corner.mixed().offbeatShare < 0.35,
+      "\(corner.readout), "
+      + String(format: "%.0f%% off the beat", corner.mixed().offbeatShare * 100))
 
-check("the mixed figure at a corner is that corner's figure",
-      north.mixed().onsets.elementsEqual(north.figure(at: .onBeat).onsets) { abs($0 - $1) < 1e-9 })
-check("mixing produces something between its corners",
-      {
-          let between = BasslineDiamond(x: 0, y: 0.4).mixed()
-          let on = BasslineFigure.downbeats
-          let off = BasslineFigure.tresillo
-          // Slot 3 is an onset for the tresillo and silence for the downbeats,
-          // so a mix that includes any of the off-beat corner has to put some
-          // weight there and less than the tresillo alone does.
-          return between.onsets[3] > 0 && between.onsets[3] < off.onsets[3]
-            && on.onsets[3] == 0
-      }())
-check("a length comes from the corners that actually play that slot",
+// West to east is the balance, and it reaches both ends at every height.
+for y in [-0.8, -0.4, 0.0, 0.4, 0.8] {
+    let west = BasslinePad(x: -1, y: y)
+    let east = BasslinePad(x: 1, y: y)
+    check(String(format: "at height %.1f the west edge is the on-beat layer alone", y),
+          west.balance <= -0.999 && west.offBeatLevel == 0 && west.onBeatLevel == 1,
+          String(format: "balance %.2f", west.balance))
+    check(String(format: "at height %.1f the east edge is the off-beat layer alone", y),
+          east.balance >= 0.999 && east.onBeatLevel == 0 && east.offBeatLevel == 1)
+}
+
+let centre = BasslinePad(x: 0, y: 0)
+check("the middle is both layers at full, not each at half",
+      centre.balance == 0 && centre.onBeatLevel == 1 && centre.offBeatLevel == 1)
+check("so the middle is busier than either edge",
+      centre.mixed().weight > BasslinePad(x: -1, y: 0).mixed().weight
+        && centre.mixed().weight > BasslinePad(x: 1, y: 0).mixed().weight,
+      String(format: "%.2f vs %.2f / %.2f", centre.mixed().weight,
+             BasslinePad(x: -1, y: 0).mixed().weight,
+             BasslinePad(x: 1, y: 0).mixed().weight))
+
+// South to north is which figures, sparsest at the bottom.
+check("the south vertex is the sparsest pair and the north the busiest",
+      BasslinePad(x: 0, y: -1).selection == 0
+        && BasslinePad(x: 0, y: 1).selection == 1)
+check("and moving north never makes the figure sparser",
+      stride(from: -1.0, through: 1.0, by: 0.1)
+        .map { BasslinePad(x: 0, y: $0).mixed().weight }
+        .adjacentPairs().allSatisfy { $0 <= $1 + 1e-9 })
+check("the two axes are independent — moving north doesn't move the balance",
+      stride(from: -1.0, through: 1.0, by: 0.25)
+        .allSatisfy { BasslinePad(x: -0.5, y: $0).balance == -0.5 })
+check("and moving east doesn't change which figures are named",
+      stride(from: -1.0, through: 1.0, by: 0.25)
+        .allSatisfy { BasslinePad(x: $0, y: 0.3).onBeatFigure.name
+                        == BasslinePad(x: 0, y: 0.3).onBeatFigure.name })
+
+check("only the on-beat layer means an on-beat figure",
+      BasslinePad(x: -1, y: 0).mixed().offbeatShare < 0.35,
+      String(format: "%.0f%% off the beat", BasslinePad(x: -1, y: 0).mixed().offbeatShare * 100))
+check("only the off-beat layer means an off-beat one",
+      BasslinePad(x: 1, y: 0).mixed().offbeatShare > 0.5,
+      String(format: "%.0f%% off the beat", BasslinePad(x: 1, y: 0).mixed().offbeatShare * 100))
+check("moving east is the part getting pushed off the beat",
+      stride(from: -1.0, through: 1.0, by: 0.25)
+        .map { BasslinePad(x: $0, y: 0).mixed().offbeatShare }
+        .adjacentPairs().allSatisfy { $0 <= $1 + 1e-9 },
+      stride(from: -1.0, through: 1.0, by: 0.5)
+        .map { String(format: "%.2f", BasslinePad(x: $0, y: 0).mixed().offbeatShare) }
+        .joined(separator: " → "))
+
+check("a length comes from the layers that actually play that slot",
       {
           // The pedal asks for eight eighths but only ever plays slot 0. Mixed
           // with a figure that plays throughout, it must not stretch the notes
           // it was never going to sound.
-          let mix = BasslineDiamond(x: -0.5, y: 0.5, onBeatName: "Downbeats",
-                                    offBeatName: "Ands").mixed()
-          return mix.lengths[2] < 4 && mix.lengths[0] > 2
+          let mix = BasslinePad(x: 0, y: -1).mixed()
+          return mix.lengths[1] < 6 && mix.lengths[0] > 2
       }(),
-      "pedal only votes on the slots it plays")
-check("moving the point changes the figure",
-      BasslineDiamond(x: 0, y: 1).mixed().onsets != BasslineDiamond(x: 0, y: -1).mixed().onsets)
-check("the mixed figure says what went into it",
-      !BasslineDiamond(x: 0, y: 0.5).mixed().name.isEmpty)
+      "the pedal only votes on the slot it plays")
+check("the pad says what it currently names",
+      !centre.name.isEmpty && !centre.readout.isEmpty && centre.name.contains("+"),
+      centre.readout)
 
 // MARK: - Drawing a line
 
@@ -217,6 +308,15 @@ check("a range narrower than an octave is widened rather than refused",
 check("a range given backwards is read the right way round",
       { var flipped = BasslineSettings(); flipped.lowNote = 52; flipped.highNote = 28
         return flipped.range.lowerBound == 28 }())
+
+var moved = BasslineSettings()
+moved.shift = 3
+check("shifting moves the line without changing how many notes are in it",
+      {
+          let plain = BasslineGenerator.line(BasslineSettings(), over: modal, seed: 5)
+          let shifted = BasslineGenerator.line(moved, over: modal, seed: 5)
+          return !shifted.isEmpty && shifted.map(\.startBeat) != plain.map(\.startBeat)
+      }())
 
 var sparse = BasslineSettings()
 sparse.density = 0.3
@@ -341,14 +441,22 @@ check("the bassline source is instant and says whose vocabulary it is",
 check("its templates are the figures",
       MelGenTemplates.all(for: .bass).count == BasslineFigure.all.count
         && MelGenTemplates.all(for: .bass).allSatisfy { $0.basslineFigure != nil })
-check("choosing one puts it on the diamond, at its own bank's corner",
+check("choosing one moves the pad to where that figure lives, and leans its way",
       {
           let settings = BasslineSettings()
           let onBeat = settings.placing(.walking)
           let offBeat = settings.placing(.charleston)
-          return onBeat.diamond.onBeatName == "Walking" && onBeat.diamond.y > 0
-            && offBeat.diamond.offBeatName == "Charleston" && offBeat.diamond.y < 0
-      }())
+          return onBeat.pad.onBeatFigure.name == "Walking" && onBeat.pad.balance < 0
+            && offBeat.pad.offBeatFigure.name == "Charleston" && offBeat.pad.balance > 0
+      }(),
+      "\(BasslineSettings().placing(.walking).pad.onBeatFigure.name) / "
+      + "\(BasslineSettings().placing(.charleston).pad.offBeatFigure.name)")
+check("every figure in either bank can be reached from the pad",
+      BasslineFigure.all.allSatisfy { figure in
+          guard let selection = BasslinePad.selection(of: figure) else { return false }
+          let pad = BasslinePad(x: 0, y: selection * 2 - 1)
+          return pad.onBeatFigure.name == figure.name || pad.offBeatFigure.name == figure.name
+      })
 check("a take drawn this way analyses like any other",
       {
           let analysis = MelodyAnalyser.analyse(line, over: changes)
@@ -371,7 +479,7 @@ check("and a session saved before they existed still decodes",
 var state = MelGenState()
 state.mode = .bass
 state.bassline.reach = 0.8
-state.bassline.diamond.setPoint(x: -0.3, y: 0.6)
+state.bassline.pad.setPoint(x: -0.3, y: 0.6)
 let setup = MelGenSetup(name: "Bass", capturing: state)
 var restored = MelGenState()
 restored.apply(setup)

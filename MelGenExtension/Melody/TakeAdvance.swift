@@ -117,7 +117,7 @@ enum TakeAdvance {
                                template: MelGenTemplate,
                                over progression: ChordProgression) -> GenerationRecord? {
         // In Bass the rotation names a figure, so moving it on means putting a
-        // different figure on the diamond — which is exactly what "something
+        // different figure on the pad — which is exactly what "something
         // else" should mean in a mode whose character lives there.
         if state.mode == .bass {
             let settings = template.basslineFigure.map(state.bassline.placing) ?? state.bassline

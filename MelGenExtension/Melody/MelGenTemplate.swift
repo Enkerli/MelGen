@@ -49,7 +49,7 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
     var architecture: MelodyPhrases.LinePlan.Architecture?
     /// For chords: the comping figure.
     var figure: CompingFigure?
-    /// For bass: the rhythmic figure, and which of the diamond's two banks it
+    /// For bass: the rhythmic figure, and which of the pad's two banks it
     /// belongs to — which is what choosing it actually does.
     var basslineFigure: BasslineFigure?
 
@@ -96,7 +96,7 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
     /// templates, so a mode that had none of them would have to grow its own
     /// copies of three things that already exist. What a bass template means is
     /// narrower than what a line template means, and honestly so: choosing one
-    /// puts that figure on the diamond, at whichever corner its bank belongs to.
+    /// moves the pad to where that figure sits in its own bank's ordering.
     /// It carries no brief, because the model is not the thing drawing this.
     init(basslineFigure: BasslineFigure) {
         self.name = basslineFigure.name
