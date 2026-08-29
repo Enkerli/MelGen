@@ -244,12 +244,13 @@ enum MelodyComping {
 /// take — expression, swing, gate, the kernel — is indifferent to it, which is
 /// why the fork lives here and not in five places.
 enum PlayMode: String, Codable, CaseIterable, Sendable {
-    case line, comping
+    case line, comping, bass
 
     var label: String {
         switch self {
         case .line: return "Line"
         case .comping: return "Chords"
+        case .bass: return "Bass"
         }
     }
 
@@ -257,8 +258,17 @@ enum PlayMode: String, Codable, CaseIterable, Sendable {
         switch self {
         case .line: return "A monophonic line — point it at a lead sound."
         case .comping: return "Voicings under the changes — point it at something polyphonic."
+        case .bass: return "A bass part in its own register — point it at a bass sound."
         }
     }
+
+    /// Whether this mode can put two notes on at once.
+    ///
+    /// Asked as a question about the mode rather than compared against `.comping`
+    /// in a dozen places, because adding a third mode turned every one of those
+    /// comparisons into a decision about a case that didn't exist when it was
+    /// written. Bass is monophonic for the same reason a line is: one voice.
+    var isPolyphonic: Bool { self == .comping }
 }
 
 extension CompingFigure {

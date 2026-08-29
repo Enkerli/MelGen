@@ -28,6 +28,62 @@ enum PanelTab: String, CaseIterable, Sendable {
     var label: String { self == .play ? "Play" : "Decide" }
 }
 
+/// The one line that says what to do now.
+///
+/// Drawn as a quiet row rather than as a banner: it is advice, and advice that
+/// looks like an alert gets dismissed rather than read. It shows the action, the
+/// fact that makes it the action, and where it lives — because "Setups" means
+/// nothing until you are told it is at the top of Decide.
+struct NextStepRow: View {
+    let step: NextStep
+    let placeName: String
+    let theme: MelGenTheme
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: MelGenMetrics.space2) {
+                Image(systemName: "arrow.forward.circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(step.reason)
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text(placeName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+                    .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(MelGenMetrics.space3)
+            .frame(minHeight: MelGenMetrics.controlHeight)
+            .background(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .fill(theme.raised))
+            .overlay(
+                RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall)
+                    .strokeBorder(theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(step.title)
+        .accessibilityValue("\(step.reason) In \(placeName).")
+        .accessibilityHint("Opens it")
+    }
+}
+
 /// The two-loop tab bar.
 ///
 /// A real tablist rather than two buttons that happen to look like one: it

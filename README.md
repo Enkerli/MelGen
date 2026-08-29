@@ -22,9 +22,10 @@ or locked to the host's playhead.
 | **Note duration** | The written rhythm — even, long–short, short–long or mixed |
 | **Gate length** | How much of each note's slot sounds: staccato through as-written to legato, applied live |
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
-| **Templates** | Fifteen — nine line templates and six comping figures. The mode chooses which half is in play; select any subset and cycle, shuffle or lock it |
+| **Templates** | Twenty-three — nine line templates, six comping figures and eight bass figures. The mode chooses which set is in play; select any subset and cycle, shuffle or lock it |
 | **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
 | **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
+| **What to do now** | One line above both tabs naming the next thing and why it's next, derived from the session's own state — and going quiet when nothing is outstanding |
 | **Curation** | Yes / Maybe / No on what is sounding — or a swipe on the roll — with the seven (keep, tweak, try again, right elsewhere, partly, later, skip) one tap away, in passes, so the same take can be answered differently next time. A rating is a shortcut to three of the seven, never a score |
 | **Variations** | Every variant, mutation, morph and drifted pass is judged in its own right, and says what its parent was called |
 | **Facets and tags** | Density, placement, register, colour and motion are derived from measurement; tags are yours, and the vocabulary emerges from what you type |
@@ -37,13 +38,17 @@ or locked to the host's playhead.
 | **Variants and morphs** | Fourteen transforms, scored against your material, and a dial between two lines you like |
 | **Listening** | Play something in and it becomes library material, read against the changes on screen |
 | **Comping** | Voicings under the changes, voice-led, in six figures |
+| **Bass** | On-beat and off-beat figure banks mixed on a diamond, over the changes or over a key, with a range, eight seeds and a morph between them |
+| **Degree histogram** | Which note, as weights over the twelve semitones above the chord's root. One `reach` dial walks the order an improviser arrives in — root, fifth, third, seventh, eleventh, ninth, thirteenth — and separate dials let the outside notes and a side-slipped pentatonic in. Comping draws on it too: the **Drawn** voicing asks each chord's own scale which colour it can carry, so a major seventh gets its ninth and a minor seventh gets its eleventh without either being written down |
+| **Transition histogram** | How far to the next note, as weights over the interval. Multiplied by the degree histogram, so a line steps mostly by step *and* lands mostly on chord tones without either being a rule that overrides the other |
+| **Diatonic mode** | A key instead of changes, and a single **minorness** dial across the modal brightness ladder — Lydian, Ionian, Mixolydian, Dorian, Aeolian, Phrygian, Locrian, each one flattened degree darker than the last. A mode can also be typed into the progression, as `C(dorian)` |
 | **Voice leading** | Off, register, or smooth — minimal taxicab leading, ported from the suite's reference implementation and held to its shared vectors. In line mode it smooths the seam where a line crosses a chord change |
 | **Progressions** | Generated here from corpus transition tables, rather than pasted in |
 | **Setups** | Name the settings that decide what comes next and come back to them; mark one the default and new instances start there |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Two tabs** | **Play** makes material and performs it; **Decide** judges it and shows what's been learned |
-| **Two modes** | **Line** writes a monophonic part, **Chords** comps under the changes. Explicit because the receiving instrument differs — a mono synth handed chords plays whichever note wins its note-priority rule |
+| **Three modes** | **Line** writes a monophonic part, **Chords** comps under the changes, **Bass** draws a bass part in its own register. Explicit because the receiving instrument differs — a mono synth handed chords plays whichever note wins its note-priority rule, and a lead sound handed a bass part plays the right notes two octaves too low |
 | **Themes** | Light (default) and Dark, MelGen's own setting rather than the host's |
 
 ---
@@ -107,6 +112,8 @@ Scripts/verify.sh chords     # one suite
 | `retrieval` | Finding a line rather than making one, and being surprised on purpose |
 | `topics` | Grouping the library so the vocabulary can come from the material |
 | `steps` | Interval cells: self-sequencing figures and interval streams |
+| `histograms` | Which note and how far to the next one — the note stack in its stated order, the side slip, the modal ladder, and the two histograms multiplied |
+| `bassline` | The bass mode: the two figure banks, the diamond that mixes them, and that the line stays in its range, stays one voice and states every chord |
 | `capture` | Pairing, segmenting and quantizing what was played in |
 | `comping` | The voicing layer, taxicab voice leading against the suite's shared vectors, and chords instead of a line |
 | `progression` | Generating the changes, and a drift check on the corpus tables |
@@ -115,6 +122,7 @@ Scripts/verify.sh chords     # one suite
 | `analysis` | Take measurement — variety, harmonic roles — and the dead-air guard |
 | `midi` | The MIDI front end of the training pipeline — files to plain events in beats, and where harmony was found |
 | `midifile` | Reading and writing `.mid` — the codec round trip, the four harmony tiers, and chord detection against the suite's own vectors |
+| `nextstep` | The line that says what to do now — every rung against the state it claims, and that it goes quiet |
 | `docs` | These documents against the code they describe — suite lists, quoted constants, retired names, dead links |
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
@@ -141,19 +149,27 @@ hierarchy. VoiceOver on a device is unaffected.
 
 ## How it works
 
-### Six sources, one loop
+### Seven sources, one loop
 
-A take can come from any of six places, and everything downstream treats them
+A take can come from any of seven places, and everything downstream treats them
 alike — the same measurement, the same curation, the same performance controls:
 
 | Source | Cost | What it is |
 |---|---|---|
 | **The model** | ~1.8s per note | Foundation Models writes the line, or chooses when a comp lands |
-| **Composed phrases** | Instant | A phrase grammar assembles gestures into lines that state, answer and land |
-| **Stored lines** | Instant | A degree-relative line from the library, fitted to whatever changes are loaded |
-| **Your own style** | Instant | Drawn from slot statistics and a variable-order chain over what you kept |
-| **Interval cells** | Instant | Self-sequencing figures described as moves rather than positions |
-| **Comping** | Instant | Voicings under the changes, voice-led, in six figures |
+| **Composed** | Instant | A phrase grammar assembles gestures into lines that state, answer and land |
+| **Stored line** | Instant | A degree-relative line from the library, fitted to whatever changes are loaded |
+| **Your material** | Instant | Drawn from slot statistics and a variable-order chain over what you kept |
+| **What you play** | Instant | Your own playing, captured and read against the changes |
+| **Comp** | Instant | Voicings under the changes, voice-led, in six figures |
+| **Bassline** | Instant | A degree histogram and a transition histogram, drawn through a rhythmic figure, inside a stated register |
+
+Which of the seven are offered depends on the mode: Chords narrows it to the
+three that can produce a voicing and Bass to the three that can put a part in the
+right register, because offering the others would be offering something the mode
+can't deliver. Material also arrives from outside — a MIDI
+file, or a take kept as a line — and once it is a `MelodyPattern` nothing
+downstream can tell where it came from.
 
 The model is the slowest by a wide margin — measured at roughly four times
 slower than real time — so it is never what feeds continuous playback. It adds
@@ -165,9 +181,12 @@ new material; the deterministic sources keep the changes moving meanwhile.
         make ──▶ hear ──▶ judge ──▶ keep ──▶ learn ──▶ make
 ```
 
-Judging is one tap per take from a vocabulary of seven next actions — keep,
-tweak, again, elsewhere, partly, later, skip — none of them terminal, so the same
-take can be answered differently on a later pass. What survives feeds two learned
+Judging is one tap — or one swipe on the roll. Most takes get one of three coarse
+answers, Yes, Maybe and No, which are shortcuts to three of a vocabulary of seven
+next actions: keep, tweak, again, elsewhere, partly, later, skip. None of the
+seven is terminal, so the same take can be answered differently on a later pass,
+and a rating is never stored as a number — it *is* one of the seven, chosen for
+you. What survives feeds two learned
 models: slot statistics over kept takes, and a variable-order chain of what
 follows what. Both are transparent statistics rather than anything trained; see
 [TRAINING.md](TRAINING.md) for why that boundary is where it is.
@@ -185,6 +204,122 @@ Post-processing then does what the model is bad at: notes are folded by octaves
 to stay within an octave of their predecessor, out-of-scale pitches are moved to
 the nearest tone that fits, holes left by an under-producing phrase are patched
 from the stored library, and the line is made strictly monophonic.
+
+### Bass, and the two histograms
+
+The newest half of the plug-in, and the least discoverable: **Bass** is a mode
+chip beside Line and Chords, and everything below is behind it.
+
+#### Which note: the degree histogram
+
+A weight for each of the twelve semitones above the sounding chord's root.
+Chromatic buckets rather than scale degrees, because degree space cannot say
+"a semitone above the third" — and that is exactly the material the histogram
+was built for. A drawn semitone becomes the `(degree, alteration, role)` the
+pattern format speaks on the way out, so nothing downstream has to know.
+
+| Control | What it does |
+|---|---|
+| **Reach** | How far up the note stack the line goes: root, fifth, third, seventh, eleventh, ninth, thirteenth. That is the order an improviser arrives in, and the order of arrival *is* the histogram — what you reach for first is what you play most. One continuous dial, not seven presets: at 0 it is the root alone, at 1 everything through the thirteenth, and the weights stay in arrival order all the way up |
+| **Outside** | Weight on the notes the scale doesn't contain. Small, always — at three per cent an outside note is colour and at thirty it is a wrong note. Left slightly on by default, which is where the chromatic approaches come from |
+| **Side-slip** | The pentatonic on the third of the chord, and the one a semitone above it. Over Cm7 that is E♭ F G B♭ C, then E F♯ G♯ B C♯ — which shares no note with the chord's scale and lands anyway. The dial is how much of the second one you get |
+
+The **avoid** notes the chord dictionary already derives are damped rather than
+removed, so a colour note the harmony can't carry gets quieter instead of
+disappearing.
+
+#### How far: the transition histogram
+
+A weight for each interval to the next note, from a twelfth down to a twelfth up.
+It is **multiplied** by the degree histogram rather than chosen between: for
+every candidate pitch in range, how likely a move of that size is times how
+likely that landing note is over the chord now sounding. So a line steps mostly
+by step *and* lands mostly on chord tones, with neither being a rule that
+overrides the other.
+
+| Control | What it does |
+|---|---|
+| **Chromatic** | How much the transitions like semitones |
+| **Runs** | How much a move that continues the last one is favoured. This is what turns a chromatic approach into a run: a run is one decision to move by semitone and several to keep doing it, so it belongs here rather than in the note weights |
+| **Leaps** | How wide the line reaches. Blended with an arpeggiating shape, because roots to fifths to octaves is how a bass moves and an exponential over interval size alone never produces it |
+
+Both histograms can also be **learned** from what you kept — `observed(in:)`
+counts what a set of takes actually played against the harmony it played it over
+— and blended with the dialled shape, with the weight given to the observation
+rising as there is more of it.
+
+#### The figure pad
+
+Bass plays two layers at once, merged into one monophonic line: an **on-beat**
+figure and an **off-beat** one. A figure is eight onset chances, lengths and
+accents over a bar — probabilities rather than a fixed mask, which is what makes
+mixing two of them mean something and what makes two bars of one differ.
+
+- **Left to right is the balance.** All the way left you hear only the on-beat
+  layer; all the way right only the off-beat one; in the middle both at full.
+  This is the syncopation axis — moving right is the part getting pushed off the
+  beat without a single figure changing.
+- **Up and down is which figures.** One position walking both banks at once,
+  each ordered sparse to busy by its own measured onset weight. Between two
+  entries the figures blend, so the axis is continuous rather than four steps.
+
+The region is a square and every corner is reachable, including the one a
+diamond would forbid: the busiest on-beat figure with the off-beat layer
+silent, which is a straight walking bass and about the most ordinary bass part
+there is.
+
+**Shift** moves the whole figure along the bar and wraps it. It is the cheapest
+variation available — an on-beat figure shifted by one eighth *is* an off-beat
+figure, and not one note changed.
+
+**Range** is register: where the part sits, as two note numbers. (Distinct from
+Reach, which is how far up the chord it goes, and from Leaps, which is how wide
+each move is.)
+
+**Seed** is one of eight draws of the same settings — nothing is stored behind
+them, because a draw *is* its seed, so all eight are always there and every one
+can be got back exactly. **Morph** dials from this seed's draw into the next
+one's, note by note, rather than switching at the boundary.
+
+#### A key instead of changes
+
+Bass can read the typed progression chord by chord, or work from a key. A key
+becomes a progression of exactly one chord lasting the whole form, so nothing
+downstream changes.
+
+**Minorness** is one dial across the modal brightness ladder:
+
+```
+Lydian ──♯4→4── Ionian ──7→♭7── Mixolydian ──3→♭3── Dorian
+       ──6→♭6── Aeolian ──2→♭2── Phrygian ──5→♭5── Locrian
+```
+
+Each rung flattens exactly one degree, which is checked rather than tabulated.
+A fractional setting blends the two neighbouring modes' histograms while the
+chord commits to the nearer rung, so between Mixolydian and Dorian both thirds
+carry weight and the one the scale doesn't contain arrives as an altered degree
+with its role recorded.
+
+A mode can also be typed straight into the progression field, as `C(dorian)` or
+`E♭(phrygian)`. The parentheses are required: the chord dictionary already
+spells two triads `major` and `minor`, so a bare `Cminor` stays the triad it
+always was. This is the only way to reach Ionian, Aeolian and Phrygian, because
+several modes share a tonic seventh chord and the chord-scale classifier can
+only give one answer for all of them.
+
+#### Comping draws on it too
+
+The **Drawn** voicing style takes its tones from a degree histogram over each
+chord's own scale rather than from a recipe in intervals. So a major seventh
+gets its ninth and a minor seventh gets its eleventh — a major seventh's scale
+is Lydian, its eleventh sits a semitone under the fifth, and the no-cluster rule
+drops it in favour of the ninth. On a minor seventh nothing damps the eleventh
+and it comes in. Neither is written down anywhere; both fall out of the scale
+the dictionary already derives.
+
+Two rules the histogram can't supply: no two tones a semitone apart, and an
+alteration the symbol names replaces the degree it alters — voicing a `7♯11`
+with its natural fifth and without the alteration voices a different chord.
 
 ### Playback
 
@@ -256,7 +391,7 @@ Scripts/analyse-history.sh ~/Library/Mobile\ Documents/com~apple~CloudDocs
 
 ## Documentation
 
-Seven documents, each with one job. Kept apart so that a finding lands in exactly
+Eight documents, each with one job. Kept apart so that a finding lands in exactly
 one of them:
 
 | Document | What belongs in it | What doesn't |
@@ -268,6 +403,8 @@ one of them:
 | [HANDOFF.md](HANDOFF.md) | Current state, open risks, and where to pick up | Durable design rationale — that goes in the code |
 | [COREML.md](COREML.md) | Training off-device and running the result on the iPad | On-device learning — that's TRAINING.md |
 | [DESIGN_BRIEF.md](DESIGN_BRIEF.md) | The experience: vocabulary, playflows, what's being asked of a design pass | Implementation, and anything already settled |
+| [TESTING.md](TESTING.md) | What `verify.sh` can't answer, and the device sessions that can | Anything a suite could check instead |
+| [TERMINOLOGY.md](TERMINOLOGY.md) | One word per concept, and the retired ones | Anything not a naming decision |
 
 ### Hygiene
 
@@ -292,10 +429,14 @@ say what the state *is*, not why each decision was made.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned work. The near list: harmonic rhythm,
-time signatures, shuffled tonalities, note-duration distributions that change over
-time, and reaching the stored lines from the mode that plays them. [TRAINING.md](TRAINING.md) works out what
-"learning from your material" can actually mean on device, and what it can't.
+See [ROADMAP.md](ROADMAP.md) for planned work. The near list, after the
+2026-08-25 review: authoring a comping template (the gate would accept eight more
+and the control is closed to it), giving the corpus baseline its floors, and
+having the corpus exporter write a history export so a found MIDI collection
+reaches the models that already ship. Then harmonic rhythm, time signatures and
+shuffled tonalities. [TRAINING.md](TRAINING.md) works out what "learning from
+your material" can actually mean on device, and what it can't;
+[COREML.md](COREML.md) is the off-device half.
 
 ---
 

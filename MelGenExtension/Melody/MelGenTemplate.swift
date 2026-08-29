@@ -49,6 +49,9 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
     var architecture: MelodyPhrases.LinePlan.Architecture?
     /// For chords: the comping figure.
     var figure: CompingFigure?
+    /// For bass: the rhythmic figure, and which of the pad's two banks it
+    /// belongs to — which is what choosing it actually does.
+    var basslineFigure: BasslineFigure?
 
     init(brief: StyleBrief,
          gestureRhythms: [GestureRhythm] = [],
@@ -66,6 +69,7 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
         self.restiness = restiness
         self.architecture = architecture
         self.figure = nil
+        self.basslineFigure = nil
     }
 
     init(figure: CompingFigure) {
@@ -83,6 +87,29 @@ struct MelGenTemplate: Hashable, Sendable, Identifiable {
         self.restiness = 0.5
         self.architecture = nil
         self.figure = figure
+        self.basslineFigure = nil
+    }
+
+    /// A bass figure, as a template.
+    ///
+    /// The rotation, the selection control and the history row all work on
+    /// templates, so a mode that had none of them would have to grow its own
+    /// copies of three things that already exist. What a bass template means is
+    /// narrower than what a line template means, and honestly so: choosing one
+    /// moves the pad to where that figure sits in its own bank's ordering.
+    /// It carries no brief, because the model is not the thing drawing this.
+    init(basslineFigure: BasslineFigure) {
+        self.name = basslineFigure.name
+        self.summary = basslineFigure.summary
+        self.mode = .bass
+        self.brief = nil
+        self.gestureRhythms = []
+        self.gestureContours = []
+        self.density = basslineFigure.onsets.reduce(0, +)
+        self.restiness = 1 - min(1, basslineFigure.onsets.reduce(0, +) / Double(BasslineFigure.slots))
+        self.architecture = nil
+        self.figure = nil
+        self.basslineFigure = basslineFigure
     }
 }
 
@@ -150,8 +177,15 @@ enum MelGenTemplates {
 
     static let chords: [MelGenTemplate] = CompingFigure.all.map(MelGenTemplate.init(figure:))
 
+    /// The bass templates: the two figure banks, on-beat first.
+    static let bass: [MelGenTemplate] = BasslineFigure.all.map(MelGenTemplate.init(basslineFigure:))
+
     static func all(for mode: PlayMode) -> [MelGenTemplate] {
-        mode == .line ? line + TemplateStore.templates : chords
+        switch mode {
+        case .line: return line + TemplateStore.templates
+        case .comping: return chords
+        case .bass: return bass
+        }
     }
 
     static func named(_ name: String, mode: PlayMode) -> MelGenTemplate? {

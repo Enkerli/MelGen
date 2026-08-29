@@ -21,7 +21,7 @@ import Foundation
 
 /// Where a take's material comes from.
 enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
-    case model, stored, composed, learned, played, comp
+    case model, stored, composed, learned, played, comp, bassline
 
     var id: String { rawValue }
 
@@ -33,6 +33,7 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
         case .learned: return "Your material"
         case .played: return "What you play"
         case .comp: return "Comp"
+        case .bassline: return "Bassline"
         }
     }
 
@@ -46,6 +47,7 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
         case .learned: return "takes you kept"
         case .played: return "your own playing"
         case .comp: return "a voicing policy"
+        case .bassline: return "two histograms and a figure"
         }
     }
 
@@ -60,12 +62,18 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
     /// What the button will do, named as the action rather than as the feature.
     func verb(mode: PlayMode) -> String {
         switch self {
-        case .model: return mode == .comping ? "Generate a comp" : "Generate a line"
+        case .model:
+            switch mode {
+            case .comping: return "Generate a comp"
+            case .bass: return "Generate a bass part"
+            case .line: return "Generate a line"
+            }
         case .stored: return "Play a stored line"
         case .composed: return "Compose a phrase"
         case .learned: return "Draw from your style"
         case .played: return "Learn what I play"
         case .comp: return "Comp these changes"
+        case .bassline: return "Draw a bass line"
         }
     }
 
@@ -77,6 +85,7 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
         case .learned: return "waveform.path.ecg"
         case .played: return "waveform.circle"
         case .comp: return "pianokeys"
+        case .bassline: return "waveform.path"
         }
     }
 
@@ -86,9 +95,18 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
     /// deliver — the whole reason the mode exists is that the receiving
     /// instrument differs.
     static func all(for mode: PlayMode) -> [MaterialSource] {
-        mode == .comping
-            ? [.comp, .model, .learned]
-            : [.model, .stored, .composed, .learned, .played]
+        switch mode {
+        case .comping: return [.comp, .model, .learned]
+        // Bass narrows harder than Chords does, and for the same reason. The
+        // bassline draw is the only source that knows about a register, and a
+        // register is most of what makes a bass part one: the melodic sources
+        // would hand back a line in the wrong octave with the right notes in it,
+        // which is a lead part played low rather than a bass part. What survives
+        // alongside it is your own material, which carries whatever register it
+        // was played in, and the model, which is told where to write.
+        case .bass: return [.bassline, .learned, .model]
+        case .line: return [.model, .stored, .composed, .learned, .played]
+        }
     }
 
     static func first(for mode: PlayMode) -> MaterialSource {

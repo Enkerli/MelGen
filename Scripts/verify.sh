@@ -34,6 +34,8 @@
 #   midi    — the MIDI front end of the training pipeline: files to plain events
 #   midifile — reading and writing .mid: the codec round trip, the four
 #             harmony tiers, and chord detection against the suite's vectors
+#   nextstep — the one line that says what to do now: every rung fires only
+#             in the state it describes, and it goes quiet when it should
 #   docs     — the documentation against the code it describes
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
@@ -89,6 +91,7 @@ run_chords() {
     cp "$REPO/Scripts/tests/chord-swift-main.swift" "$BUILD/main.swift"
     swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
         "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" \
+        "$MELODY/DiatonicHarmony.swift" \
         "$BUILD/main.swift" -o "$BUILD/chords" || { status=1; return 0; }
     "$BUILD/chords" > "$BUILD/swift.json" || { status=1; return 0; }
 
@@ -134,6 +137,7 @@ run_chunking() {
     cp "$REPO/Scripts/tests/chunking-main.swift" "$BUILD/main.swift"
     swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
         "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyChunker.swift" \
+        "$MELODY/DiatonicHarmony.swift" \
         "$BUILD/main.swift" -o "$BUILD/chunking" || { status=1; return 0; }
     "$BUILD/chunking" || status=1
 }
@@ -218,6 +222,22 @@ run_steps() {
     "$BUILD/steps" || status=1
 }
 
+run_histograms() {
+    echo "── histograms ────────────────────────────────────"
+    cp "$REPO/Scripts/tests/histograms-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/histograms" || { status=1; return 0; }
+    "$BUILD/histograms" || status=1
+}
+
+run_bassline() {
+    echo "── bassline ──────────────────────────────────────"
+    cp "$REPO/Scripts/tests/bassline-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/bassline" || { status=1; return 0; }
+    "$BUILD/bassline" || status=1
+}
+
 run_capture() {
     echo "── capture ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/capture-main.swift" "$BUILD/main.swift"
@@ -293,6 +313,14 @@ run_advance() {
     "$BUILD/advance" || status=1
 }
 
+run_nextstep() {
+    echo "── nextstep ───────────────────────────────────────"
+    cp "$REPO/Scripts/tests/nextstep-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/nextstep" || { status=1; return 0; }
+    "$BUILD/nextstep" || status=1
+}
+
 run_midifile() {
     echo "── midifile ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/midifile-main.swift" "$BUILD/main.swift"
@@ -326,7 +354,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_histograms; run_bassline; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_nextstep; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -341,6 +369,8 @@ case "$which" in
     retrieval) run_retrieval ;;
     topics)   run_topics ;;
     steps)    run_steps ;;
+    histograms) run_histograms ;;
+    bassline) run_bassline ;;
     capture)  run_capture ;;
     comping)  run_comping ;;
     drift)    run_drift ;;
@@ -349,13 +379,14 @@ case "$which" in
     analysis) run_analysis ;;
     midi)     run_midi ;;
     midifile) run_midifile ;;
+    nextstep) run_nextstep ;;
     docs)     run_docs ;;
     icon)     run_icon ;;
     contrast) run_contrast ;;
     terminology) run_terminology ;;
     identity) run_identity ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|capture|comping|drift|templates|progression|analysis|midi|midifile|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|histograms|bassline|capture|comping|drift|templates|progression|analysis|midi|midifile|nextstep|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
 esac
 
 echo

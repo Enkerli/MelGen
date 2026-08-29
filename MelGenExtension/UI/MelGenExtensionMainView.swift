@@ -126,6 +126,7 @@ struct MelGenExtensionMainView: View {
     /// right now, not what the document is.
     @State private var panelTab: PanelTab = .play
     @State private var source: MaterialSource = .composed
+    @State private var showBasslineMore = false
     @State private var showTemplates = false
     @State private var showTexture = false
     @State private var showPlayMore = false
@@ -187,6 +188,15 @@ struct MelGenExtensionMainView: View {
                 // line — except while the model is down, where it's about the
                 // whole panel rather than about a take.
                 if modelIsDown { modelDownBanner }
+
+                // Above the tab content, on both tabs, because "what now" is
+                // not a property of either half — and because the two things it
+                // most often points at are drawers you can't see from here.
+                if let step = nextStep {
+                    NextStepRow(step: step,
+                                placeName: placeName(of: step.destination),
+                                theme: theme) { go(to: step.destination) }
+                }
 
                 switch panelTab {
                 case .play: playTab
@@ -302,6 +312,7 @@ struct MelGenExtensionMainView: View {
             setupRow
             progressionSection
             nextTakeSection
+            if state.mode == .bass { basslineSection }
             nextTakeSettings
 
             yourMaterialSection
@@ -618,6 +629,201 @@ struct MelGenExtensionMainView: View {
                                value: binding(\.expression.swing), theme: theme)
             }
         }
+    }
+
+    // MARK: - Bass
+
+    /// Everything that shapes a bass line, in the order the decisions are made.
+    ///
+    /// The pad first, because it is the one control that is worth watching
+    /// while it moves. Then the harmony — changes or a key — because that is the
+    /// question the mode asks that no other mode does. Then the notes, then the
+    /// register, and the rest behind a disclosure, because a bass part is mostly
+    /// decided by the first four and asking about the other seven up front is
+    /// how a panel becomes a wall.
+    private var basslineSection: some View {
+        WhenGroup(legend: "Bass", theme: theme) {
+            VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                FigurePad(pad: binding(\.bassline.pad, reloadKernel: false),
+                          theme: theme)
+                Text("Left and right balance the two layers — only the on-beat figure at "
+                     + "one end, only the off-beat one at the other, both at full in the "
+                     + "middle. Up and down choose which pair of figures, sparsest at the "
+                     + "bottom.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                harmonySourceRow
+
+                LabelledSlider(title: "Reach", lowLabel: "root", highLabel: "13th",
+                               value: binding(\.bassline.reach, reloadKernel: false),
+                               theme: theme,
+                               format: { reachLabel(for: $0) })
+
+                rangeRow
+
+                MoreRow(summary: "More: shift · outside · side-slip · chromatic · seeds",
+                        isExpanded: $showBasslineMore,
+                        theme: theme)
+                if showBasslineMore {
+                    VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                        shiftRow
+                        LabelledSlider(title: "Outside", lowLabel: "in the scale",
+                                       highLabel: "anything",
+                                       value: binding(\.bassline.outside, reloadKernel: false),
+                                       theme: theme)
+                        LabelledSlider(title: "Side-slip", lowLabel: "inside",
+                                       highLabel: "a semitone up",
+                                       value: binding(\.bassline.sideSlip, reloadKernel: false),
+                                       theme: theme)
+                        LabelledSlider(title: "Chromatic", lowLabel: "diatonic",
+                                       highLabel: "by semitone",
+                                       value: binding(\.bassline.chromaticism, reloadKernel: false),
+                                       theme: theme)
+                        LabelledSlider(title: "Runs", lowLabel: "one note",
+                                       highLabel: "keeps going",
+                                       value: binding(\.bassline.momentum, reloadKernel: false),
+                                       theme: theme)
+                        LabelledSlider(title: "Leaps", lowLabel: "steps", highLabel: "wide",
+                                       value: binding(\.bassline.leapiness, reloadKernel: false),
+                                       theme: theme)
+                        seedRow
+                    }
+                }
+            }
+        }
+    }
+
+    /// Changes or a key — the one question this mode asks that the others don't.
+    private var harmonySourceRow: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            ChipPicker(options: [(false, "The changes"), (true, "A key")],
+                       selection: binding(\.bassline.overKey, reloadKernel: false),
+                       theme: theme)
+                .frame(maxWidth: 260)
+
+            if state.bassline.overKey {
+                HStack(spacing: MelGenMetrics.space2) {
+                    ChipPicker(options: (0..<12).map {
+                                   ($0, ChordProgression.flatNoteNames[$0])
+                               },
+                               selection: binding(\.bassline.key, reloadKernel: false),
+                               theme: theme)
+                    Spacer(minLength: 0)
+                }
+                LabelledSlider(title: "Minorness", lowLabel: "bright", highLabel: "dark",
+                               value: binding(\.bassline.minorness, reloadKernel: false),
+                               theme: theme,
+                               format: { DiatonicHarmony.label(forMinorness: $0) })
+                Text("The key's own mode, on one dial: Lydian at nought, Dorian at half, "
+                     + "Locrian at one. Each step down flattens one degree.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Read against whatever is sounding, chord by chord — which is what "
+                     + "a progression buys over a key.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Where the line sits, as two note numbers rather than as an octave switch.
+    private var rangeRow: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space1) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Text("Range")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: 0)
+                Text("\(ChordProgression.noteName(forMIDINote: state.bassline.range.lowerBound))–"
+                     + "\(ChordProgression.noteName(forMIDINote: state.bassline.range.upperBound))")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(theme.text)
+            }
+            LabelledSlider(title: "Lowest", lowLabel: "C0", highLabel: "C4",
+                           value: Binding(
+                               get: { Double(state.bassline.lowNote - 12) / 48 },
+                               set: { value in
+                                   commit(reloadKernel: false) {
+                                       $0.bassline.lowNote = 12 + Int((value * 48).rounded())
+                                   }
+                               }),
+                           theme: theme,
+                           format: { ChordProgression.noteName(forMIDINote: 12 + Int(($0 * 48).rounded())) })
+            LabelledSlider(title: "Highest", lowLabel: "C1", highLabel: "C5",
+                           value: Binding(
+                               get: { Double(state.bassline.highNote - 24) / 48 },
+                               set: { value in
+                                   commit(reloadKernel: false) {
+                                       $0.bassline.highNote = 24 + Int((value * 48).rounded())
+                                   }
+                               }),
+                           theme: theme,
+                           format: { ChordProgression.noteName(forMIDINote: 24 + Int(($0 * 48).rounded())) })
+        }
+    }
+
+    /// Moving the whole figure along the bar.
+    ///
+    /// The cheapest variation there is, and worth its own control rather than
+    /// being buried: a figure shifted by one eighth is the same notes and a
+    /// different feel, which is the one thing the pad's balance axis can't do.
+    private var shiftRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Text("Shift")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: 0)
+                Text(state.bassline.shift == 0
+                     ? "as written"
+                     : "\(state.bassline.shift > 0 ? "+" : "")\(state.bassline.shift) eighths")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(theme.text)
+            }
+            ChipPicker(options: (0..<BasslineFigure.slots).map { ($0, "\($0)") },
+                       selection: binding(\.bassline.shift, reloadKernel: false),
+                       theme: theme)
+            Text("Moves the figure along the bar and wraps it. An on-beat figure shifted "
+                 + "by one is an off-beat figure, with not one note changed.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The eight seeds, and the dial between one and the next.
+    private var seedRow: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Seed")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                ChipPicker(options: (0..<BasslineSettings.seedCount).map { ($0, "\($0 + 1)") },
+                           selection: binding(\.bassline.seedIndex, reloadKernel: false),
+                           theme: theme)
+            }
+            LabelledSlider(title: "Morph", lowLabel: "this seed", highLabel: "the next",
+                           value: binding(\.bassline.morph, reloadKernel: false),
+                           theme: theme)
+            Text("A draw is its seed, so all eight are always there and none of them "
+                 + "is stored. The morph goes between two of them note by note rather "
+                 + "than switching at the boundary.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// What a reach setting has actually let in, named rather than numbered.
+    private func reachLabel(for reach: Double) -> String {
+        let names = ["root", "+5th", "+3rd", "+7th", "+11th", "+9th", "+13th"]
+        let index = min(names.count - 1, max(0, Int((reach * Double(names.count - 1)).rounded())))
+        return names[index]
     }
 
     /// Controls that change nothing until you ask for a take.
@@ -978,6 +1184,8 @@ struct MelGenExtensionMainView: View {
             return isListening ? "listening" : "listening is off"
         case .comp:
             return state.nextTemplate.name
+        case .bassline:
+            return state.bassline.summary
         }
     }
 
@@ -1001,6 +1209,7 @@ struct MelGenExtensionMainView: View {
         case .learned: sampleLearnedStyle()
         case .played: isListening.toggle()
         case .comp: compChanges()
+        case .bassline: drawBassline()
         }
     }
 
@@ -1207,8 +1416,9 @@ struct MelGenExtensionMainView: View {
 
     private var nextTakeEnabled: Bool {
         guard !state.progressionText.isEmpty, !isGenerating else { return false }
-        // Comping needs no model, so it's available whatever the model is doing.
-        return state.mode == .comping || generateEnabled || modelIsDown
+        // Comping and Bass need no model, so they're available whatever the
+        // model is doing.
+        return state.mode != .line || generateEnabled || modelIsDown
     }
 
     /// What the main button does right now, which is not always what it's called.
@@ -1218,7 +1428,8 @@ struct MelGenExtensionMainView: View {
     /// that names an action it can't perform is worse than one that isn't there.
     private var nextTakeLabel: String {
         if isGenerating { return "Working" }
-        if state.mode == .comping { return modelIsDown ? "Comp" : "Comp" }
+        if state.mode == .comping { return "Comp" }
+        if state.mode == .bass { return "Draw" }
         return modelIsDown ? "Compose" : "Generate"
     }
 
@@ -1440,6 +1651,13 @@ struct MelGenExtensionMainView: View {
     /// pinned one lets go.
     private func useTemplate(_ name: String) {
         commit(reloadKernel: false) { state in
+            // In Bass a template *is* a figure, so choosing one has to move it
+            // onto the pad as well as pinning the rotation — otherwise the
+            // chip lights up and nothing about the next take changes.
+            if state.mode == .bass,
+               let figure = MelGenTemplates.named(name, mode: .bass)?.basslineFigure {
+                state.bassline = state.bassline.placing(figure)
+            }
             if state.briefMode == .lock, state.lockedBriefName == name {
                 state.lockedBriefName = nil
                 state.briefMode = .cycle
@@ -1481,7 +1699,11 @@ struct MelGenExtensionMainView: View {
         guard !modelIsDown else {
             // Known down: go straight to the source that answers, rather than
             // spending three seconds finding out again.
-            if liveState.mode == .comping { compChanges() } else { composeLine() }
+            switch liveState.mode {
+            case .comping: compChanges()
+            case .bass: drawBassline()
+            case .line: composeLine()
+            }
             return
         }
         if liveState.mode == .comping {
@@ -2195,6 +2417,75 @@ struct MelGenExtensionMainView: View {
     }
 
     /// Refills both branches. Idempotent and cheap — both are deterministic.
+    // MARK: - What to do now
+
+    /// The one thing worth doing, or nothing.
+    ///
+    /// Recomputed on every render rather than cached: it is derived from state,
+    /// and a cached answer is one that can be wrong for exactly as long as
+    /// nobody notices. The ladder itself is in `NextStep.swift`.
+    private var nextStep: NextStep? {
+        NextSteps.step(for: state,
+                       context: StepContext(source: source,
+                                            hasSavedSetup: !SetupStore.all.isEmpty,
+                                            hasStoredLineOfYourOwn: !PatternStore.isEmpty,
+                                            hasCapturedPlaying: !capturedEvents.isEmpty,
+                                            modelIsAvailable: !modelIsDown))
+    }
+
+    /// Where a step lives, in the words on screen.
+    ///
+    /// The names are the section headings verbatim. A step that says "Setups"
+    /// when the heading says "Setup" sends someone looking for something that
+    /// isn't there, which is worse than saying nothing.
+    private func placeName(of destination: StepDestination) -> String {
+        switch destination {
+        case .progression: return "Decide · Progression"
+        case .source: return "Decide · Next take"
+        case .rating: return "Play · this take"
+        case .material: return "Decide · Your material"
+        case .pass: return "Decide · Review"
+        case .setups: return "Decide · Setup"
+        case .storedLines: return "Play · this take"
+        case .bass: return "Decide · Bass"
+        }
+    }
+
+    /// Takes you there: the right tab, and the drawer open.
+    ///
+    /// Opening the drawer is the whole point. Switching tab alone would land
+    /// someone on a screen where the thing they were sent for is still a
+    /// collapsed row indistinguishable from the others.
+    private func go(to destination: StepDestination) {
+        switch destination {
+        case .progression:
+            panelTab = .decide
+        case .source:
+            panelTab = .decide
+        case .rating, .storedLines:
+            panelTab = .play
+        case .material:
+            panelTab = .decide
+            showMaterial = true
+        case .pass:
+            panelTab = .decide
+            showCuration = true
+        case .setups:
+            panelTab = .decide
+            showSetups = true
+        case .bass:
+            // Switching the mode *is* going there: the section only exists in
+            // Bass, so landing on Decide with the mode still on Line would be
+            // sending someone to a heading that isn't drawn.
+            panelTab = .decide
+            commit(reloadKernel: false) { $0.mode = .bass }
+            if !MaterialSource.all(for: .bass).contains(source) {
+                source = MaterialSource.first(for: .bass)
+            }
+        }
+        statusMessage = "Opened \(placeName(of: destination))."
+    }
+
     /// Everything a held candidate depends on, so a stale one is impossible
     /// rather than merely unlikely.
     private var advanceRefillKey: String {
@@ -3710,6 +4001,75 @@ struct MelGenExtensionMainView: View {
         return record
     }
 
+    // MARK: - Drawing a bass line
+
+    /// Draws a bass line from the two histograms and the mixed figure.
+    ///
+    /// The only source that decides a register rather than inheriting one, which
+    /// is why it doesn't go through `realize`: that folds toward the previous
+    /// note and would undo the range. It also owns its harmony — over a key the
+    /// take records the modal chord it was actually drawn against, not whatever
+    /// is typed in the progression field, so replaying it later means replaying
+    /// it over the same thing.
+    @discardableResult
+    private func drawBassline(commitNow: Bool = true) -> GenerationRecord? {
+        let current = liveState
+        let settings = current.bassline
+
+        var changes: ChordProgression?
+        if !settings.overKey {
+            do {
+                changes = try ChordProgression.parse(current.progressionText)
+            } catch {
+                statusMessage = error.localizedDescription
+                return nil
+            }
+        }
+
+        guard let progression = BasslineGenerator.progression(for: settings, changes: changes),
+              progression.totalBeats > 0 else {
+            statusMessage = "Nothing to play a bass line over yet."
+            return nil
+        }
+
+        // Seeded from the cursor and the harmony, so a session replays and the
+        // same cursor over different changes isn't the same line twice.
+        let seed = UInt64(bitPattern: Int64(current.patternCursor &* 0x9E37_79B9))
+            ^ UInt64(truncatingIfNeeded: abs(progression.text.hashValue))
+        let notes = BasslineGenerator.line(settings, over: changes, seed: seed)
+        guard !notes.isEmpty else {
+            statusMessage = "That figure left the bar empty. Try more density, or a wider range."
+            return nil
+        }
+
+        let record = GenerationRecord(
+            progressionText: progression.text,
+            temperature: current.temperature,
+            briefName: settings.leadingFigure.name,
+            density: current.expression.density,
+            durationPalette: current.durationPalette,
+            source: .bassline,
+            analysis: MelodyAnalyser.analyse(notes, over: progression),
+            lengthBeats: progression.totalBeats,
+            notes: notes
+        )
+
+        if commitNow {
+            commit {
+                $0.add(record)
+                $0.patternCursor += 1
+                // Over a key the field has to say what is sounding, or the piano
+                // roll draws one harmony and the kernel plays another.
+                if settings.overKey { $0.progressionText = progression.text }
+            }
+            statusMessage = "\(settings.leadingFigure.name): \(notes.count) notes, "
+                + "\(settings.summary)."
+        } else {
+            commit(reloadKernel: false) { $0.patternCursor += 1 }
+        }
+        return record
+    }
+
     /// Composes a brand-new line out of gestures and plays it.
     ///
     /// The third source, alongside the model and the stored library, and the one
@@ -3893,7 +4253,11 @@ struct MelGenExtensionMainView: View {
         // the mode said, so an unattended session in chord mode played melodies
         // and never touched a comping figure.
         if liveState.currentTake == nil {
-            if liveState.mode == .comping { compChanges() } else { composeLine() }
+            switch liveState.mode {
+            case .comping: compChanges()
+            case .bass: drawBassline()
+            case .line: composeLine()
+            }
         }
         var lastStartedPass = audioUnit?.currentPass ?? 0
         var lastFilledPass = audioUnit?.currentPass ?? 0
@@ -3934,9 +4298,16 @@ struct MelGenExtensionMainView: View {
                 // session settling into either the same six lines or the same one
                 // grammar.
                 let filler: GenerationRecord?
-                if liveState.mode == .comping {
+                switch liveState.mode {
+                case .comping:
                     filler = compChanges(commitNow: false)
-                } else {
+                // Bass has one deterministic source and it is never the same
+                // twice, because the cursor moves the seed on. Alternating with
+                // a composed line the way the line mode does would put a melody
+                // in the bass part, which is the thing the mode exists to stop.
+                case .bass:
+                    filler = drawBassline(commitNow: false)
+                case .line:
                     filler = liveState.patternCursor.isMultiple(of: 2)
                         ? composeLine(commitNow: false)
                         : adaptStoredLine(commitNow: false)

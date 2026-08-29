@@ -51,6 +51,17 @@ enum VoicingStyle: String, Codable, CaseIterable, Sendable {
     case quartal
     /// Everything inside an octave. Dense, and right for a pad.
     case close
+    /// The tones a `DegreeHistogram` weights highest for *this* chord.
+    ///
+    /// The other six are policies: a fixed recipe in intervals, applied to
+    /// whatever chord turns up. This one asks the chord which colour it can
+    /// actually carry, and the answer differs per chord because the histogram is
+    /// built over the chord's own scale with its avoid notes damped. Over a
+    /// major seventh the eleventh is a semitone above the third, so it is damped
+    /// and the ninth arrives instead; over a minor seventh nothing damps the
+    /// eleventh and it comes in. Neither of those is written down anywhere here
+    /// — both fall out of the scale the dictionary already derives.
+    case drawn
 
     var label: String {
         switch self {
@@ -60,6 +71,7 @@ enum VoicingStyle: String, Codable, CaseIterable, Sendable {
         case .drop2: return "Drop 2"
         case .quartal: return "Quartal"
         case .close: return "Close"
+        case .drawn: return "Drawn"
         }
     }
 
@@ -71,6 +83,7 @@ enum VoicingStyle: String, Codable, CaseIterable, Sendable {
         case .drop2: return "Close voicing with the second voice dropped an octave"
         case .quartal: return "Stacked fourths — modal, and vague about quality on purpose"
         case .close: return "Everything inside an octave; dense, good for a pad"
+        case .drawn: return "Third and seventh, plus whichever colour this chord's own scale can carry"
         }
     }
 }
@@ -134,10 +147,13 @@ enum ChordVoicings {
     /// Falls back rather than failing: a chord with no seventh can't be voiced
     /// rootless, and returning nothing would leave a hole in the comp, so it
     /// takes the nearest style that works. Music, not an assertion failure.
+    /// - Parameter reach: how far up the note stack `.drawn` goes. Ignored by
+    ///   every other style, because the other six say which tones they use.
     static func voice(_ symbol: ChordSymbol,
                       style: VoicingStyle = .rootlessA,
                       centre: Int = defaultCentre,
-                      includeBass: Bool = false) -> Voicing {
+                      includeBass: Bool = false,
+                      reach: Double = 0.85) -> Voicing {
         let root = symbol.rootPitchClass
         let third = third(of: symbol)
         let fifth = fifth(of: symbol)
@@ -165,6 +181,9 @@ enum ChordVoicings {
                 close[close.count - 2] -= 12
             }
             intervals = close
+        case .drawn:
+            intervals = drawnIntervals(of: symbol, reach: reach)
+            if intervals.count < 3 { intervals = [0, third, fifth, seventh].compactMap { $0 } }
         case .quartal:
             // *Scale* fourths, not perfect ones. Stacking three perfect fourths
             // from the third of a minor seventh chord walks straight out of the
@@ -217,6 +236,86 @@ enum ChordVoicings {
                        style: style,
                        symbolText: symbol.text,
                        bass: bass)
+    }
+
+    /// The four tones a degree histogram weights highest for this chord.
+    ///
+    /// The root is left out for the same reason the rootless voicings leave it
+    /// out — the bass has it — and put back only if dropping it would leave
+    /// fewer than three voices. The third and the seventh are kept whatever the
+    /// weights say, because they are what name the chord and a voicing that
+    /// loses them has voiced a different one.
+    ///
+    /// - Parameter voices: how many, before the third and seventh are forced in.
+    static func drawnIntervals(of symbol: ChordSymbol,
+                               reach: Double,
+                               voices: Int = 4) -> [Int] {
+        let context = DegreeContext(chord: symbol)
+        let histogram = DegreeHistogram.stack(over: context, reach: reach)
+        guard !histogram.isEmpty else { return [] }
+
+        var wanted: [Int] = []
+        for interval in [third(of: symbol), seventh(of: symbol)].compactMap({ $0 })
+        where !wanted.contains(interval) {
+            wanted.append(interval)
+        }
+
+        // Everything else the histogram has an opinion about, heaviest first.
+        // Ties break by interval so the result is stable — dictionary order is
+        // not a reproducibility guarantee anywhere in this codebase.
+        // An alteration the chord names replaces the natural degree it alters.
+        // On C7♯11 both the sharp eleventh and the fifth are chord tones, and
+        // the histogram prefers the fifth because the fifth arrives earlier in
+        // the stack — but the chord is *called* ♯11, and voicing it with the
+        // natural fifth and without the alteration voices a different chord.
+        // Only where both are the chord's own tones: a sharp eleventh that came
+        // from the scale rather than from the symbol is a tension and doesn't
+        // get to evict anything.
+        let tones = Set(intervals(of: symbol))
+        var replaced: Set<Int> = []
+        for (natural, alterations) in [(7, [6, 8]), (2, [1, 3])] {
+            if tones.contains(natural), alterations.contains(where: tones.contains) {
+                replaced.insert(natural)
+            }
+        }
+
+        let ranked = (1..<12)
+            .filter { histogram[$0] > 0 && !wanted.contains($0) && !replaced.contains($0) }
+            .sorted { (histogram[$0], -$1) > (histogram[$1], -$0) }
+
+        // No two tones a semitone apart. This is the one rule the histogram
+        // can't supply, and leaving it out was audible: a major seventh chord's
+        // scale is Lydian, so its eleventh is a sharp eleventh, which sits a
+        // semitone under the fifth — both are perfectly good notes and having
+        // them in one voicing is a cluster rather than a colour. Enforced by
+        // pitch class, so an octave between them doesn't excuse it.
+        func clashes(_ interval: Int) -> Bool {
+            wanted.contains { existing in
+                let gap = abs(ChordScales.pitchClass(existing) - ChordScales.pitchClass(interval))
+                return min(gap, 12 - gap) == 1
+            }
+        }
+        for interval in ranked where wanted.count < voices && !clashes(interval) {
+            wanted.append(interval)
+        }
+        // Only if refusing every clash left too few voices: a three-note voicing
+        // is better than a cluster, and a two-note one is not.
+        for interval in ranked where wanted.count < 3 && !wanted.contains(interval) {
+            wanted.append(interval)
+        }
+        if wanted.count < 3, !wanted.contains(0) { wanted.append(0) }
+
+        // Spread upward rather than stacking inside one octave: the colour note
+        // wants to be on top, which is where a player puts it.
+        var spread: [Int] = []
+        var previous = -1
+        for interval in wanted.sorted() {
+            var placed = interval
+            while placed <= previous { placed += 12 }
+            spread.append(placed)
+            previous = placed
+        }
+        return spread
     }
 
     // MARK: - A sequence

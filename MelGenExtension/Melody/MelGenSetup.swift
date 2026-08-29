@@ -35,6 +35,9 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
     var mode: PlayMode
     var voiceLeading: VoiceLeadingMode
     var compingFigureName: String
+    /// The bass settings, whole. A setup is the decisions that shape what comes
+    /// next, and in Bass mode every one of them lives in here.
+    var bassline: BasslineSettings
 
     // How the changes are generated.
     var progressionBars: Int
@@ -70,6 +73,7 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
         mode = state.mode
         voiceLeading = state.voiceLeading
         compingFigureName = state.compingFigureName
+        bassline = state.bassline
         progressionBars = state.progressionBars
         progressionSurprise = state.progressionSurprise
         progressionFreshness = state.progressionFreshness
@@ -106,6 +110,8 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
             ?? fallback.voiceLeading
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? fallback.compingFigureName
+        bassline = try container.decodeIfPresent(BasslineSettings.self, forKey: .bassline)
+            ?? fallback.bassline
         progressionBars = try container.decodeIfPresent(Int.self, forKey: .progressionBars)
             ?? fallback.progressionBars
         progressionSurprise = try container.decodeIfPresent(Double.self, forKey: .progressionSurprise)
@@ -149,6 +155,7 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
     /// A one-line description, so a list of setups is readable without opening them.
     var summary: String {
         var parts: [String] = [mode.label.lowercased()]
+        if mode == .bass { parts.append(bassline.summary) }
         parts.append("\(progressionBars) bars")
         parts.append(String(format: "surprise %.2f", progressionSurprise))
         parts.append(progressionFreshness.label.lowercased())
@@ -211,6 +218,7 @@ extension MelGenState {
         mode = setup.mode
         voiceLeading = setup.voiceLeading
         compingFigureName = setup.compingFigureName
+        bassline = setup.bassline
         progressionBars = setup.progressionBars
         progressionSurprise = setup.progressionSurprise
         progressionFreshness = setup.progressionFreshness
