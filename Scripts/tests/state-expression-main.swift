@@ -471,32 +471,118 @@ check("adding, by contrast, is what loads a take", {
         && performing.previousTakeID == performedID
 }())
 
-// 11j. One cadence, asked by everything that changes what's heard. Auto used to
-// honour the interval while the drift re-rolled every pass, so "new take every
-// two loops" delivered two different performances rather than the same one twice.
+// 11j. One cadence, asked once per verb. It used to be one interval for
+// everything, which is how "new take every two laps" bought no time: Auto
+// honoured it and the drift re-rolled every lap regardless, so you got two
+// different performances of one take and nothing stable to judge.
 var cadence = MelGenState()
-cadence.regenerateEveryPasses = 1
-check("at every loop, each pass is due",
-      (1...4).allSatisfy { cadence.isDue(pass: Int64($0), since: Int64($0 - 1)) })
+cadence.autoVerbs = AutoVerbs(rollAgainEveryLaps: 1, nextTakeEveryLaps: 2)
+check("at every lap, each one is due",
+      (1...4).allSatisfy { cadence.isDue(.rollAgain, lap: Int64($0), since: Int64($0 - 1)) })
+check("at every two laps, the next is not due",
+      !cadence.isDue(.nextTake, lap: 5, since: 4))
+check("but the one after is", cadence.isDue(.nextTake, lap: 6, since: 4))
+check("and a lap that overshoots still counts", cadence.isDue(.nextTake, lap: 9, since: 4))
 
-cadence.regenerateEveryPasses = 2
-check("at every two loops, the next pass is not due",
-      !cadence.isDue(pass: 5, since: 4))
-check("but the one after is", cadence.isDue(pass: 6, since: 4))
-check("and a pass that overshoots still counts", cadence.isDue(pass: 9, since: 4))
+// The property the split buys, and the reason it was worth splitting: two verbs
+// on different intervals now genuinely come due at different laps, which one
+// shared interval could not express.
+let rollDue = (0...12).filter { cadence.isDue(.rollAgain, lap: Int64($0), since: 0) }
+let takeDue = (0...12).filter { cadence.isDue(.nextTake, lap: Int64($0), since: 0) }
+check("each verb keeps its own cadence", rollDue != takeDue,
+      "roll \(rollDue.prefix(3))… vs take \(takeDue.prefix(3))…")
+check("and neither fires before its own interval is up",
+      rollDue.first == 1 && takeDue.first == 2)
 
-// Both loops ask the same question, so a stretch of passes gives the same
-// answers to each — which is the property that makes an interval mean anything.
-cadence.regenerateEveryPasses = 4
-let takeDue = (0...12).filter { cadence.isDue(pass: Int64($0), since: 0) }
-let driftDue = (0...12).filter { cadence.isDue(pass: Int64($0), since: 0) }
-check("the take and the drift come due together", takeDue == driftDue,
-      "\(takeDue.prefix(3))…")
-check("and not before the interval is up", takeDue.first == 4, "\(takeDue.first ?? -1)")
+check("zero is off, not every lap",
+      !cadence.isDue(.newProgression, lap: 99, since: 0)
+        && cadence.autoVerbs.interval(for: .newProgression) == 0)
+check("and Auto is active when any verb has an interval",
+      cadence.autoVerbs.isActive && !AutoVerbs().isActive)
+check("its summary names the verbs and omits the zeros",
+      cadence.autoVerbs.summary == "roll again 1, next take 2",
+      cadence.autoVerbs.summary)
 
-cadence.regenerateEveryPasses = 0
-check("a nonsense interval is treated as every loop",
-      cadence.isDue(pass: 1, since: 0))
+// 11k. The migration, and it has to be lossless: three saved setups exist on the
+// user's device and a setup that loads with Auto silently off is a setup that
+// stopped doing what it was named for.
+func decodedState(_ json: String) -> MelGenState? {
+    try? JSONDecoder().decode(MelGenState.self, from: Data(json.utf8))
+}
+check("an old session with Auto on keeps its interval, as the take verb",
+      decodedState(#"{"autoRegenerate":true,"regenerateEveryPasses":3}"#)?
+        .autoVerbs.nextTakeEveryLaps == 3,
+      "\(decodedState(#"{"autoRegenerate":true,"regenerateEveryPasses":3}"#)?.autoVerbs ?? AutoVerbs())")
+check("an old session with Auto off gets zero takes",
+      decodedState(#"{"autoRegenerate":false,"regenerateEveryPasses":3}"#)?
+        .autoVerbs.nextTakeEveryLaps == 0)
+check("and either way the drift keeps re-rolling every lap, which it used to do on its own",
+      decodedState(#"{"autoRegenerate":false,"regenerateEveryPasses":3}"#)?
+        .autoVerbs.rollAgainEveryLaps == 1
+        && decodedState(#"{"autoRegenerate":true,"regenerateEveryPasses":3}"#)?
+        .autoVerbs.rollAgainEveryLaps == 1)
+check("a session written before either shape existed is simply off",
+      decodedState("{}")?.autoVerbs == AutoVerbs())
+check("and the new shape round-trips unchanged",
+      {
+          var written = MelGenState()
+          written.autoVerbs = AutoVerbs(rollAgainEveryLaps: 2, nextTakeEveryLaps: 4,
+                                        newProgressionEveryLaps: 8)
+          guard let data = try? JSONEncoder().encode(written),
+                let back = try? JSONDecoder().decode(MelGenState.self, from: data)
+          else { return false }
+          return back.autoVerbs == written.autoVerbs
+      }())
+
+// The same for a setup, which is the shape actually saved on the device.
+func decodedSetup(_ json: String) -> MelGenSetup? {
+    try? JSONDecoder().decode(MelGenSetup.self, from: Data(json.utf8))
+}
+check("an old setup's auto behaviour survives the migration",
+      decodedSetup(#"{"name":"Old","autoRegenerate":true,"regenerateEveryPasses":2}"#)?
+        .autoVerbs.nextTakeEveryLaps == 2)
+check("and its other fields are untouched by it",
+      decodedSetup(#"{"name":"Old","autoRegenerate":true,"regenerateEveryPasses":2,"progressionBars":16}"#)?
+        .progressionBars == 16)
+check("the suggested setup describes what it always did",
+      MelGenSetup.suggested.autoVerbs == AutoVerbs(rollAgainEveryLaps: 1, nextTakeEveryLaps: 2),
+      MelGenSetup.suggested.summary)
+check("and its summary says laps per verb rather than passes",
+      MelGenSetup.suggested.summary.contains("auto: roll again 1, next take 2")
+        && !MelGenSetup.suggested.summary.contains("pass"),
+      MelGenSetup.suggested.summary)
+
+// 11l. Roll again: free, exact, and it never touches the take.
+var rolling = MelGenState()
+rolling.liveMutation = LiveMutation(noteOrder: 0.2, accents: 0.4, slides: 0.2,
+                                    skipSteps: 0.1, octaves: 0.1)
+rolling.add(GenerationRecord(progressionText: "Dm7|G7", temperature: 0.5,
+                             briefName: "Arch", source: .composed,
+                             lengthBeats: 8, notes: raw))
+let beforeRoll = rolling.currentTake
+let heardAtRollZero = rolling.renderedMelody
+rolling.rollAgain()
+check("a roll advances the drift", rolling.mutationPass == 1)
+check("and changes nothing whatsoever about the take",
+      rolling.currentTake == beforeRoll,
+      "the property the whole drift design rests on")
+check("what is heard is a different performance of it",
+      rolling.renderedMelody != heardAtRollZero)
+rolling.previousRoll()
+check("and rolling back reproduces the earlier one exactly, since the seed is (take, roll)",
+      rolling.mutationPass == 0 && rolling.renderedMelody == heardAtRollZero)
+rolling.previousRoll()
+check("a roll before the first is the first, not a wrap into one never played",
+      rolling.mutationPass == 0)
+
+check("the verb is unavailable while nothing is playing, and says which",
+      rolling.rollAgainUnavailable(isPlaying: false) == "Nothing is playing")
+var still = rolling
+still.liveMutation = LiveMutation()
+check("and unavailable at zero drift, which is the more confusing case",
+      still.rollAgainUnavailable(isPlaying: true) == "Drift is at zero")
+check("available only when both hold",
+      rolling.rollAgainUnavailable(isPlaying: true) == nil)
 
 // A take's source is recorded, so the log distinguishes an adapted line from a
 // generated one.

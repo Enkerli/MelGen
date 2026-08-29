@@ -23,7 +23,7 @@ or locked to the host's playhead.
 | **Gate length** | How much of each note's slot sounds: staccato through as-written to legato, applied live |
 | **Expression & swing** | Metric accents, articulation, timing looseness, and swung eighths |
 | **Templates** | Twenty-three — nine line templates, six comping figures and eight bass figures. The mode chooses which set is in play; select any subset and cycle, shuffle or lock it |
-| **Auto-regeneration** | A new take every 1/2/4/8 loops, swapped in on a loop boundary |
+| **Auto** | Per verb, in laps: re-roll the drift every lap, make a take every two, a new progression never. Swapped in on a lap boundary |
 | **Take history** | 250 unjudged takes, and 1000 including judged ones, logged with their template, settings and measurements; tap to reload one. Exports as JSON and imports back, merged by take id |
 | **What to do now** | One line above both tabs naming the next thing and why it's next, derived from the session's own state — and going quiet when nothing is outstanding |
 | **Curation** | Yes / Maybe / No on what is sounding — or a swipe on the roll — with the seven (keep, tweak, try again, right elsewhere, partly, later, skip) one tap away, in passes, so the same take can be answered differently next time. A rating is a shortcut to three of the seven, never a score |
@@ -48,7 +48,11 @@ or locked to the host's playhead.
 | **Setups** | Name the settings that decide what comes next and come back to them; mark one the default and new instances start there |
 | **Session state** | Progression, settings and history are saved in the host's session |
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
-| **Two tabs** | **Play** makes material and performs it; **Decide** judges it and shows what's been learned |
+| **Three tenses** | Every control does one of three things and says which: **now** changes what you are hearing, **take** makes something you can rate, **aims** changes what the next one will be like. Badges sit on group headers, so a control's meaning is legible before its label is read |
+| **Two verbs, and a bar that never scrolls** | **Roll again** re-rolls the drift for free; **Next take** makes one to judge, aimed by a switch beside it. Rate, roll and advance are pinned below everything, because they are the three things done per minute |
+| **Three aims** | A **Next take** is *same, changed* (the seed is held, so the only difference is what you just moved), *another like this* (new seed, same setup), or *something else* (the rotation advances). A released control presses the first on its own behalf |
+| **Auto is a list of verbs** | Which ones the machine presses, and how often, in laps. Zero is off. It does nothing the verb bar cannot, which is why it sits under it |
+| **Two tabs** | **Play** makes material and performs it — the verbs, and every aim that feeds them; **Decide** acts on takes that already exist: the sweep, variants, the library, what's been learned |
 | **Three modes** | **Line** writes a monophonic part, **Chords** comps under the changes, **Bass** draws a bass part in its own register. Explicit because the receiving instrument differs — a mono synth handed chords plays whichever note wins its note-priority rule, and a lead sound handed a bass part plays the right notes two octaves too low |
 | **Themes** | Light (default) and Dark, MelGen's own setting rather than the host's |
 

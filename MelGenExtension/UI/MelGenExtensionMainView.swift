@@ -209,6 +209,12 @@ struct MelGenExtensionMainView: View {
         // Only scroll when there's something to scroll to. Left bouncing, a short
         // page still drags, and the header clips against the top edge mid-bounce.
         .scrollBounceBehavior(.basedOnSize)
+        // The verb bar, pinned. A `safeAreaInset` rather than the last thing in
+        // the stack, because the whole argument for it is that rate, roll and
+        // advance are never more than zero scrolls away — in a half-height AUM
+        // window that is the difference between playing the plug-in and
+        // operating it. It costs about 110pt, and the piano roll pays.
+        .safeAreaInset(edge: .bottom, spacing: 0) { verbBar }
         // The plug-in paints its own surface: left transparent, text contrast
         // would depend on the host's backdrop.
         .background(theme.background)
@@ -218,7 +224,7 @@ struct MelGenExtensionMainView: View {
                 state = audioUnit.state
             }
         }
-        .task(id: state.autoRegenerate) {
+        .task(id: state.autoVerbs) {
             await runAutoRegeneration()
         }
         .task(id: playParameter.boolValue) {
@@ -240,7 +246,7 @@ struct MelGenExtensionMainView: View {
         // Drift runs on its own, not inside auto-regeneration: it's a property of
         // playing rather than of generating, and tying it to Auto meant it only
         // worked when something else was also happening.
-        .task(id: state.liveMutation.isActive) {
+        .task(id: state.autoVerbs.rollAgainEveryLaps) {
             await runDrift()
         }
     }
@@ -289,17 +295,61 @@ struct MelGenExtensionMainView: View {
             }
 
             advanceRow
-            autoRow
+
+            // NOW: everything here is heard on the lap you change it.
+            TenseHeader(tense: .now, title: "What is sounding", theme: theme) {
+                Text("roll \(state.mutationPass)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+            }
             nowPlayingGroup
             driftSection
+
+            // AIMS: silent until a verb. All four rows, and three of them came
+            // back from Decide — see `decideTab` for the criterion that sent
+            // them there and why it was wrong.
+            TenseHeader(tense: .aims, title: "Setup · silent until a verb", theme: theme) {
+                if let setup = defaultSetupName {
+                    Text(setup)
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.accent)
+                        .lineLimit(1)
+                }
+            }
+            aimsGroup
+
+            autoRow
         }
     }
 
-    /// Acts on what comes next, and on the record.
+    /// The four aim rows, each a summary that opens what it names.
     ///
-    /// The test for belonging: touching it changes nothing until you ask for a
-    /// take. That is why the progression is here — it is the most consequential
-    /// setting in the app and it does nothing on its own.
+    /// Sixteen top-level sections became one verb bar, three tense groups and
+    /// the record — which is the structural answer ISSUES §4.6 wanted, rather
+    /// than another reordering. The rule that holds when the eighth source
+    /// arrives: a section is a verb, a group of aims for one verb, or part of
+    /// the record, and nothing else may be top-level.
+    private var aimsGroup: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+            progressionSection
+            nextTakeSection
+            if state.mode == .bass { basslineSection }
+            nextTakeSettings
+        }
+    }
+
+    /// Acts on takes that already exist.
+    ///
+    /// The old criterion was *"touching it changes nothing until you ask for a
+    /// take"*, which the progression passes — and which is why the progression,
+    /// the source and the template all ended up here. The test was incomplete:
+    /// **creating options and choosing among them are both upstream of a take,
+    /// and only the second is deciding.** Under the grammar those three are
+    /// plainly aims, and an aim belongs with the verb it feeds.
+    ///
+    /// So the criterion is now narrower and holds: *Decide holds only what acts
+    /// on takes that already exist* — the sweep, variants and morphs, the
+    /// library, what was learned. ISSUES §4.1 is the record of the wrong one.
     private var decideTab: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space4) {
             if let statusMessage {
@@ -310,10 +360,6 @@ struct MelGenExtensionMainView: View {
             }
 
             setupRow
-            progressionSection
-            nextTakeSection
-            if state.mode == .bass { basslineSection }
-            nextTakeSettings
 
             yourMaterialSection
             curationSection
@@ -513,57 +559,39 @@ struct MelGenExtensionMainView: View {
 
     // MARK: - The manual gestures
 
-    /// The two things you do to what is sounding, as first-class controls.
+    /// The first take, and only the first.
     ///
-    /// Auto has existed for a while and its manual counterpart never did, which
-    /// is what made the automatic version feel like weather rather than an
-    /// instrument. There *was* a way to make a take by hand — the primary action
-    /// on the other tab — but it is labelled by source ("Generate a line",
-    /// "Comp"), so it doesn't read as the thing Auto does. And there was no way
-    /// at all to re-roll the drift: only "previous" and "keep", so the one
-    /// control that changes what you hear without costing a generation could
-    /// only be waited for.
-    ///
-    /// They sit side by side and they are not peers, so they don't look like
-    /// peers: one costs about 1.8 seconds a note and the other costs nothing,
-    /// and each says so.
-    /// Re-roll, and — only when there is nothing to rate yet — a plain Advance.
-    ///
-    /// Once a take is sounding the aimed pair above *is* the advance, and having
-    /// both meant two buttons on one screen that made a take, one of which
-    /// couldn't say where it was aiming. This keeps the unaimed one for the case
-    /// it is the only one that works: nothing playing, so nothing to vary.
+    /// Every verb lives in the pinned bar now, and the bar needs a take to act
+    /// on — there is nothing to rate and nothing to roll before one exists. So
+    /// this is the one gesture that isn't down there: the way in.
+    @ViewBuilder
     private var advanceRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: MelGenMetrics.space2) {
-                if state.currentTake == nil {
-                    PrimaryAction(title: "Advance",
-                                  subtitle: advanceSubtitle,
-                                  systemImage: "forward.end.fill",
-                                  isWorking: isGenerating,
-                                  isEnabled: !state.progressionText.isEmpty,
-                                  theme: theme) {
-                        advance()
-                    }
+        if state.currentTake == nil {
+            VStack(alignment: .leading, spacing: 4) {
+                PrimaryAction(title: Verb.nextTake.label,
+                              subtitle: advanceSubtitle,
+                              systemImage: Verb.nextTake.symbolName,
+                              isWorking: isGenerating,
+                              isEnabled: !state.progressionText.isEmpty,
+                              theme: theme) {
+                    advance()
                 }
-
-                Button {
-                    rerollDrift()
-                } label: {
-                    findLabel("Re-roll", systemImage: "dice",
-                              detail: state.liveMutation.isActive
-                                  ? "roll \(state.mutationPass + 1)"
-                                  : "drift is off")
-                }
-                .buttonStyle(.plain)
-                .disabled(!state.liveMutation.isActive)
+                Text(advanceExplanation)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text(advanceExplanation)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Whether the transport is running, which is what makes `Roll again`
+    /// something you can press.
+    private var isPlaying: Bool { playParameter.boolValue }
+
+    /// The saved setup the aims currently match, if they match one. Shown beside
+    /// the AIMS header so the group says what it *is* as well as what it does.
+    private var defaultSetupName: String? {
+        SetupStore.defaultSetup?.name
     }
 
     /// What Advance will actually do, named before it does it.
@@ -576,14 +604,12 @@ struct MelGenExtensionMainView: View {
     }
 
     private var advanceExplanation: String {
-        if state.currentTake != nil {
-            return "Re-roll changes what you are hearing without making a take. "
-                + "The two above make one."
-        }
-        return source == .model && !modelIsDown
-            ? "The model takes about 1.8 seconds a note, so Advance fills the bar "
-              + "immediately and swaps the model's take in on a lap boundary when it arrives."
-            : "Re-roll changes what you are hearing without making a take. Advance makes one."
+        source == .model && !modelIsDown
+            ? "The model takes about 1.8 seconds a note, so this fills the bar immediately "
+              + "and swaps the model's take in on a lap boundary when it arrives. "
+              + "Once something is playing, the verbs live in the bar at the bottom."
+            : "Once something is playing, the verbs live in the bar at the bottom: "
+              + "Roll again changes what you hear for free, Next take makes one to judge."
     }
 
     /// Next take, by whatever route is quickest — the gesture, not the source.
@@ -601,24 +627,20 @@ struct MelGenExtensionMainView: View {
         run(source)
     }
 
-    /// One draw of drift's dice, on demand rather than on the next lap.
-    private func rerollDrift() {
-        guard liveState.liveMutation.isActive else { return }
-        commit { $0.mutationPass += 1 }
-        statusMessage = "Roll \(liveState.mutationPass)."
-    }
-
     // MARK: - Now playing, and next take
 
-    /// Controls that re-render what is sounding.
+    /// Controls that re-render what is sounding — the `now` half of what was
+    /// once one heading.
     ///
-    /// "Texture" is retired. It was one heading over two groups whose real
-    /// difference is *when* they apply, and putting them together meant density
-    /// and gate length looked identical while behaving nothing alike. They are
-    /// now on the two different tabs, under the two different names, because the
-    /// difference is which half of the interface they belong to.
+    /// "Texture" was one heading over two groups whose real difference is *when*
+    /// they apply, which is why density and gate length looked identical while
+    /// behaving nothing alike. Splitting them by tab was the first attempt and
+    /// only half fixed it: the two halves were in different places and still
+    /// didn't say what they were. Now they sit under their tense — this under
+    /// `now`, `Shape` under `aims` — and the word Texture means nothing in the
+    /// interface, which is the point (U8).
     private var nowPlayingGroup: some View {
-        WhenGroup(legend: "Now playing", theme: theme) {
+        WhenGroup(legend: "Expression", theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 LabelledSlider(title: "Expression", lowLabel: "even", highLabel: "shaped",
                                value: binding(\.expression.amount), theme: theme)
@@ -646,7 +668,7 @@ struct MelGenExtensionMainView: View {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 FigurePad(pad: binding(\.bassline.pad, reloadKernel: false),
                           theme: theme,
-                          onSettle: redrawBass)
+                          onSettle: redrawOnRelease)
                 Text("Drag anywhere in the pad. Left and right balance the two layers — "
                      + "only the on-beat figure at one end, only the off-beat one at the "
                      + "other, both at full in the middle. Up and down choose which pair "
@@ -665,7 +687,7 @@ struct MelGenExtensionMainView: View {
                                value: binding(\.bassline.reach, reloadKernel: false),
                                theme: theme,
                                format: { reachLabel(for: $0) },
-                               onCommit: redrawBass)
+                               onCommit: redrawOnRelease)
 
                 rangeRow
 
@@ -678,22 +700,22 @@ struct MelGenExtensionMainView: View {
                         LabelledSlider(title: "Outside", lowLabel: "in the scale",
                                        highLabel: "anything",
                                        value: binding(\.bassline.outside, reloadKernel: false),
-                                       theme: theme, onCommit: redrawBass)
+                                       theme: theme, onCommit: redrawOnRelease)
                         LabelledSlider(title: "Side-slip", lowLabel: "inside",
                                        highLabel: "a semitone up",
                                        value: binding(\.bassline.sideSlip, reloadKernel: false),
-                                       theme: theme, onCommit: redrawBass)
+                                       theme: theme, onCommit: redrawOnRelease)
                         LabelledSlider(title: "Chromatic", lowLabel: "diatonic",
                                        highLabel: "by semitone",
                                        value: binding(\.bassline.chromaticism, reloadKernel: false),
-                                       theme: theme, onCommit: redrawBass)
+                                       theme: theme, onCommit: redrawOnRelease)
                         LabelledSlider(title: "Runs", lowLabel: "one note",
                                        highLabel: "keeps going",
                                        value: binding(\.bassline.momentum, reloadKernel: false),
-                                       theme: theme, onCommit: redrawBass)
+                                       theme: theme, onCommit: redrawOnRelease)
                         LabelledSlider(title: "Leaps", lowLabel: "steps", highLabel: "wide",
                                        value: binding(\.bassline.leapiness, reloadKernel: false),
-                                       theme: theme, onCommit: redrawBass)
+                                       theme: theme, onCommit: redrawOnRelease)
                         seedRow
                     }
                 }
@@ -755,34 +777,28 @@ struct MelGenExtensionMainView: View {
             set: { newValue in
                 guard state[keyPath: keyPath] != newValue else { return }
                 commit(reloadKernel: false) { $0[keyPath: keyPath] = newValue }
-                redrawBass()
+                redrawOnRelease()
             }
         )
     }
 
-    /// Draws a new bass part because a control moved.
+    /// Makes a take because a control was released, aimed at *same, changed*.
     ///
-    /// Bass is the first thing here that is fast enough to be *played* rather
-    /// than asked for: a draw is arithmetic over two histograms, so the part can
-    /// be different before the finger lifts. Which raises the question the rest
-    /// of the plug-in had never had to answer — what is a take, when the answer
-    /// arrives continuously?
+    /// Bass is fast enough to be played rather than asked for: a draw is
+    /// arithmetic over two histograms, so the part can be different before the
+    /// finger lifts. On release rather than on every frame, because a control
+    /// that redraws a hundred times across one drag makes a hundred things
+    /// nobody can hear; one per gesture is one you can hear against the last.
     ///
-    /// The answer taken: **on release, and every release is a take.** Not on
-    /// every frame, because a control that redraws a hundred times across one
-    /// drag makes a hundred things nobody can hear and nobody asked to judge;
-    /// one per gesture is one you can hear against the last one. And a take
-    /// rather than a performance, because the whole point of moving a control is
-    /// that you might have just found something, and something you cannot keep
-    /// is something you have to find twice. The ring evicts the unjudged ones,
-    /// which is exactly what it is for.
-    ///
-    /// Only in Bass. Every other source pays for a take — the model in seconds,
-    /// the rest in a rotation that has to move on — and redrawing them on a
-    /// slider would be a different feature with the same name.
-    private func redrawBass() {
-        guard liveState.mode == .bass, !isGenerating else { return }
-        drawBassline(advancing: false)
+    /// It goes through `advance(aiming: .sameChanged)` rather than through
+    /// Bass's own draw, and that is the whole change: what looked like a Bass
+    /// rule — *a release holds the seed, Draw advances it* — is the third aim,
+    /// and it belongs to every source whose draw is deterministic. One rule in
+    /// one place, rather than the same rule re-implemented per mode, which is
+    /// how it stopped being visible as a rule in the first place. ROADMAP H14.
+    private func redrawOnRelease() {
+        guard !isGenerating, source.isInstant else { return }
+        advance(aiming: .sameChanged, quietly: true, sticky: false)
     }
 
     /// Replaces the progression with a vamp, and says what it replaced.
@@ -820,7 +836,7 @@ struct MelGenExtensionMainView: View {
                                }),
                            theme: theme,
                            format: { ChordProgression.noteName(forMIDINote: 12 + Int(($0 * 48).rounded())) },
-                           onCommit: redrawBass)
+                           onCommit: redrawOnRelease)
             LabelledSlider(title: "Highest", lowLabel: "C1", highLabel: "C5",
                            value: Binding(
                                get: { Double(state.bassline.highNote - 24) / 48 },
@@ -831,7 +847,7 @@ struct MelGenExtensionMainView: View {
                                }),
                            theme: theme,
                            format: { ChordProgression.noteName(forMIDINote: 24 + Int(($0 * 48).rounded())) },
-                           onCommit: redrawBass)
+                           onCommit: redrawOnRelease)
         }
     }
 
@@ -877,7 +893,7 @@ struct MelGenExtensionMainView: View {
             }
             LabelledSlider(title: "Morph", lowLabel: "this seed", highLabel: "the next",
                            value: binding(\.bassline.morph, reloadKernel: false),
-                           theme: theme, onCommit: redrawBass)
+                           theme: theme, onCommit: redrawOnRelease)
             Text("A draw is its seed, so all eight are always there and none of them "
                  + "is stored. The morph goes between two of them note by note rather "
                  + "than switching at the boundary.")
@@ -894,9 +910,13 @@ struct MelGenExtensionMainView: View {
         return names[index]
     }
 
-    /// Controls that change nothing until you ask for a take.
+    /// Shape: the aims that say what the next take is *like*, as against which
+    /// source makes it or what harmony it is over.
+    ///
+    /// The other half of the old "Texture" heading. Nothing here is heard until
+    /// a verb is pressed, which is exactly what the badge above the group says.
     private var nextTakeSettings: some View {
-        WhenGroup(legend: "Next take", theme: theme) {
+        WhenGroup(legend: "Shape", theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 LabelledSlider(title: "Density", lowLabel: "sparse", highLabel: "dense",
                                value: binding(\.expression.density), theme: theme,
@@ -1300,6 +1320,14 @@ struct MelGenExtensionMainView: View {
 
     /// The template, behind a one-line disclosure — set once a session rather
     /// than once a take.
+    /// One picker, whose contents are named by the source above it.
+    ///
+    /// Under **Stored line** it holds stored lines; under every other source it
+    /// holds templates. That closes U9 without a new list, and it dissolves the
+    /// third problem in the brief rather than solving it: a template is an *aim*
+    /// — it shapes a take that does not exist yet — and a stored line is
+    /// *material*, a take already made and waiting to be fitted. They were only
+    /// ever comparable while both were lists you cycled through.
     private var templateRow: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             Button {
@@ -1308,11 +1336,10 @@ struct MelGenExtensionMainView: View {
                 HStack(spacing: 6) {
                     Image(systemName: showTemplates ? "chevron.down" : "chevron.right")
                         .font(.system(size: 11, weight: .bold))
-                    Text("Template · \(state.nextTemplate.name) · "
-                         + (state.briefMode == .lock
+                    Text("\(aimPickerName) · \(aimPickerCurrent) · "
+                         + (aimPickerIsPinned
                             ? "pinned"
-                            : "\(state.briefMode.label.lowercased()) through "
-                              + "\(MelGenTemplates.all(for: state.mode).count)"))
+                            : "\(aimPickerMode.label.lowercased()) through \(aimPickerItems.count)"))
                         .font(.system(size: 12))
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -1324,11 +1351,11 @@ struct MelGenExtensionMainView: View {
             .buttonStyle(.plain)
 
             if showTemplates {
-                FlowChips(items: MelGenTemplates.all(for: state.mode).map(\.name),
-                          isSelected: { $0 == state.nextTemplate.name },
-                          isPinned: { state.briefMode == .lock && state.lockedBriefName == $0 },
+                FlowChips(items: aimPickerItems,
+                          isSelected: { $0 == aimPickerCurrent },
+                          isPinned: { aimPickerIsPinned && aimPickerPinned == $0 },
                           theme: theme) { name in
-                    useTemplate(name)
+                    if source == .stored { useStoredLine(name) } else { useTemplate(name) }
                 }
 
                 HStack(spacing: MelGenMetrics.space2) {
@@ -1744,6 +1771,48 @@ struct MelGenExtensionMainView: View {
         }
     }
 
+    /// What the one picker is called, and what is in it, under this source.
+    private var aimPickerName: String { source == .stored ? "Stored line" : "Template" }
+
+    private var aimPickerItems: [String] {
+        source == .stored
+            ? PatternStore.library.map(\.name)
+            : MelGenTemplates.all(for: state.mode).map(\.name)
+    }
+
+    private var aimPickerCurrent: String {
+        source == .stored
+            ? state.nextLine(from: PatternStore.library).name
+            : state.nextTemplate.name
+    }
+
+    private var aimPickerMode: SelectionMode {
+        source == .stored ? state.lineMode : state.briefMode
+    }
+
+    private var aimPickerIsPinned: Bool { aimPickerMode == .lock }
+
+    private var aimPickerPinned: String? {
+        source == .stored ? state.lockedLineName : state.lockedBriefName
+    }
+
+    /// Pins a stored line, the way `useTemplate` pins a template.
+    ///
+    /// Tapping uses it *and* pins it, because "use this" and "keep using this"
+    /// are the same wish nine times in ten — the same rule the template picker
+    /// settled on, applied to the list that is now in the same place.
+    private func useStoredLine(_ name: String) {
+        commit(reloadKernel: false) { state in
+            if state.lineMode == .lock, state.lockedLineName == name {
+                state.lockedLineName = nil
+                state.lineMode = .cycle
+                return
+            }
+            state.lockedLineName = name
+            state.lineMode = .lock
+        }
+    }
+
     private func toggleTemplate(_ name: String) {
         let available = MelGenTemplates.all(for: liveState.mode).map(\.name)
         commit(reloadKernel: false) { state in
@@ -1913,39 +1982,70 @@ struct MelGenExtensionMainView: View {
         .accessibilityLabel("Playback direction")
     }
 
-    /// How often anything changes: when Auto swaps a take in, and when the drift
-    /// re-rolls.
+    /// Auto, as the list of verbs the machine presses for you.
     ///
-    /// Shown when either is on, because it now governs both. Behind Auto alone it
-    /// was invisible in exactly the case that needed it — a drifting loop with no
-    /// auto-regeneration changed every pass with no way to say otherwise.
-    @ViewBuilder
+    /// It used to be a toggle in the transport and one interval governing
+    /// everything, which is why it read as weather rather than as a machine
+    /// pressing buttons — and why the brief's ask for "several parameters" could
+    /// not be written down. It could not: there was one unnamed button to press.
+    /// Now there are three named ones, so Auto is three intervals and nothing
+    /// else, and it sits under the verbs rather than beside the transport
+    /// because it does nothing the bar below cannot.
     private var autoRow: some View {
-        if state.autoRegenerate || state.liveMutation.isActive {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack(spacing: MelGenMetrics.space2) {
+                Text("Auto · presses these for me")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(0.8)
+                    .textCase(.uppercase)
+                    .foregroundStyle(theme.textMuted)
+                Spacer(minLength: 0)
+                Text(state.autoVerbs.summary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.textMuted)
+                    .lineLimit(1)
+            }
+
+            ForEach(Verb.allCases, id: \.self) { verb in
                 HStack(spacing: MelGenMetrics.space2) {
-                    Text(state.autoRegenerate ? "New take every" : "Re-roll the drift every")
-                        .font(.system(size: 13))
+                    Text(verb.label)
+                        .font(.system(size: 12))
                         .foregroundStyle(theme.text)
+                        .frame(width: 104, alignment: .leading)
+                        .lineLimit(1)
                     ChipPicker(
-                        options: [(1, "lap"), (2, "2 laps"), (4, "4 laps"), (8, "8 laps")],
-                        selection: binding(\.regenerateEveryPasses, reloadKernel: false),
-                        theme: theme
-                    )
-                    .frame(maxWidth: 320)
+                        options: [(0, "off"), (1, "lap"), (2, "2"), (4, "4"), (8, "8")],
+                        selection: Binding(
+                            get: { state.autoVerbs.interval(for: verb) },
+                            set: { laps in
+                                commit(reloadKernel: false) {
+                                    $0.autoVerbs.setInterval(laps, for: verb)
+                                }
+                            }),
+                        theme: theme)
                     Spacer(minLength: 0)
                 }
-                if state.regenerateEveryPasses > 1 {
-                    Text(state.autoRegenerate && state.liveMutation.isActive
-                         ? "The take and the drift change together, so each performance is heard "
-                           + "\(state.regenerateEveryPasses) times — long enough to judge one."
-                         : "Heard \(state.regenerateEveryPasses) times before anything changes.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Auto presses \(verb.label)")
             }
+
+            Text("Off, this is the manual list — the same verbs, pressed by hand in the "
+                 + "bar below. It is the only place Auto is described, because it does "
+                 + "nothing that bar cannot.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// What the drift is doing, said once rather than assembled at three sites.
+    private var driftCaption: String {
+        let every = state.autoVerbs.rollAgainEveryLaps
+        let cadence = every == 0
+            ? "Re-rolled only when you press Roll again"
+            : "Re-rolled every \(every == 1 ? "lap" : "\(every) laps")"
+        return cadence + ", and seeded by which roll it is — so a roll that sounded "
+             + "good can be got back rather than being gone. Roll \(state.mutationPass)."
     }
 
     private var playButton: some View {
@@ -2013,9 +2113,7 @@ struct MelGenExtensionMainView: View {
                                value: binding(\.liveMutation.octaves), theme: theme,
                                format: { "\(Int($0 * 100))%" })
 
-                Text("Re-rolled every \(state.regenerateEveryPasses == 1 ? "lap" : "\(state.regenerateEveryPasses) laps"), and seeded by which roll "
-                     + "it is — so a roll that sounded good can be got back rather than "
-                     + "being gone. Roll \(state.mutationPass).")
+                Text(driftCaption)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2047,7 +2145,7 @@ struct MelGenExtensionMainView: View {
     /// alternative is a callback from the render thread, which would mean the
     /// audio thread waiting on the interface.
     ///
-    /// The cadence is `regenerateEveryPasses`, not every loop, and that's the
+    /// The cadence is `autoVerbs.rollAgainEveryLaps`, not every loop, and that's the
     /// whole point of the setting. "New take every two loops" was asked for so
     /// there would be time to judge something before it was gone — and it bought
     /// none, because the drift re-rolled every loop regardless. Two passes of the
@@ -2055,18 +2153,22 @@ struct MelGenExtensionMainView: View {
     /// nothing stable to answer. Re-rolling with the take means the interval
     /// governs *how often anything changes*, which is what it was set for.
     ///
-    /// It applies whether or not auto-regeneration is on: at the default of 1 the
-    /// behaviour is exactly what it was, and at 2 you hear the same performance
-    /// twice either way.
+    /// It is now one entry in `AutoVerbs` rather than automatic behaviour: the
+    /// machine pressing `Roll again` on an interval, which is a thing you can
+    /// also press yourself. Zero is off, and off means the drift holds still
+    /// until you roll it.
     private func runDrift() async {
-        guard state.liveMutation.isActive else { return }
-        var lastRolledPass = audioUnit?.currentPass ?? 0
-        while !Task.isCancelled, liveState.liveMutation.isActive {
+        guard liveState.autoVerbs.rollAgainEveryLaps > 0 else { return }
+        var lastRolled = audioUnit?.currentPass ?? 0
+        while !Task.isCancelled, liveState.autoVerbs.rollAgainEveryLaps > 0 {
             try? await Task.sleep(for: .milliseconds(250))
-            guard let pass = audioUnit?.currentPass else { continue }
-            guard liveState.isDue(pass: pass, since: lastRolledPass) else { continue }
-            lastRolledPass = pass
-            commit { $0.mutationPass += 1 }
+            guard let lap = audioUnit?.currentPass else { continue }
+            guard liveState.isDue(.rollAgain, lap: lap, since: lastRolled) else { continue }
+            lastRolled = lap
+            // The same verb the button presses. It used to be an increment here
+            // and an increment there, which is how one of them ended up
+            // unconditional while the other honoured an interval.
+            commit { $0.rollAgain() }
         }
     }
 
@@ -2162,8 +2264,6 @@ struct MelGenExtensionMainView: View {
             Spacer(minLength: 0)
             ToggleChip(title: "Host sync", systemImage: "metronome",
                        isOn: hostSyncBinding, theme: theme)
-            ToggleChip(title: "Auto", systemImage: "arrow.trianglehead.2.clockwise",
-                       isOn: binding(\.autoRegenerate, reloadKernel: false), theme: theme)
         }
     }
 
@@ -2326,21 +2426,10 @@ struct MelGenExtensionMainView: View {
             // have to be on screen at the moment of judging.
             lineage(of: take)
 
-            // While drift is running these answer for the *pass*, so they show
-            // what was said about this pass rather than about the take. Without
-            // that it read as unjudged the instant after a tap, which looks like
-            // the tap was lost.
-            RateAndAdvanceStrip(
-                current: judgingDrift ? markForThisPass : mark?.disposition,
-                aim: state.advanceMode,
-                theme: theme,
-                subtitle: { TakeAdvance.subtitle(mode: $0, state: state, source: source) },
-                onRate: { rate($0, of: take, mark: mark) },
-                onAdvance: { advance(aiming: $0) },
-                onMore: { showAllDispositions = true },
-                onBack: ratedTakeID.flatMap { id in
-                    id == take.id ? nil : { reselect(id) }
-                })
+            // Rate, roll and advance are no longer here: they are the verb bar,
+            // pinned below everything, because they are the three things done
+            // per minute and a half-height window should never put one behind a
+            // scroll. What stays with the take is what is *about* the take.
 
             // The seven, as the "more" destination rather than the default. The
             // model didn't change — a rating writes one of these — so this bar
@@ -2391,6 +2480,53 @@ struct MelGenExtensionMainView: View {
 
     /// Whether what's sounding is a performance of the take rather than the take.
     ///
+    /// The verb bar: rate, roll, advance — pinned, and the same three things
+    /// whatever is on screen above.
+    ///
+    /// Present whenever there is a take to act on. Before the first one there is
+    /// nothing to rate and nothing to roll, and a bar of disabled controls under
+    /// an empty panel is 110pt spent saying "not yet".
+    @ViewBuilder
+    private var verbBar: some View {
+        if let take = state.currentTake {
+            let mark = take.mark(onPass: state.curationPass)
+            VStack(spacing: 0) {
+                Divider().overlay(theme.border)
+                // While drift is running these answer for the *roll*, so they
+                // show what was said about this roll rather than about the take.
+                // Without that it read as unjudged the instant after a tap,
+                // which looks like the tap was lost.
+                VerbBar(current: judgingDrift ? markForThisPass : mark?.disposition,
+                        aim: binding(\.advanceMode, reloadKernel: false),
+                        theme: theme,
+                        subtitle: { TakeAdvance.subtitle(mode: $0, state: state, source: source) },
+                        rollUnavailable: state.rollAgainUnavailable(isPlaying: isPlaying),
+                        onRate: { rate($0, of: take, mark: mark) },
+                        onRoll: rollAgain,
+                        onAdvance: { advance(aiming: $0) },
+                        onMore: { showAllDispositions = true },
+                        onBack: ratedTakeID.flatMap { id in
+                            id == take.id ? nil : { reselect(id) }
+                        })
+                    .padding(.horizontal, MelGenMetrics.space4)
+                    .padding(.top, MelGenMetrics.space3)
+                    .padding(.bottom, MelGenMetrics.space2)
+            }
+            .background(theme.sunken)
+        }
+    }
+
+    /// One roll of the drift's dice, by hand.
+    ///
+    /// The verb that did not exist: the single action that changes what you hear
+    /// for free could previously only be waited for. Free means free — it
+    /// re-renders the take that is already playing and writes nothing to it.
+    private func rollAgain() {
+        guard liveState.rollAgainUnavailable(isPlaying: isPlaying) == nil else { return }
+        commit { $0.rollAgain() }
+        statusMessage = "Roll \(liveState.mutationPass)."
+    }
+
     /// Drift re-rolls on every loop and deliberately doesn't create takes, which
     /// meant judging while it ran marked the *parent* — so a pass that had
     /// changed a great deal still showed the mark of the thing it drifted from,
@@ -2441,8 +2577,16 @@ struct MelGenExtensionMainView: View {
 
     /// Makes the next take the way the listener aimed it, and makes that aim the
     /// swipe's mode — so the words under the strip stay true.
-    private func advance(aiming mode: AdvanceMode, quietly: Bool = false) {
-        if liveState.advanceMode != mode {
+    /// - Parameter sticky: whether this becomes the loaded aim, and therefore
+    ///   what a swipe will do next. True when a verb was pressed, because the
+    ///   words under the strip have to stay true. False when a *control* was
+    ///   released: that presses `sameChanged` on its own behalf, and having it
+    ///   silently re-aim the swipe would mean moving a slider changed what an
+    ///   unrelated gesture does.
+    private func advance(aiming mode: AdvanceMode,
+                         quietly: Bool = false,
+                         sticky: Bool = true) {
+        if sticky, liveState.advanceMode != mode {
             commit(reloadKernel: false) { $0.advanceMode = mode }
         }
 
@@ -2511,14 +2655,14 @@ struct MelGenExtensionMainView: View {
     /// isn't there, which is worse than saying nothing.
     private func placeName(of destination: StepDestination) -> String {
         switch destination {
-        case .progression: return "Decide · Progression"
-        case .source: return "Decide · Next take"
+        case .progression: return "Play · Progression"
+        case .source: return "Play · Next take"
         case .rating: return "Play · this take"
         case .material: return "Decide · Your material"
         case .pass: return "Decide · Review"
         case .setups: return "Decide · Setup"
         case .storedLines: return "Play · this take"
-        case .bass: return "Decide · Bass"
+        case .bass: return "Play · Bass"
         }
     }
 
@@ -2529,10 +2673,12 @@ struct MelGenExtensionMainView: View {
     /// collapsed row indistinguishable from the others.
     private func go(to destination: StepDestination) {
         switch destination {
+        // Both are aims, and an aim lives with the verb it feeds. They were on
+        // Decide under the criterion ISSUES §4.1 records as wrong.
         case .progression:
-            panelTab = .decide
+            panelTab = .play
         case .source:
-            panelTab = .decide
+            panelTab = .play
         case .rating, .storedLines:
             panelTab = .play
         case .material:
@@ -2546,9 +2692,9 @@ struct MelGenExtensionMainView: View {
             showSetups = true
         case .bass:
             // Switching the mode *is* going there: the section only exists in
-            // Bass, so landing on Decide with the mode still on Line would be
+            // Bass, so landing on Play with the mode still on Line would be
             // sending someone to a heading that isn't drawn.
-            panelTab = .decide
+            panelTab = .play
             commit(reloadKernel: false) { $0.mode = .bass }
             if !MaterialSource.all(for: .bass).contains(source) {
                 source = MaterialSource.first(for: .bass)
@@ -4314,10 +4460,10 @@ struct MelGenExtensionMainView: View {
     /// would race — so this is deliberately the *same* rule for the times auto is
     /// off, rather than a second path that also runs when it's on.
     private func runPendingSwap() async {
-        guard pendingTake != nil, !liveState.autoRegenerate else { return }
+        guard pendingTake != nil, liveState.autoVerbs.nextTakeEveryLaps == 0 else { return }
         while !Task.isCancelled, let ready = pendingTake {
             try? await Task.sleep(for: .milliseconds(120))
-            guard !liveState.autoRegenerate else { return }
+            guard liveState.autoVerbs.nextTakeEveryLaps == 0 else { return }
             guard let pass = audioUnit?.currentPass else { return }
             guard pass > pendingReadyPass else { continue }
             let aim = pendingAim
@@ -4333,7 +4479,7 @@ struct MelGenExtensionMainView: View {
     }
 
     private func runAutoRegeneration() async {
-        guard state.autoRegenerate else { return }
+        guard liveState.autoVerbs.nextTakeEveryLaps > 0 else { return }
 
         // Nothing to loop yet: put music under the changes within a beat, rather
         // than half a minute of silence while the model thinks. Which *kind* of
@@ -4353,10 +4499,10 @@ struct MelGenExtensionMainView: View {
         while !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(250))
             let current = liveState
-            guard current.autoRegenerate else { return }
+            guard current.autoVerbs.nextTakeEveryLaps > 0 else { return }
             guard let pass = audioUnit?.currentPass else { continue }
 
-            let due = current.isDue(pass: pass, since: lastStartedPass)
+            let due = current.isDue(.nextTake, lap: pass, since: lastStartedPass)
 
             // A model take finished during the last loop: it wins, so swap it in
             // now the loop has come round.
@@ -4474,7 +4620,7 @@ struct MelGenExtensionMainView: View {
             statusMessage = error.localizedDescription
             if auto {
                 // Don't spin on a progression that can't parse.
-                commit(reloadKernel: false) { $0.autoRegenerate = false }
+                commit(reloadKernel: false) { $0.autoVerbs.nextTakeEveryLaps = 0 }
             }
             return
         }
@@ -4487,7 +4633,7 @@ struct MelGenExtensionMainView: View {
         if case .unavailable(let reason) = MelodyGenerator.availability {
             statusMessage = reason
             if auto {
-                commit(reloadKernel: false) { $0.autoRegenerate = false }
+                commit(reloadKernel: false) { $0.autoVerbs.nextTakeEveryLaps = 0 }
             }
             return
         }

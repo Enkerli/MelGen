@@ -27,6 +27,35 @@ than discovered. A term marked **retired** must not appear in the interface.
 
 ## Terms
 
+**tense** — What happens when you press it, of three, and there is no fourth.
+**now** changes what you are hearing — free, reversible, nothing stored.
+**take** makes something judgeable — it costs between nothing and two minutes,
+arrives on a lap boundary, and enters the history. **aims** changes what the
+next one will be like, and is silent until a verb. The test, for any control:
+press it with the transport running and say what happened. *The sound changed* →
+now. *Something arrived that I could rate* → take. *Nothing, yet* → aims.
+`ActionTense`, and a type rather than a convention because a convention that
+isn't checkable is one that comes back — see the "changes" entry under
+**progression** for what that costs.
+
+**verb** — A manual gesture that does one of the three tenses. Three: **Roll
+again** (now), **Next take** (take), **New progression** (take). Everything Auto
+does, it does by pressing one of these — which is why they had to exist before
+Auto could be described as anything but weather. `Verb`.
+
+**roll again** — Re-rolls the drift by hand. Free: it re-renders the take that
+is already playing and writes nothing to it. Disabled, with the reason said,
+when nothing is playing or when drift is at zero — a free control whose whole
+job is *press it and the sound changes* must never be the one that silently
+doesn't.
+
+**aim** — Which of three a **Next take** will be. **same, changed** holds the
+seed and re-reads the setup, so the only difference is what you just changed;
+**another like this** keeps the setup and takes a new seed; **something else**
+advances the rotation. Narrowest first, and the order is the argument.
+`AdvanceMode`. A released control presses the first one on its own behalf
+without changing which aim is loaded.
+
 **take** — One candidate, stored. Raw notes before expression, plus the setup
 that made it, its measurement, its marks and its tags. The unit everything
 downstream treats alike, whichever of the seven sources produced it. Immutable in
@@ -177,6 +206,17 @@ at three per cent an outside note is colour and at thirty it is a wrong note.
 **side-slip** — The pentatonic on the third of the chord, and the one a semitone
 above it, which shares no note with the chord's scale and lands anyway. A dial
 between the two.
+
+**Auto** — The list of which verbs the machine presses, and how often, in laps.
+Zero is off. Not a mode and not a toggle: it does nothing the verb bar cannot,
+which is why it sits under the verbs rather than beside the transport.
+`AutoVerbs`. **"Auto-regeneration" is retired** — it named one verb as though it
+were the only one.
+
+**Texture** — **Retired**, and now actually gone from the interface. It was one
+heading over two groups whose real difference is *when* they apply. They are
+**What is sounding** (now: expression, gate, swing, drift) and **Shape** (aims:
+density, temperature, note duration).
 
 **morph** — A dial between two lines, in rhythm and in pitch separately. A
 position on it becomes a take when kept. In Bass it dials between one seed's draw

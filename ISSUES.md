@@ -198,7 +198,18 @@ measurements, not assumed better.
 
 Ordered by how likely they are to bite.
 
-1. **The tab criterion sorts making in with judging.** Found by playing the
+1. **The tab criterion sorted making in with judging.** ✅ **Settled 2026-08-29
+   by the action grammar.** The faulty test was *"touching it changes nothing
+   until you ask for a take"*, which the progression passes — and under the
+   grammar the progression is plainly an **aims**, so it belongs with the verb
+   it feeds. Decide's criterion is now narrower and holds: *it keeps only what
+   acts on takes that already exist* — the sweep, variants and morphs, the
+   library, what was learned. Progression, source and template are back on Play,
+   and `NextStep`'s two destinations follow them. The original analysis is kept
+   below because it is still the right diagnosis of how the wrong test got
+   written.
+
+   **The original entry.** Found by playing the
    2026-08-25 design pass, and it is a fault in the criterion rather than in the
    implementation of it. The design's test for Decide is *"touching it changes
    nothing until you ask for a take"*, and the progression passes that test,
@@ -415,6 +426,62 @@ What it cost is in ROADMAP H13: text names one mode, so the continuous minorness
 became a picker. The in-between was audible and is worth having back — as a
 darkness control that works over any progression rather than only over a vamp,
 which is the better control anyway.
+
+### 6.6 The grammar, and what it closed
+
+*2026-08-29, implementing the action-grammar handoff from Claude Design (option
+1a, the pinned verb bar).*
+
+Every control now answers one of three questions and says which: **now** changes
+what you are hearing, **take** makes something judgeable, **aims** changes what
+the next one will be like. `ActionTense` is a type rather than a convention
+because the pass before it stated the same distinction in a comment, and §6.5 is
+the record of what an uncheckable convention costs.
+
+What that settled, and why each was really the same problem:
+
+- **The manual gesture that was never designed** (brief problem 2). There are two
+  primitive verbs and the app had one. **Next take** existed but was labelled by
+  its source — "Draw a bass line", "Comp the progression" — so it read as a
+  feature rather than as the thing Auto presses; **Roll again** did not exist at
+  all, so the one action that changes what you hear for free could only be waited
+  for. Both are named and on screen now, and **Auto became the list of which ones
+  the machine presses**, which is the several parameters the brief asked for and
+  was unwritable until the verbs had names.
+- **§6.1, the pattern player against the take machine.** Bass had already solved
+  it and the solution read as plumbing: *a release holds the seed, Draw advances
+  it.* That is not a Bass rule — it is a third aim, `sameChanged`, and it applies
+  to every source whose draw is deterministic. ROADMAP H14, answered by deleting
+  the question.
+- **§4.6, sixteen sections and no hierarchy.** Not solved by moving sections but
+  by there being three things a section may be: a verb, a group of aims for one
+  verb, or part of the record. A rule that still holds when the eighth source
+  arrives.
+- **U8 and U9.** "Texture" is finally gone from the interface — the two groups
+  are **What is sounding** (now) and **Shape** (aims), named for their tense. And
+  one picker, whose contents are named by the source above it: stored lines under
+  Stored line, templates everywhere else. Brief problem 3 dissolves rather than
+  being solved, because a template is an aim and a stored line is material.
+
+**The one place the grammar softens, stated rather than hidden.** `same, changed`
+promises *seed held* on an instant source and *asked again* on the model, because
+an identical prompt is not an identical answer. The aim stays available there and
+says less, with the sentence in its accessibility hint. Removing it was
+considered and is worse: an aim that vanishes when you switch source reads as a
+bug, and a grammar with one silent exception is a grammar nobody trusts.
+
+**Contrast, run as the handoff asked.** All three badge pairings were already in
+the audited 28 and pass in both themes — `accentText` on `accent` at 5.89:1 and
+7.04:1, `text` on `raised` at 13.64:1 and 12.61:1 with a `borderStrong` edge at
+3.27:1 and 3.04:1, `textMuted` on `sunken` at 4.80:1 and 5.17:1. No token was
+touched.
+
+**Not yet heard on device**, and 1a is the option that can only be falsified
+there: half height in AUM, five rolls without scrolling, an advance on each of
+the three aims, and the keyboard not sitting on the bar while the progression is
+edited.
+
+---
 
 ### 6.5 "Changes" had been retired and came back
 

@@ -75,6 +75,13 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
     var generationSeconds: Double = 0
     /// How many model requests this take needed (one per 4-bar phrase).
     var requestCount: Int = 1
+    /// The seed everything random in this take was drawn from.
+    ///
+    /// Recorded so that "the same seed" is a fact about the take rather than
+    /// something implied by a cursor nobody can see — which is what
+    /// `AdvanceMode.sameChanged` has to hold. Zero means the producer didn't
+    /// say, and a held-seed aim falls through rather than pretending.
+    var seed: UInt64 = 0
     var source: TakeSource = .model
     /// Measured after the notes were settled, so curation has something to sort
     /// by and non-chord tones are flagged for a human rather than judged here.
@@ -148,6 +155,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         durationPalette = try container.decodeIfPresent(DurationPalette.self, forKey: .durationPalette) ?? .mixed
         generationSeconds = try container.decodeIfPresent(Double.self, forKey: .generationSeconds) ?? 0
         requestCount = try container.decodeIfPresent(Int.self, forKey: .requestCount) ?? 1
+        seed = try container.decodeIfPresent(UInt64.self, forKey: .seed) ?? 0
         source = try container.decodeIfPresent(TakeSource.self, forKey: .source) ?? .model
         analysis = try container.decodeIfPresent(MelodyAnalysis.self, forKey: .analysis)
         marks = try container.decodeIfPresent([CurationMark].self, forKey: .marks) ?? []
@@ -168,6 +176,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
          durationPalette: DurationPalette = .mixed,
          generationSeconds: Double = 0,
          requestCount: Int = 1,
+         seed: UInt64 = 0,
          source: TakeSource = .model,
          analysis: MelodyAnalysis? = nil,
          marks: [CurationMark] = [],
@@ -186,6 +195,7 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.durationPalette = durationPalette
         self.generationSeconds = generationSeconds
         self.requestCount = requestCount
+        self.seed = seed
         self.source = source
         self.analysis = analysis
         self.marks = marks
@@ -395,22 +405,64 @@ struct MelGenState: Codable, Sendable {
     /// shouldn't be at the mercy of whatever the host is set to.
     var appearance: MelGenAppearance = .light
 
-    /// Regenerate on its own while playing, giving a new take every few passes.
-    var autoRegenerate: Bool = false
-    /// How many loop passes go by before anything changes — both when Auto swaps
-    /// a take in and when the drift re-rolls. See `isDue(pass:since:)`.
-    var regenerateEveryPasses: Int = 1
-
-    /// Whether a loop boundary is far enough past the last change to be another.
+    /// How often the machine presses each verb.
     ///
-    /// One rule, used by both loops that change what's heard, because they have
-    /// to agree. They didn't: Auto honoured the interval and the drift re-rolled
-    /// every pass, so "new take every 2 loops" gave two *different performances*
-    /// of the same take and there was still nothing stable to judge. The setting
-    /// means "how often anything changes", and that only holds if everything that
-    /// changes asks the same question.
-    func isDue(pass: Int64, since lastChanged: Int64) -> Bool {
-        pass >= lastChanged + Int64(max(1, regenerateEveryPasses))
+    /// Replaces `autoRegenerate: Bool` plus `regenerateEveryPasses: Int`, which
+    /// between them could express one of the three verbs and no combination of
+    /// them. The brief asked for Auto to have several parameters; it couldn't,
+    /// while it had one unnamed button to press — which is why the manual
+    /// gestures had to exist first. Now they do, Auto is a per-verb interval and
+    /// nothing else.
+    var autoVerbs = AutoVerbs()
+
+    /// Whether a loop boundary is far enough past the last press to be another.
+    ///
+    /// One rule, asked once per verb. It used to be one rule for everything,
+    /// which is how "new take every 2 laps" bought no time: Auto honoured the
+    /// interval and the drift re-rolled every lap regardless, so you got two
+    /// different performances of one take and nothing stable to judge (ISSUES
+    /// §3). That fix stands and gets easier — the question is the same, and now
+    /// each verb has its own answer.
+    func isDue(_ verb: Verb, lap: Int64, since lastPressed: Int64) -> Bool {
+        let interval = autoVerbs.interval(for: verb)
+        guard interval > 0 else { return false }
+        return lap >= lastPressed + Int64(interval)
+    }
+
+    /// Re-rolls the drift by hand. Free: it re-renders the take that is already
+    /// playing and writes nothing to it.
+    ///
+    /// Deliberately unguarded here. Whether the verb is *offered* is the view's
+    /// question — see `rollAgainUnavailable` — and the model has to stay
+    /// callable from a test that never starts a transport.
+    mutating func rollAgain() {
+        mutationPass &+= 1
+    }
+
+    /// Steps the drift back to the roll before this one.
+    ///
+    /// Free too, and exact: drift is seeded by (take, roll), so the earlier
+    /// performance is reproduced rather than approximated. Stops at zero rather
+    /// than wrapping into a roll that was never played.
+    mutating func previousRoll() {
+        mutationPass = max(0, mutationPass - 1)
+    }
+
+    /// Why `rollAgain` is unavailable, or nil when it isn't.
+    ///
+    /// Disabled rather than hidden, and rather than allowed-and-silent. Allowing
+    /// it while stopped is well defined — the seed changes and you would hear it
+    /// on the next Play — but a free, instant control whose whole job is *you
+    /// press it and the sound changes* teaches the opposite lesson the one time
+    /// it doesn't. A control that lies once is a control that gets no trust back.
+    ///
+    /// Two reasons, not one. Drift at zero is the commoner case and the more
+    /// confusing: the button is there, the transport is running, and pressing it
+    /// would genuinely do nothing because there is nothing to re-roll.
+    func rollAgainUnavailable(isPlaying: Bool) -> String? {
+        guard isPlaying else { return "Nothing is playing" }
+        guard liveMutation.isActive else { return "Drift is at zero" }
+        return nil
     }
 
     /// Rotates through the style briefs so successive takes differ.
@@ -489,8 +541,7 @@ struct MelGenState: Codable, Sendable {
         appearance = try container.decodeIfPresent(MelGenAppearance.self, forKey: .appearance) ?? .light
         templateProposals = try container.decodeIfPresent([TemplateProposal].self,
                                                           forKey: .templateProposals) ?? []
-        autoRegenerate = try container.decodeIfPresent(Bool.self, forKey: .autoRegenerate) ?? false
-        regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses) ?? 1
+        autoVerbs = AutoVerbs.decode(from: decoder)
         briefCursor = try container.decodeIfPresent(Int.self, forKey: .briefCursor) ?? 0
         patternCursor = try container.decodeIfPresent(Int.self, forKey: .patternCursor) ?? 0
         selectedBriefNames = try container.decodeIfPresent([String].self, forKey: .selectedBriefNames) ?? []

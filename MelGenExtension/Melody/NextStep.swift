@@ -15,9 +15,12 @@
 //  - **"Your material"** is a drawer too, so the learned models are invisible
 //    until you already know they exist. The readout is the feedback that tells
 //    you whether keeping takes is *doing* anything.
-//  - **Making and judging are on the same tab.** Decide holds the progression,
+//  - **Making and judging were on the same tab.** Decide held the progression,
 //    the source and the template, which are how options are *created* (ISSUES
-//    §4.1). Moving them is a real design decision and this is not it.
+//    §4.1). This file used to say "moving them is a real design decision and
+//    this is not it" — the action grammar *was* it, so they moved: an aim
+//    belongs with the verb it feeds, and Decide keeps only what acts on takes
+//    that already exist. Two destinations below resolve to Play accordingly.
 //
 //  The common shape is that the interface is arranged by *what things are* and a
 //  session is lived in order of *when they matter*. Rearranging by time would
