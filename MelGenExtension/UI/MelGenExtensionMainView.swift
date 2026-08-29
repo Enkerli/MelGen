@@ -127,12 +127,13 @@ struct MelGenExtensionMainView: View {
     @State private var panelTab: PanelTab = .play
     @State private var source: MaterialSource = .composed
     @State private var showBasslineMore = false
+    /// Whether the full roll is up. It is a sheet now, not 170pt of the panel.
+    @State private var showFullRoll = false
     @State private var showTemplates = false
     @State private var showTexture = false
     @State private var showPlayMore = false
     @State private var showDecideMore = false
     @State private var showMaterial = false
-    @State private var showNoteTable = false
     /// The last template the model wrote, and what the gate made of it.
     @State private var authored: TemplateCharacter?
     @State private var authoredVerdict: TemplateVerdict?
@@ -209,6 +210,7 @@ struct MelGenExtensionMainView: View {
         // Only scroll when there's something to scroll to. Left bouncing, a short
         // page still drags, and the header clips against the top edge mid-bounce.
         .scrollBounceBehavior(.basedOnSize)
+        .sheet(isPresented: $showFullRoll) { fullRollSheet }
         // The verb bar, pinned. A `safeAreaInset` rather than the last thing in
         // the stack, because the whole argument for it is that rate, roll and
         // advance are never more than zero scrolls away — in a half-height AUM
@@ -2219,38 +2221,25 @@ struct MelGenExtensionMainView: View {
     /// existed. The status message stays as the take's caption rather than
     /// floating above everything, and announces politely, so a new take is spoken
     /// rather than silently replacing the old one.
+    /// What is *about* the take, now that the take itself lives in the bar.
+    ///
+    /// The full roll and its legend moved into a sheet. That is the 170pt this
+    /// pass takes back, and it is the first thing any of the three passes has
+    /// actually removed — the two before it added clarity and length at the same
+    /// time, which ISSUES §4.6 has now recorded twice.
+    ///
+    /// The roll is not gone: it is one tap on the mini roll, which is on screen
+    /// permanently and never was before. Something you ask for, rather than
+    /// 170pt of something you are given.
     private var currentTakeSection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            if let changes = harmonyOfWhatIsPlaying {
-                PianoRoll(notes: state.renderedMelody,
-                          progression: changes,
-                          lengthBeats: state.currentTake?.lengthBeats ?? 0,
-                          theme: theme,
-                          playheadBeat: playheadBeat)
-                    // The sweep, as a gesture: right Yes, left No, up Maybe,
-                    // each one rating and advancing by the aim shown in words
-                    // under the strip. Long press reaches the seven.
-                    .rateOnSwipe(onSwipe: { rating in
-                        guard let take = state.currentTake else { return }
-                        rate(rating, of: take, mark: take.mark(onPass: state.curationPass))
-                    }, onMore: { showAllDispositions = true })
-                    .accessibilityHint("Swipe right to keep, left to skip, up to set aside")
-            }
-
-            rollKey
             takeCaption
 
+            // The note table went with the roll. It is the other half of the
+            // same job — reading the take rather than glancing at it — and
+            // leaving a disclosure here would have been the pass adding a
+            // duplicate while claiming to remove something.
             if let take = state.currentTake {
-                DisclosureGroup(isExpanded: $showNoteTable) {
-                    noteTable(for: take)
-                } label: {
-                    Text("Read the take as text")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                        .frame(minHeight: MelGenMetrics.smallControlHeight)
-                }
-                .accessibilityHint("A table of every note with its chord and its role")
-
                 curationControls(for: take)
             }
         }
@@ -2492,6 +2481,32 @@ struct MelGenExtensionMainView: View {
             let mark = take.mark(onPass: state.curationPass)
             VStack(spacing: 0) {
                 Divider().overlay(theme.border)
+
+                // The bar's subject. Without it the bar is a set of buttons with
+                // no object, which is what pinning the verbs and letting the
+                // roll scroll away had produced.
+                if let changes = harmonyOfWhatIsPlaying {
+                    Button {
+                        showFullRoll = true
+                    } label: {
+                        MiniRoll(notes: state.renderedMelody,
+                                 progression: changes,
+                                 lengthBeats: take.lengthBeats,
+                                 theme: theme,
+                                 playheadBeat: playheadBeat)
+                    }
+                    .buttonStyle(.plain)
+                    // The sweep, as a gesture: right Yes, left No, up Maybe,
+                    // each one rating and advancing by the aim shown in words
+                    // under the strip. Long press reaches the seven. It moved
+                    // here with the drawing — you rate what you can see.
+                    .rateOnSwipe(onSwipe: { rating in
+                        rate(rating, of: take, mark: mark)
+                    }, onMore: { showAllDispositions = true })
+                    .padding(.horizontal, MelGenMetrics.space4)
+                    .padding(.top, MelGenMetrics.space2)
+                }
+
                 // While drift is running these answer for the *roll*, so they
                 // show what was said about this roll rather than about the take.
                 // Without that it read as unjudged the instant after a tap,
@@ -2514,6 +2529,55 @@ struct MelGenExtensionMainView: View {
             }
             .background(theme.sunken)
         }
+    }
+
+    /// The full roll, asked for rather than given.
+    ///
+    /// Everything the mini roll deliberately doesn't draw — rows, the scale
+    /// shading behind each chord, roles by colour *and* outline, the legend that
+    /// explains them, and the take as text. This is the reading surface; the one
+    /// in the bar is the glancing surface, and trying to be both is what made
+    /// the old one 170pt of permanent screen.
+    private var fullRollSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
+                    if let changes = harmonyOfWhatIsPlaying {
+                        PianoRoll(notes: state.renderedMelody,
+                                  progression: changes,
+                                  lengthBeats: state.currentTake?.lengthBeats ?? 0,
+                                  theme: theme,
+                                  playheadBeat: playheadBeat)
+                    }
+                    rollKey
+                    takeCaption
+                    // The take as text, both ways it has ever been readable:
+                    // the grid, then the table. They were in two places and only
+                    // ever wanted at the same moment as each other.
+                    if let take = state.currentTake {
+                        Text(MelodyNotation.summary(for: state.renderedMelody,
+                                                    lengthBeats: take.lengthBeats))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(theme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        noteTable(for: take)
+                    }
+                }
+                .padding(MelGenMetrics.space4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(theme.background)
+            .navigationTitle("The take")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showFullRoll = false }
+                }
+            }
+        }
+        .environment(\.colorScheme, scheme)
     }
 
     /// One roll of the drift's dice, by hand.

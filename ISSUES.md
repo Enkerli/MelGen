@@ -483,6 +483,78 @@ edited.
 
 ---
 
+### 6.7 The layout pass, and what the border rule actually found
+
+*2026-08-29, implementing design pass 3. Two of its three prescriptions; the
+third is deliberately not done yet, on the design's own instruction.*
+
+The pass opens with a measurement worth keeping: the grammar landed and the view
+went from 213KB to 220KB. **Three passes in a row have added clarity and length
+at the same time**, which §4.6 has now recorded twice. So this one only counted
+if something went.
+
+**The full roll went.** It was 170pt of permanent screen and it is now a sheet,
+reached by tapping the new mini roll. That is the first thing any of the three
+passes has actually removed — and moving it caught a duplicate on the way out:
+the note table had ended up in both the panel and the sheet, which is the pass
+adding something while claiming to remove something. It lives with the roll now,
+because reading the take and glancing at it are the same two halves.
+
+**On the pass's own measure, though, be exact: the view did not shrink.**
+220,237 bytes at `08b6a49`, 223,524 after — the mini roll and the sheet cost
+more source than the roll block that left. What came back is 170pt of *screen*,
+which is what the pass's own third paragraph names as the thing to delete, and
+it is real. But the KB number in the diagnosis is still going the wrong way, and
+this is the fourth pass in a row for which that is true. If the file size is the
+measure that matters, no pass has yet met it, and one that intends to will have
+to remove a feature rather than relocate one.
+
+**The mini roll is why that was possible.** The grammar pinned rate, roll and
+advance, and then let the thing they act on scroll away — so the bar was a set of
+buttons with no object. `MiniRoll` is the object: 44pt, chord ticks, notes as
+marks with register as height, the playhead, and anything the analyser flagged in
+`warning`. Deliberately *not* a small piano roll — it answers "where am I, what
+is the shape, is it dense or sparse" and nothing it draws needs a legend, where
+the full roll answers "which note is that, and does it belong" and needs all
+four. Shrinking the full one would have produced a thing that looked readable and
+wasn't. It also took the swipe with it, which follows from being the thing on
+screen: you rate what you can see.
+
+**The border rule was already 97% true, and the 3% was three days old.** The
+design predicted "roughly forty rectangles" would come off, having been built
+from the mockups and from five source files. Against the actual code that is not
+what was there: `WhenGroup` separates by surface only, `CollapsibleSection` draws
+no background at all, and every one of the 30 `strokeBorder` calls in the
+interface was already on something interactive — buttons, text fields, tappable
+rows, chips.
+
+Every one except a badge I had added two commits earlier. `ActionBadge` gave the
+`take` badge a 1.5pt `borderStrong` edge, which is the exact signature that means
+"control", on a label nobody can press. The three badges already differ by
+surface — `accent`, `raised`, `sunken` — so the border was redundant before it
+was wrong.
+
+One violation in thirty is exactly the shape that does not get noticed, and it
+appeared three days after the rule was written down in `MelGenTheme`. So the rule
+is checked now rather than remembered: `Scripts/verify.sh borders` attributes
+every border to the declaration that encloses it and requires evidence that the
+thing can be pressed. One documented exemption — the piano roll's legend, whose
+outlines carry the dash pattern that encodes a note's role, and are therefore
+information rather than a boundary.
+
+That is the same lesson as §6.5 and as the action grammar's own reason for being
+a type. A convention that nothing can run has a half-life; this is the third time
+that has been the finding, and the third time the remedy was a check.
+
+**The layouts are not chosen, and that is the design's instruction rather than a
+gap.** It recommends 2a (the console) and then says, in the same breath, to do
+the border rule and the mini roll *first and on their own* — "judge the layouts
+after it, not before, otherwise all three are being compared through the same
+fog." Both prerequisites now exist, and 2a/2b/2c is a decision to make by eye on
+device, at half height, where the pass says it belongs.
+
+---
+
 ### 6.5 "Changes" had been retired and came back
 
 Fixed 2026-08-28. The harmony is a **progression** on screen; "changes" is what

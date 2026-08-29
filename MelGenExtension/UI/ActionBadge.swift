@@ -11,9 +11,17 @@
 //  where the badge is the entire reason the split exists.
 //
 //  No new tokens. The three pairings are ones the audit already covers —
-//  `accentText` on `accent`, `text` on `raised` inside a `borderStrong` edge,
-//  `textMuted` on `sunken` — and if one of them ever fails
-//  `Scripts/verify.sh contrast`, the badge changes rather than the theme.
+//  `accentText` on `accent`, `text` on `raised`, `textMuted` on `sunken` — and
+//  if one of them ever fails `Scripts/verify.sh contrast`, the badge changes
+//  rather than the theme.
+//
+//  **No border, on any of them**, and that is the layout pass correcting the
+//  grammar pass. `MelGenTheme` defines `borderStrong` as "boundaries that
+//  identify a control", so putting one on a `take` badge — which is a label
+//  nobody can press — spends the one signal that distinguishes a control from
+//  everything else on something that isn't one. The three already differ by
+//  surface, which is what the theme's three surfaces are for: `accent`,
+//  `raised`, `sunken`. The border was redundant before it was wrong.
 //
 
 import SwiftUI
@@ -32,9 +40,6 @@ struct ActionBadge: View {
             .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 5).fill(background))
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(border, lineWidth: tense == .take ? 1.5 : 0))
             // One element, not three: assistive technology gets the word and
             // the sentence, and never the punctuation of a pill.
             .accessibilityElement()
@@ -58,9 +63,6 @@ struct ActionBadge: View {
         }
     }
 
-    private var border: Color {
-        tense == .take ? theme.borderStrong : .clear
-    }
 }
 
 /// A group header that says its tense before it says its name.

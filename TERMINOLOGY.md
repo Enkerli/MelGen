@@ -213,6 +213,18 @@ which is why it sits under the verbs rather than beside the transport.
 `AutoVerbs`. **"Auto-regeneration" is retired** — it named one verb as though it
 were the only one.
 
+**mini roll** — The 44pt drawing of the take in the pinned bar. Answers *where
+am I, what is the shape, is it dense or sparse* — and nothing it draws needs a
+legend. Not a small piano roll: the **full roll** is the reading surface and
+lives in a sheet, with rows, scale shading, roles and the note table. `MiniRoll`
+against `PianoRoll`.
+
+**border** — A boundary that identifies a **control**, and nothing else.
+`MelGenTheme` has always defined `borderStrong` that way; the rule is that
+nothing else may wear one. Groups separate by **surface** and **space** — the
+three surfaces exist for exactly that. `Scripts/verify.sh borders` attributes
+every border to what encloses it.
+
 **Texture** — **Retired**, and now actually gone from the interface. It was one
 heading over two groups whose real difference is *when* they apply. They are
 **What is sounding** (now: expression, gate, swing, drift) and **Shape** (aims:

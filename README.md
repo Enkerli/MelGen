@@ -50,6 +50,7 @@ or locked to the host's playhead.
 | **Pattern library** | Save a take as a few-shot example that shapes later generations |
 | **Three tenses** | Every control does one of three things and says which: **now** changes what you are hearing, **take** makes something you can rate, **aims** changes what the next one will be like. Badges sit on group headers, so a control's meaning is legible before its label is read |
 | **Two verbs, and a bar that never scrolls** | **Roll again** re-rolls the drift for free; **Next take** makes one to judge, aimed by a switch beside it. Rate, roll and advance are pinned below everything, because they are the three things done per minute |
+| **The take is in the bar** | A 44pt **mini roll** above the verbs: chord ticks, notes as marks with register as height, the playhead, and anything flagged for review in the warning colour. It is the swipe target, and tapping it opens the full roll as a sheet — so the roll is something you ask for rather than 170pt you are given |
 | **Three aims** | A **Next take** is *same, changed* (the seed is held, so the only difference is what you just moved), *another like this* (new seed, same setup), or *something else* (the rotation advances). A released control presses the first on its own behalf |
 | **Auto is a list of verbs** | Which ones the machine presses, and how often, in laps. Zero is off. It does nothing the verb bar cannot, which is why it sits under it |
 | **Two tabs** | **Play** makes material and performs it — the verbs, and every aim that feeds them; **Decide** acts on takes that already exist: the sweep, variants, the library, what's been learned |
@@ -132,6 +133,7 @@ Scripts/verify.sh chords     # one suite
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
+| `borders` | That a border identifies a control and nothing else — the job `MelGenTheme` already defines `borderStrong` for. Groups separate by surface and space |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 
 The `chords` suite needs [music-suite](https://github.com/Enkerli/music-suite)

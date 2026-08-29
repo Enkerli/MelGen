@@ -140,6 +140,7 @@ Two decisions worth keeping visible, both recorded next to the code:
    - [Deterministic Lines](#deterministic-lines)
    - [Bass & Histograms](#bass--histograms)
    - [The Action Grammar](#the-action-grammar)
+   - [Layout](#layout)
    - [Templates & Motifs](#templates--motifs)
    - [Rhythm & Duration](#rhythm--duration)
    - [Polyphony & Comping](#polyphony--comping)
@@ -421,6 +422,21 @@ argument is in ISSUES §6.6; this is what it cost and what it closed.
 | A4 | **Auto as a list of verbs** | M | ✅ **done 2026-08-29**. `AutoVerbs`: one interval per verb, in laps, zero is off. The brief asked for several parameters and it was unwritable while Auto had one unnamed button to press. Migration from `autoRegenerate` + `regenerateEveryPasses` is lossless and tested, because three saved setups exist on the device |
 | A5 | **The pinned verb bar, and the re-cut** | L | ✅ **done 2026-08-29**. A `safeAreaInset`, so rate/roll/advance are never behind a scroll; the aim as a switch rather than a third button; progression, source and template back on Play; Auto under the verbs; "Texture" gone. Closes §4.1, §4.6, U8, U9 and brief problems 2 and 3 |
 | A6 | **Heard on device, at half height** | S | The only thing that can falsify 1a, and the reason the option was a fork rather than a preference. Five rolls without scrolling, an advance on each aim, one Shape control moved and *same, changed* pressed — and the keyboard not sitting on the bar while the progression is edited |
+
+### Layout
+
+Design pass 3, 2026-08-29. The pass's own order: the border rule first, the mini
+roll second, the layout choice last and by eye — "judge the layouts after it, not
+before, otherwise all three are being compared through the same fog." The first
+two landed; the third is deliberately open.
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| L1 | **The border rule** | S | ✅ **done 2026-08-29**, and it was mostly already true: 29 of 30 borders were on controls, `WhenGroup` separates by surface, `CollapsibleSection` draws nothing. The one violation was three days old — the `take` badge, a label wearing the 1.5pt edge that means "control". Now checked by `verify.sh borders` rather than remembered, because one-in-thirty is the shape nobody notices |
+| L2 | **The mini roll** | M | ✅ **done 2026-08-29**. `MiniRoll` — 44pt in the pinned bar, chord ticks, notes as marks with register as height, the playhead, flagged notes in `warning`. The swipe target. A different drawing from `PianoRoll` rather than a smaller one: glancing against reading |
+| L3 | **The full roll as a sheet** | S | ✅ **done 2026-08-29**. 170pt of permanent screen returned — the first thing any of the three design passes has actually removed, against a view that grew on each of the previous two |
+| L4 | **Choose a layout: console, instrument, or three cards** | L | Open, and deliberately. 2a puts one pane on screen at a time and cannot grow, which is why the pass recommends it; 2b makes the take the whole screen and everything else a sheet, which may collapse into 2a at AUM's half height; 2c keeps the scroll and caps it at one card per tense. Judge on device now that L1 and L2 exist |
+| L5 | **A pane that needs a scroll is two panes** | S | The rule 2a would bring with it, and the only one of the three that is structurally enforceable rather than a promise. Worth having whichever layout wins |
 
 ### Templates & Motifs
 
