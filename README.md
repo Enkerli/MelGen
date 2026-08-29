@@ -38,10 +38,11 @@ or locked to the host's playhead.
 | **Variants and morphs** | Fourteen transforms, scored against your material, and a dial between two lines you like |
 | **Listening** | Play something in and it becomes library material, read against the changes on screen |
 | **Comping** | Voicings under the changes, voice-led, in six figures |
-| **Bass** | On-beat and off-beat figure banks mixed on a diamond, over the changes or over a key, with a range, eight seeds and a morph between them |
+| **Bass** | On-beat and off-beat figures played as two layers, balanced and selected on a pad, with a register range, a shift, eight seeds and a morph between them |
 | **Degree histogram** | Which note, as weights over the twelve semitones above the chord's root. One `reach` dial walks the order an improviser arrives in — root, fifth, third, seventh, eleventh, ninth, thirteenth — and separate dials let the outside notes and a side-slipped pentatonic in. Comping draws on it too: the **Drawn** voicing asks each chord's own scale which colour it can carry, so a major seventh gets its ninth and a minor seventh gets its eleventh without either being written down |
 | **Transition histogram** | How far to the next note, as weights over the interval. Multiplied by the degree histogram, so a line steps mostly by step *and* lands mostly on chord tones without either being a rule that overrides the other |
-| **Diatonic mode** | A key instead of changes, and a single **minorness** dial across the modal brightness ladder — Lydian, Ionian, Mixolydian, Dorian, Aeolian, Phrygian, Locrian, each one flattened degree darker than the last. A mode can also be typed into the progression, as `C(dorian)` |
+| **Modal vamps** | A key instead of a progression, written into the same field as `C(dorian)` and read by every mode. One ladder from brightest to darkest — Lydian, Ionian, Mixolydian, Dorian, Aeolian, Phrygian, Locrian — each rung one flattened degree below the last |
+| **Drawn as you move it** | In Bass, every control draws a new part when you let go, and keeps it as a take. The one source fast enough to be played rather than asked for |
 | **Voice leading** | Off, register, or smooth — minimal taxicab leading, ported from the suite's reference implementation and held to its shared vectors. In line mode it smooths the seam where a line crosses a chord change |
 | **Progressions** | Generated here from corpus transition tables, rather than pasted in |
 | **Setups** | Name the settings that decide what comes next and come back to them; mark one the default and new instances start there |
@@ -113,7 +114,7 @@ Scripts/verify.sh chords     # one suite
 | `topics` | Grouping the library so the vocabulary can come from the material |
 | `steps` | Interval cells: self-sequencing figures and interval streams |
 | `histograms` | Which note and how far to the next one — the note stack in its stated order, the side slip, the modal ladder, and the two histograms multiplied |
-| `bassline` | The bass mode: the two figure banks, the diamond that mixes them, and that the line stays in its range, stays one voice and states every chord |
+| `bassline` | The bass mode: the two figure banks, the pad that balances and selects them, modal vamps as leadsheet text, and that the line stays in its range, stays one voice and states every chord |
 | `capture` | Pairing, segmenting and quantizing what was played in |
 | `comping` | The voicing layer, taxicab voice leading against the suite's shared vectors, and chords instead of a line |
 | `progression` | Generating the changes, and a drift check on the corpus tables |
@@ -281,31 +282,44 @@ them, because a draw *is* its seed, so all eight are always there and every one
 can be got back exactly. **Morph** dials from this seed's draw into the next
 one's, note by note, rather than switching at the boundary.
 
-#### A key instead of changes
+#### It draws as you move it
 
-Bass can read the typed progression chord by chord, or work from a key. A key
-becomes a progression of exactly one chord lasting the whole form, so nothing
-downstream changes.
+Bass is the first thing here fast enough to be *played* rather than asked for: a
+draw is arithmetic over two histograms, so the part can be different before the
+finger lifts. So every control in the section draws a new one **when you let go**
+— not on every frame of a drag, which would make a hundred parts nobody can hear,
+and not only when you press Draw, which is how a control stops teaching what it
+does.
 
-**Minorness** is one dial across the modal brightness ladder:
+Each of those releases is a **take**, judged and kept like any other. Something
+you have just found and cannot keep is something you have to find twice; the
+history ring drops the unjudged ones, which is what it is for.
+
+#### A key is a progression with one chord in it
+
+There is no switch. A modal vamp is written into the progression field as
+`C(dorian)` — which every mode reads, the piano roll already draws, and you can
+edit by hand afterwards like any other progression. Under **Progression →
+settings** there is a key, a mode and a **Write it into the progression**
+button that fills the field for you; `D(dorian)|||` is four bars of D Dorian,
+because an empty bar holds the previous chord.
+
+The parentheses are required: the chord dictionary already spells two triads
+`major` and `minor`, so a bare `Cminor` stays the triad it always was. This is
+also the only way to reach Ionian, Aeolian and Phrygian, because several modes
+share a tonic seventh chord and the chord-scale classifier can only give one
+answer for all of them.
+
+The modes run along one ladder, brightest to darkest:
 
 ```
 Lydian ──♯4→4── Ionian ──7→♭7── Mixolydian ──3→♭3── Dorian
        ──6→♭6── Aeolian ──2→♭2── Phrygian ──5→♭5── Locrian
 ```
 
-Each rung flattens exactly one degree, which is checked rather than tabulated.
-A fractional setting blends the two neighbouring modes' histograms while the
-chord commits to the nearer rung, so between Mixolydian and Dorian both thirds
-carry weight and the one the scale doesn't contain arrives as an altered degree
-with its role recorded.
-
-A mode can also be typed straight into the progression field, as `C(dorian)` or
-`E♭(phrygian)`. The parentheses are required: the chord dictionary already
-spells two triads `major` and `minor`, so a bare `Cminor` stays the triad it
-always was. This is the only way to reach Ionian, Aeolian and Phrygian, because
-several modes share a tonic seventh chord and the chord-scale classifier can
-only give one answer for all of them.
+Each rung flattens exactly one degree, which is checked rather than tabulated —
+and which turns out to be exactly what the Bassline Generator's own Minorness
+control does, in the same order, arrived at from the opposite direction.
 
 #### Comping draws on it too
 

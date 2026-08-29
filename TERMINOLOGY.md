@@ -143,6 +143,19 @@ made a straight walking bass unreachable. `BasslinePad`. **"Diamond" is retired*
 **shift** — Moving a bass figure along the bar, wrapping. In eighths. The same
 notes, in different places: an on-beat figure shifted by one is an off-beat one.
 
+**vamp** — A progression with one chord in it, written `C(dorian)` and held for
+as many bars as you want. Not a separate kind of harmony and not a mode of the
+plug-in: there is one progression field and a vamp is something you can put in
+it. `DiatonicHarmony.vamp(key:scale:bars:)` writes one. **"Diatonic mode" is
+retired** — it named a switch that no longer exists, and named it as a mode when
+Line, Chords and Bass are the modes.
+
+**draw** — Making a bass part. Instant, and in Bass it happens whenever a control
+is released rather than only when asked for, because the part can change before
+the finger lifts. Every release is a take. Distinct from **generate**, which
+means the model and costs 1.8 seconds a note, and from **compose**, which is the
+phrase grammar.
+
 **layer** — One of the two things a bass part is made of at once: the on-beat
 figure and the off-beat figure, merged into a single monophonic line. What the
 pad's horizontal balances. Not a voice — a bass part has one.

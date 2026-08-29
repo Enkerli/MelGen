@@ -13,10 +13,10 @@
 //  reimplementation of an idea, over a harmonic model that device doesn't have.
 //
 //  The one substantive difference is that the Bassline Generator works from a
-//  key, and MelGen works from changes. Both are available: over a typed
-//  progression each bar is read against whatever chord is sounding, and over a
-//  key `DiatonicHarmony` supplies a single modal chord for the whole form, which
-//  is the same machinery with one chord in it.
+//  key and MelGen works from a progression. Both are available and there is no
+//  switch between them, because a key *is* a progression with one chord in it:
+//  `C(dorian)` parses, `DiatonicHarmony` writes it, and everything here reads a
+//  progression chord by chord without knowing which it was handed.
 //
 //  ## What this is made of
 //
@@ -478,21 +478,6 @@ struct BasslineSettings: Codable, Hashable, Sendable {
     /// Where the notes go.
     var pad = BasslinePad()
 
-    /// Whether the harmony is the typed changes or a key.
-    ///
-    /// Both, rather than one: the Bassline Generator's model is a key, MelGen's
-    /// is a progression, and a bass part wants whichever the rest of the track
-    /// has. Over changes the histograms are rebuilt per chord; over a key they
-    /// are built once.
-    var overKey: Bool = false
-    /// Tonic pitch class, when the harmony is a key.
-    var key: Int = 0
-    /// How far down the modal brightness ladder the key sits. See
-    /// `DiatonicHarmony` — 0 is Lydian, 0.5 Dorian, 1 Locrian.
-    var minorness: Double = 0.5
-    /// How long the form is, when the harmony is a key rather than changes.
-    var bars: Int = 4
-
     /// How far up the note stack the line reaches: root, fifth, third, seventh,
     /// eleventh, ninth, thirteenth. See `DegreeHistogram.stack(over:reach:)`.
     var reach: Double = 0.3
@@ -555,10 +540,6 @@ struct BasslineSettings: Codable, Hashable, Sendable {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         pad = try container.decodeIfPresent(BasslinePad.self, forKey: .pad) ?? BasslinePad()
-        overKey = try container.decodeIfPresent(Bool.self, forKey: .overKey) ?? false
-        key = try container.decodeIfPresent(Int.self, forKey: .key) ?? 0
-        minorness = try container.decodeIfPresent(Double.self, forKey: .minorness) ?? 0.5
-        bars = try container.decodeIfPresent(Int.self, forKey: .bars) ?? 4
         reach = try container.decodeIfPresent(Double.self, forKey: .reach) ?? 0.3
         outside = try container.decodeIfPresent(Double.self, forKey: .outside) ?? 0.04
         sideSlip = try container.decodeIfPresent(Double.self, forKey: .sideSlip) ?? 0
@@ -575,12 +556,9 @@ struct BasslineSettings: Codable, Hashable, Sendable {
 
     /// What the settings say, in one line, for the history row and the button.
     var summary: String {
-        let harmony = overKey
-            ? "\(ChordProgression.flatNoteNames[ChordScales.pitchClass(key)]) \(DiatonicHarmony.label(forMinorness: minorness).lowercased())"
-            : "the progression"
-        return "\(pad.name.lowercased()) over \(harmony), "
-             + "\(ChordProgression.noteName(forMIDINote: range.lowerBound))–"
-             + "\(ChordProgression.noteName(forMIDINote: range.upperBound))"
+        "\(pad.name.lowercased()), "
+        + "\(ChordProgression.noteName(forMIDINote: range.lowerBound))–"
+        + "\(ChordProgression.noteName(forMIDINote: range.upperBound))"
     }
 }
 
@@ -614,33 +592,17 @@ extension BasslineSettings {
 
 enum BasslineGenerator {
 
-    /// The harmony a set of settings describes: the typed changes, or the key.
-    static func progression(for settings: BasslineSettings,
-                            changes: ChordProgression?) -> ChordProgression? {
-        if settings.overKey || changes == nil {
-            return DiatonicHarmony.progression(key: settings.key,
-                                               minorness: settings.minorness,
-                                               bars: max(1, settings.bars))
-        }
-        return changes
-    }
-
     /// The pitch material for a chord, under these settings.
     ///
-    /// Three histograms blended: the stack, the side-slipped pentatonic, and —
-    /// when the harmony is a key rather than a chord — the modal blend across
-    /// whichever two rungs the minorness falls between. Built per chord, which
-    /// is what a progression buys over a key and what makes the same settings
-    /// sound different over `Dm7 G7` than over one modal vamp.
+    /// Built per chord, which is what makes the same settings sound different
+    /// over `Dm7 G7` than over a modal vamp — and why there is no separate "over
+    /// a key" path here. A key is a progression with one chord in it, written
+    /// `C(dorian)`, so the same code reads both.
     static func degrees(for settings: BasslineSettings,
                         context: DegreeContext,
                         figure: BasslineFigure) -> DegreeHistogram {
         let reach = max(0, min(1, settings.reach + figure.reachBias))
-        var histogram = settings.overKey
-            ? DiatonicHarmony.degrees(key: settings.key,
-                                      minorness: settings.minorness,
-                                      reach: reach)
-            : DegreeHistogram.stack(over: context, reach: reach)
+        var histogram = DegreeHistogram.stack(over: context, reach: reach)
 
         if settings.sideSlip > 0 {
             histogram = histogram.blended(
@@ -674,13 +636,13 @@ enum BasslineGenerator {
     /// One bass line.
     ///
     /// - Parameters:
-    ///   - changes: the typed progression, or nil to work from the key alone.
+    ///   - progression: the harmony to play against, chord by chord. A modal
+    ///     vamp is one of these with one chord in it.
     ///   - seed: everything random comes from here, so a line can be got back.
     static func line(_ settings: BasslineSettings,
-                     over changes: ChordProgression?,
+                     over progression: ChordProgression?,
                      seed: UInt64) -> [SequencedNote] {
-        guard let progression = progression(for: settings, changes: changes),
-              progression.totalBeats > 0 else { return [] }
+        guard let progression, progression.totalBeats > 0 else { return [] }
 
         let first = draw(settings, over: progression, seed: seed, index: settings.seedIndex)
         guard settings.morph > 0.001 else { return first }

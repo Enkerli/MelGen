@@ -302,7 +302,22 @@ Ordered by how likely they are to bite.
 mode has still never been heard on device. Four findings, one of them fixed
 here, and one of them a direction rather than a defect.*
 
-### 6.1 It regenerates in real time, and nothing in the interface uses that
+### 6.1 It regenerates in real time — now the interface uses it
+
+**Answered 2026-08-29: on release, and every release is a take.** Not on every
+frame of a drag, which makes a hundred parts nobody can hear; not only on Draw,
+which is how a control stops teaching what it does. And a take rather than a
+performance, because the point of moving a control is that you might have just
+found something, and something you cannot keep is something you have to find
+twice. The history ring drops the unjudged ones, which is what it is for.
+
+`LabelledSlider` gained an `onCommit` fired from `onEditingChanged`; chips fire
+from their setter, since a tap *is* a release. Only Bass: every other source
+pays for a take, and redrawing them on a slider would be a different feature
+with the same name. Which other instant sources qualify is ROADMAP H14.
+
+The reasoning that led here is kept below, because it is still the shape of the
+problem for anything else that becomes continuous.
 
 The observation that reframes the rest. Bass is instant: a draw is arithmetic
 over two histograms, so a control can move and the part can be different before
@@ -370,7 +385,7 @@ without §6.1: a control you can hear needs less explaining than one you can't.
 
 ### 6.4 A key and a progression are the same control saying two different things
 
-Fixed in part, still open in part.
+**Both halves now closed.**
 
 **Fixed.** Choosing "A key" and drawing used to overwrite the session's
 `progressionText` with the modal chord — so a typed leadsheet was silently
@@ -380,14 +395,18 @@ over a key was drawn against harmony it had never heard. The roll now asks the
 current take for its own progression, which every take already records, and the
 field is left alone.
 
-**Still open.** The chip says "The progression / A key" and the difference is
-larger than a chip conveys. Over a progression the histograms are rebuilt per
-chord and the part follows the changes; over a key there is one chord for the
-whole form and the part is modal. Those produce different music for the same
-settings, and nothing on screen says so beyond one caption. Whether the key
-should be a *mode of the whole plug-in* rather than a switch inside Bass is the
-question underneath — Line and Chords would both mean something over a key, and
-`DiatonicHarmony` is not bass-specific.
+**And the switch is gone, 2026-08-29.** The question underneath was whether a key
+should be a mode of the whole plug-in; the answer was neither that nor a switch
+inside Bass, but *nothing* — a key with a mode **is** a progression with one
+chord in it, `C(dorian)` already parses, and every generator already reads a
+progression. So the dials moved to the Progression section and write into the
+field, which means Line and Chords get modal vamps for free and the piano roll
+draws them without being told.
+
+What it cost is in ROADMAP H13: text names one mode, so the continuous minorness
+became a picker. The in-between was audible and is worth having back — as a
+darkness control that works over any progression rather than only over a vamp,
+which is the better control anyway.
 
 ### 6.5 "Changes" had been retired and came back
 

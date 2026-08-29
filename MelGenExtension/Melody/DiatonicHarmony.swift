@@ -181,6 +181,20 @@ enum DiatonicHarmony {
 
     // MARK: - A progression that is only a key
 
+    /// A modal vamp as leadsheet text: one chord, held for `bars`.
+    ///
+    /// Empty bars after the first, because `parse` reads an empty bar as "hold
+    /// the previous chord" — so four bars of D Dorian is `D(dorian)|||` rather
+    /// than the same token four times. Shorter to read, and it is what somebody
+    /// would write by hand.
+    ///
+    /// This is what "a key" *is* now: there is no separate harmony source and no
+    /// switch, because a key with a mode is a progression with one chord in it,
+    /// and every generator already reads a progression.
+    static func vamp(key: Int, scale: Scale, bars: Int) -> String {
+        text(root: key, scale: scale) + String(repeating: "|", count: max(0, bars - 1))
+    }
+
     /// One chord, for the whole form.
     ///
     /// The form is still measured in bars because everything downstream is —

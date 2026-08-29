@@ -645,21 +645,27 @@ struct MelGenExtensionMainView: View {
         WhenGroup(legend: "Bass", theme: theme) {
             VStack(alignment: .leading, spacing: MelGenMetrics.space3) {
                 FigurePad(pad: binding(\.bassline.pad, reloadKernel: false),
-                          theme: theme)
-                Text("Left and right balance the two layers — only the on-beat figure at "
-                     + "one end, only the off-beat one at the other, both at full in the "
-                     + "middle. Up and down choose which pair of figures, sparsest at the "
-                     + "bottom.")
+                          theme: theme,
+                          onSettle: redrawBass)
+                Text("Drag anywhere in the pad. Left and right balance the two layers — "
+                     + "only the on-beat figure at one end, only the off-beat one at the "
+                     + "other, both at full in the middle. Up and down choose which pair "
+                     + "of figures, sparsest at the bottom.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Every control here draws a new part when you let go, and keeps it "
+                     + "as a take. For a modal vamp instead of a progression, write one "
+                     + "under Progression.")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                harmonySourceRow
-
                 LabelledSlider(title: "Reach", lowLabel: "root", highLabel: "13th",
                                value: binding(\.bassline.reach, reloadKernel: false),
                                theme: theme,
-                               format: { reachLabel(for: $0) })
+                               format: { reachLabel(for: $0) },
+                               onCommit: redrawBass)
 
                 rangeRow
 
@@ -672,22 +678,22 @@ struct MelGenExtensionMainView: View {
                         LabelledSlider(title: "Outside", lowLabel: "in the scale",
                                        highLabel: "anything",
                                        value: binding(\.bassline.outside, reloadKernel: false),
-                                       theme: theme)
+                                       theme: theme, onCommit: redrawBass)
                         LabelledSlider(title: "Side-slip", lowLabel: "inside",
                                        highLabel: "a semitone up",
                                        value: binding(\.bassline.sideSlip, reloadKernel: false),
-                                       theme: theme)
+                                       theme: theme, onCommit: redrawBass)
                         LabelledSlider(title: "Chromatic", lowLabel: "diatonic",
                                        highLabel: "by semitone",
                                        value: binding(\.bassline.chromaticism, reloadKernel: false),
-                                       theme: theme)
+                                       theme: theme, onCommit: redrawBass)
                         LabelledSlider(title: "Runs", lowLabel: "one note",
                                        highLabel: "keeps going",
                                        value: binding(\.bassline.momentum, reloadKernel: false),
-                                       theme: theme)
+                                       theme: theme, onCommit: redrawBass)
                         LabelledSlider(title: "Leaps", lowLabel: "steps", highLabel: "wide",
                                        value: binding(\.bassline.leapiness, reloadKernel: false),
-                                       theme: theme)
+                                       theme: theme, onCommit: redrawBass)
                         seedRow
                     }
                 }
@@ -695,40 +701,100 @@ struct MelGenExtensionMainView: View {
         }
     }
 
-    /// Changes or a key — the one question this mode asks that the others don't.
-    private var harmonySourceRow: some View {
+    /// Writing a modal vamp into the progression, rather than beside it.
+    ///
+    /// A key used to be a switch inside Bass, which made it a second kind of
+    /// harmony the rest of the plug-in couldn't see — and Line and Chords both
+    /// mean something over a modal vamp. So there is no switch: this writes
+    /// `D(dorian)|||` into the field, which every mode already reads, which the
+    /// piano roll already draws, and which can be edited by hand afterwards like
+    /// any other progression.
+    ///
+    /// The cost, stated because it is real: text names one mode, so the
+    /// minorness dial that used to be continuous is a picker here. See ROADMAP
+    /// H13 for the part of it worth having back.
+    private var vampRow: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            ChipPicker(options: [(false, "The progression"), (true, "A key")],
-                       selection: binding(\.bassline.overKey, reloadKernel: false),
-                       theme: theme)
-                .frame(maxWidth: 260)
-
-            if state.bassline.overKey {
-                HStack(spacing: MelGenMetrics.space2) {
-                    ChipPicker(options: (0..<12).map {
-                                   ($0, ChordProgression.flatNoteNames[$0])
-                               },
-                               selection: binding(\.bassline.key, reloadKernel: false),
-                               theme: theme)
-                    Spacer(minLength: 0)
-                }
-                LabelledSlider(title: "Minorness", lowLabel: "bright", highLabel: "dark",
-                               value: binding(\.bassline.minorness, reloadKernel: false),
-                               theme: theme,
-                               format: { DiatonicHarmony.label(forMinorness: $0) })
-                Text("The key's own mode, on one dial: Lydian at nought, Dorian at half, "
-                     + "Locrian at one. Each step down flattens one degree.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Read against whatever is sounding, chord by chord — which is what "
-                     + "a progression buys over a key.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: MelGenMetrics.space2) {
+                ChipPicker(options: (0..<12).map { ($0, ChordProgression.flatNoteNames[$0]) },
+                           selection: binding(\.progressionKey, reloadKernel: false),
+                           theme: theme)
+                Spacer(minLength: 0)
             }
+            ChipPicker(options: DiatonicHarmony.ladder.map { ($0, $0.displayName) },
+                       selection: binding(\.vampMode, reloadKernel: false),
+                       theme: theme)
+            Button {
+                writeVamp()
+            } label: {
+                findLabel("Write it into the progression",
+                          systemImage: "text.insert",
+                          detail: DiatonicHarmony.vamp(key: state.progressionKey,
+                                                       scale: state.vampMode,
+                                                       bars: state.progressionBars))
+            }
+            .buttonStyle(.plain)
+            Text("A key is a progression with one chord in it, so it goes in the same "
+                 + "field and every mode reads it. Brightest at the left, darkest at the "
+                 + "right — each step flattens one degree.")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// A binding that redraws when a discrete control is tapped.
+    ///
+    /// A chip has no drag to end, so the tap *is* the release and the setter is
+    /// the right hook. Sliders can't use this — they would redraw on every frame
+    /// of a drag — which is why `LabelledSlider` has `onCommit` instead.
+    private func redrawing<Value: Equatable>(
+        _ keyPath: WritableKeyPath<MelGenState, Value>) -> Binding<Value> {
+        Binding(
+            get: { state[keyPath: keyPath] },
+            set: { newValue in
+                guard state[keyPath: keyPath] != newValue else { return }
+                commit(reloadKernel: false) { $0[keyPath: keyPath] = newValue }
+                redrawBass()
+            }
+        )
+    }
+
+    /// Draws a new bass part because a control moved.
+    ///
+    /// Bass is the first thing here that is fast enough to be *played* rather
+    /// than asked for: a draw is arithmetic over two histograms, so the part can
+    /// be different before the finger lifts. Which raises the question the rest
+    /// of the plug-in had never had to answer — what is a take, when the answer
+    /// arrives continuously?
+    ///
+    /// The answer taken: **on release, and every release is a take.** Not on
+    /// every frame, because a control that redraws a hundred times across one
+    /// drag makes a hundred things nobody can hear and nobody asked to judge;
+    /// one per gesture is one you can hear against the last one. And a take
+    /// rather than a performance, because the whole point of moving a control is
+    /// that you might have just found something, and something you cannot keep
+    /// is something you have to find twice. The ring evicts the unjudged ones,
+    /// which is exactly what it is for.
+    ///
+    /// Only in Bass. Every other source pays for a take — the model in seconds,
+    /// the rest in a rotation that has to move on — and redrawing them on a
+    /// slider would be a different feature with the same name.
+    private func redrawBass() {
+        guard liveState.mode == .bass, !isGenerating else { return }
+        drawBassline()
+    }
+
+    /// Replaces the progression with a vamp, and says what it replaced.
+    private func writeVamp() {
+        let previous = liveState.progressionText
+        let text = DiatonicHarmony.vamp(key: liveState.progressionKey,
+                                        scale: liveState.vampMode,
+                                        bars: liveState.progressionBars)
+        commit(reloadKernel: false) { $0.progressionText = text }
+        statusMessage = previous.isEmpty || previous == text
+            ? "Progression is now \(text)."
+            : "Progression is now \(text) — it was \(previous)."
     }
 
     /// Where the line sits, as two note numbers rather than as an octave switch.
@@ -753,7 +819,8 @@ struct MelGenExtensionMainView: View {
                                    }
                                }),
                            theme: theme,
-                           format: { ChordProgression.noteName(forMIDINote: 12 + Int(($0 * 48).rounded())) })
+                           format: { ChordProgression.noteName(forMIDINote: 12 + Int(($0 * 48).rounded())) },
+                           onCommit: redrawBass)
             LabelledSlider(title: "Highest", lowLabel: "C1", highLabel: "C5",
                            value: Binding(
                                get: { Double(state.bassline.highNote - 24) / 48 },
@@ -763,7 +830,8 @@ struct MelGenExtensionMainView: View {
                                    }
                                }),
                            theme: theme,
-                           format: { ChordProgression.noteName(forMIDINote: 24 + Int(($0 * 48).rounded())) })
+                           format: { ChordProgression.noteName(forMIDINote: 24 + Int(($0 * 48).rounded())) },
+                           onCommit: redrawBass)
         }
     }
 
@@ -786,7 +854,7 @@ struct MelGenExtensionMainView: View {
                     .foregroundStyle(theme.text)
             }
             ChipPicker(options: (0..<BasslineFigure.slots).map { ($0, "\($0)") },
-                       selection: binding(\.bassline.shift, reloadKernel: false),
+                       selection: redrawing(\.bassline.shift),
                        theme: theme)
             Text("Moves the figure along the bar and wraps it. An on-beat figure shifted "
                  + "by one is an off-beat figure, with not one note changed.")
@@ -804,12 +872,12 @@ struct MelGenExtensionMainView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(theme.text)
                 ChipPicker(options: (0..<BasslineSettings.seedCount).map { ($0, "\($0 + 1)") },
-                           selection: binding(\.bassline.seedIndex, reloadKernel: false),
+                           selection: redrawing(\.bassline.seedIndex),
                            theme: theme)
             }
             LabelledSlider(title: "Morph", lowLabel: "this seed", highLabel: "the next",
                            value: binding(\.bassline.morph, reloadKernel: false),
-                           theme: theme)
+                           theme: theme, onCommit: redrawBass)
             Text("A draw is its seed, so all eight are always there and none of them "
                  + "is stored. The morph goes between two of them note by note rather "
                  + "than switching at the boundary.")
@@ -954,6 +1022,9 @@ struct MelGenExtensionMainView: View {
 
             if showProgressionMaker {
                 progressionSettings
+
+                Eyebrow(text: "Or a modal vamp", theme: theme)
+                vampRow
             }
 
             if let generatedNumerals {
@@ -4021,39 +4092,34 @@ struct MelGenExtensionMainView: View {
     ///
     /// The only source that decides a register rather than inheriting one, which
     /// is why it doesn't go through `realize`: that folds toward the previous
-    /// note and would undo the range. It also owns its harmony — over a key the
-    /// take records the modal chord it was actually drawn against, not whatever
-    /// is typed in the progression field, so replaying it later means replaying
-    /// it over the same thing. The field is left exactly as it was: a leadsheet
-    /// somebody typed is theirs, and a mode that quietly replaces it with
-    /// `C(dorian)` has deleted work to solve a drawing problem. See
-    /// `harmonyOfWhatIsPlaying`.
+    /// note and would undo the range.
+    ///
+    /// It reads the progression like everything else. A modal vamp used to be a
+    /// second harmony source behind a switch here; it is now `C(dorian)` in the
+    /// progression field, which every mode reads and the piano roll already
+    /// draws. One harmony, one field, no branch.
     @discardableResult
     private func drawBassline(commitNow: Bool = true) -> GenerationRecord? {
         let current = liveState
         let settings = current.bassline
 
-        var changes: ChordProgression?
-        if !settings.overKey {
-            do {
-                changes = try ChordProgression.parse(current.progressionText)
-            } catch {
-                statusMessage = error.localizedDescription
-                return nil
-            }
+        let progression: ChordProgression
+        do {
+            progression = try ChordProgression.parse(current.progressionText)
+        } catch {
+            statusMessage = error.localizedDescription
+            return nil
         }
-
-        guard let progression = BasslineGenerator.progression(for: settings, changes: changes),
-              progression.totalBeats > 0 else {
+        guard progression.totalBeats > 0 else {
             statusMessage = "Nothing to play a bass line over yet."
             return nil
         }
 
         // Seeded from the cursor and the harmony, so a session replays and the
-        // same cursor over different changes isn't the same line twice.
+        // same cursor over a different progression isn't the same line twice.
         let seed = UInt64(bitPattern: Int64(current.patternCursor &* 0x9E37_79B9))
             ^ UInt64(truncatingIfNeeded: abs(progression.text.hashValue))
-        let notes = BasslineGenerator.line(settings, over: changes, seed: seed)
+        let notes = BasslineGenerator.line(settings, over: progression, seed: seed)
         guard !notes.isEmpty else {
             statusMessage = "That figure left the bar empty. Try more density, or a wider range."
             return nil

@@ -369,6 +369,15 @@ struct MelGenState: Codable, Sendable {
     var progressionReharm: Reharm = .subtle
     /// Change key every N bars. 0 for none.
     var progressionModulation: Int = 0
+    /// Which mode a written vamp is in.
+    ///
+    /// Separate from `progressionMode`, which is the corpus generator's
+    /// major/minor and decides which transition tables it walks. This one names
+    /// a mode of the major scale — or any scale the dictionary knows — and its
+    /// only job is to be written into the progression as `C(dorian)`. Two
+    /// settings rather than one because they answer different questions: what
+    /// key are the changes in, and what single chord is the vamp.
+    var vampMode: Scale = .dorian
 
     /// Every template the model has been asked for, and what the gate said.
     ///
@@ -469,6 +478,7 @@ struct MelGenState: Codable, Sendable {
         progressionContext = try container.decodeIfPresent(Int.self, forKey: .progressionContext) ?? 2
         progressionReharm = try container.decodeIfPresent(Reharm.self, forKey: .progressionReharm) ?? .subtle
         progressionModulation = try container.decodeIfPresent(Int.self, forKey: .progressionModulation) ?? 0
+        vampMode = try container.decodeIfPresent(Scale.self, forKey: .vampMode) ?? .dorian
         compingFigureName = try container.decodeIfPresent(String.self, forKey: .compingFigureName)
             ?? CompingFigure.charleston.name
         bassline = try container.decodeIfPresent(BasslineSettings.self, forKey: .bassline) ?? BasslineSettings()
