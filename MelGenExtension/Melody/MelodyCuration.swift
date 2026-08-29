@@ -222,6 +222,19 @@ enum TakeRating: String, Codable, CaseIterable, Sendable {
 /// The aim is the feature. An advance that can't say what it will do is a
 /// shuffle with extra steps, which is what the sweep had before.
 enum AdvanceMode: String, Codable, CaseIterable, Sendable {
+    /// The seed is held and the setup is re-read, so exactly what you just
+    /// changed is what differs.
+    ///
+    /// The answer to "what did that control do?", and what a released slider
+    /// presses. Bass already implemented this and it was written as plumbing —
+    /// *a control release redraws with the seed held; Draw advances it* — which
+    /// is not a Bass rule but a third aim, and every instant source qualifies
+    /// because the rule was never about Bass. That is ROADMAP H14, answered.
+    ///
+    /// First in the list because it is the narrowest: the three run from
+    /// smallest change to largest, and a picker whose order is an argument is
+    /// one you only have to learn once.
+    case sameChanged
     /// Same setup, rolled again — a variant of the current take when there is
     /// one, otherwise the same source and template with a fresh seed.
     case anotherLikeThis
@@ -230,11 +243,44 @@ enum AdvanceMode: String, Codable, CaseIterable, Sendable {
     case somethingElse
 
     var label: String {
-        self == .anotherLikeThis ? "Another like this" : "Something else"
+        switch self {
+        case .sameChanged: return "Same, changed"
+        case .anotherLikeThis: return "Another like this"
+        case .somethingElse: return "Something else"
+        }
     }
 
     var symbolName: String {
-        self == .anotherLikeThis ? "arrow.trianglehead.2.clockwise" : "arrow.turn.up.right"
+        switch self {
+        case .sameChanged: return "slider.horizontal.below.square.filled.and.square"
+        case .anotherLikeThis: return "arrow.trianglehead.2.clockwise"
+        case .somethingElse: return "arrow.turn.up.right"
+        }
+    }
+
+    /// The strength of the promise, for the sources that can't keep the full one.
+    ///
+    /// `sameChanged` guarantees *one thing differs* only where the draw is
+    /// deterministic in its seed. The model is not: an identical prompt is not
+    /// an identical answer, and re-asking with a held seed re-asks — it doesn't
+    /// reproduce.
+    ///
+    /// So the aim stays available there and says less. Available-and-honest
+    /// rather than removed, because an aim that vanishes when you switch source
+    /// reads as a bug, and because "ask again for something similar" is a real
+    /// thing to want from a model — it just isn't the same guarantee, and the
+    /// label is where that gets said. A grammar with one silent exception is a
+    /// grammar nobody trusts.
+    func promise(for source: MaterialSource) -> String {
+        guard self == .sameChanged else { return "" }
+        return source.isInstant ? "seed held" : "asked again"
+    }
+
+    /// The sentence the softer promise needs, or nil where the promise is exact.
+    func caveat(for source: MaterialSource) -> String? {
+        guard self == .sameChanged, !source.isInstant else { return nil }
+        return "The model can't be re-asked identically, so this asks for "
+             + "something similar rather than the same thing changed."
     }
 
     /// The two dispositions that are the same wish as "another like this", said

@@ -139,6 +139,7 @@ Two decisions worth keeping visible, both recorded next to the code:
    - [Generation: Limits & Quality](#generation-limits--quality)
    - [Deterministic Lines](#deterministic-lines)
    - [Bass & Histograms](#bass--histograms)
+   - [The Action Grammar](#the-action-grammar)
    - [Templates & Motifs](#templates--motifs)
    - [Rhythm & Duration](#rhythm--duration)
    - [Polyphony & Comping](#polyphony--comping)
@@ -396,7 +397,7 @@ whole picture. What's left is what the histograms unlock elsewhere.
 | H3 | **Bass mode** | L | ✅ **done 2026-08-28**. Figures, the diamond, minorness, range, seeds and the morph |
 | H4 | **A key instead of a progression** | M | ✅ **done 2026-08-28**, and **folded into the progression field 2026-08-29**. It was a switch inside Bass, which made it a second kind of harmony the rest of the plug-in couldn't see — and Line and Chords both mean something over a modal vamp. There is no switch now: `DiatonicHarmony.vamp` writes `D(dorian)\|\|\|` into the field, every mode reads it, and the piano roll already draws it. One harmony, one field, no branch |
 | H13 | **Darkness, over any progression** | M | What folding the vamp into the field cost. Text names one mode, so the minorness dial that used to be continuous is a picker — and the in-between was audible: between Mixolydian and Dorian both thirds carried weight and the one the scale didn't contain arrived as an altered degree with its role recorded. Worth having back as a *darkness* control that leans the degree histogram toward the flatter degrees over **any** progression rather than only over a modal one, which is a more useful control than the one it replaces. `DiatonicHarmony.degrees(key:minorness:reach:)` is the ladder half of it, kept and tested with no caller so the blend isn't derived twice |
-| H14 | **Live redraw, for the sources that can afford it** | M | ✅ **first cut done 2026-08-29** for Bass: every control draws on release and each release is a take. The question it opens is which other sources qualify. Comping is instant and could; a stored line is instant and has a rotation that has to move on, which is a different contract; the model obviously can't. The general form is a property of the *source* — `MaterialSource.isInstant` already exists — rather than of the mode |
+| H14 | **Live redraw, for the sources that can afford it** | M | ✅ **done 2026-08-29**, and the answer was that the question was the wrong shape. Bass's rule — a release holds the seed, Draw advances it — is not a Bass rule but a **third aim**, `AdvanceMode.sameChanged`. So a released control presses that aim through the one advance path, gated on `MaterialSource.isInstant`, and every instant source qualifies because the rule was never about Bass. See the action grammar |
 | H5 | **Point the melodic sources at the histograms** | M | Comping is done — the `drawn` voicing style takes its tones from a degree histogram per chord. The melodic sources are the harder half, and the obstacle is structural rather than effort: a pattern is composed *before* it knows which chord each of its repetitions will fall under, so a chord-conditioned histogram has nothing to condition on at composition time. Where it can apply in the line path is the seam — `MelodyPatterns.ledToChord` already makes a per-chord "which note" decision and currently takes the nearest chord tone, which a histogram could weight instead. That changes behaviour the `patterns` and `extraction` suites pin down, so it wants its own pass with someone listening |
 | H6 | **Learn a degree histogram per template, per facet** | M | `observed(in:)` already counts what a set of takes played over the harmony it played it over. Grouping that by template — or by facet, or by tag — gives "what does my *sparse* material land on", which is a question the single learned style can't answer. Needs no new machinery, only a grouping and somewhere to show it |
 | H7 | **Show the histograms** | S | Both types render a readable profile and nothing in the interface draws one. The stated reason this project keeps statistics rather than training anything is that you can look at them, and right now you can only look at them from a test |
@@ -405,6 +406,21 @@ whole picture. What's left is what the histograms unlock elsewhere.
 | H11 | **Variators** | M | The device's repeating variation shapes — square, pulse and ramp, at one, two and four cycles over the pattern, plus inverted versions — which briefly move the pattern selection during the loop. MelGen has `LiveMutation` for per-lap variation and the seed morph for a global blend, and neither is this: a variator is a *cyclic* excursion inside one loop. The cheapest version is the morph made a function of bar position |
 | H12 | **Two banks per layer** | S | The device has Bank A and Bank B for each of on-beat and off-beat, 64 patterns each. There are four figures per bank here. More figures is the whole feature, and the figure type is three vectors of numbers |
 | H9 | **A bass part and a line at once** | L | The mode is exclusive, so a bass part and a comp are two instances. Everything needed for two parts from one instance exists — the kernel loops one take, so this is a second take and a second MIDI channel, not a second generator |
+
+### The action grammar
+
+Landed 2026-08-29, implementing the handoff from Claude Design's *User Experience
+and Playflow Clarification* project (option 1a, the pinned verb bar). The
+argument is in ISSUES §6.6; this is what it cost and what it closed.
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| A1 | **Three tenses, as a type** | M | ✅ **done 2026-08-29**. `ActionTense` — every control is `now`, `take` or `aims`, and there is no fourth. A type rather than a convention because the pass before it wrote the same distinction in a comment and it drifted; `verify.sh terminology` scans the labels |
+| A2 | **Two manual verbs** | M | ✅ **done 2026-08-29**. `Verb` — **Roll again** (new: the one free action could previously only be waited for) and **Next take** (existed, but was labelled by source so it read as a feature rather than as the thing Auto presses). Roll again is disabled with its reason said, and there are two reasons |
+| A3 | **A third aim** | M | ✅ **done 2026-08-29**. `sameChanged` holds the seed and re-reads the setup, so the only difference is what you just moved. Softer on the model — *asked again* rather than *seed held* — and available there anyway, because an aim that vanishes when you switch source reads as a bug. Closes H14 |
+| A4 | **Auto as a list of verbs** | M | ✅ **done 2026-08-29**. `AutoVerbs`: one interval per verb, in laps, zero is off. The brief asked for several parameters and it was unwritable while Auto had one unnamed button to press. Migration from `autoRegenerate` + `regenerateEveryPasses` is lossless and tested, because three saved setups exist on the device |
+| A5 | **The pinned verb bar, and the re-cut** | L | ✅ **done 2026-08-29**. A `safeAreaInset`, so rate/roll/advance are never behind a scroll; the aim as a switch rather than a third button; progression, source and template back on Play; Auto under the verbs; "Texture" gone. Closes §4.1, §4.6, U8, U9 and brief problems 2 and 3 |
+| A6 | **Heard on device, at half height** | S | The only thing that can falsify 1a, and the reason the option was a fork rather than a preference. Five rolls without scrolling, an advance on each aim, one Shape control moved and *same, changed* pressed — and the keyboard not sitting on the bar while the progression is edited |
 
 ### Templates & Motifs
 

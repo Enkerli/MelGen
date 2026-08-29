@@ -48,7 +48,7 @@ func playing(_ mode: PlayMode = .line) -> MelGenState {
 
 print("── every mode and every source produces a take ────────")
 
-for mode in [PlayMode.line, .comping] {
+for mode in PlayMode.allCases {
     for source in MaterialSource.all(for: mode) {
         for aim in AdvanceMode.allCases {
             let candidate = TakeAdvance.candidate(mode: aim,
@@ -146,6 +146,84 @@ check("something else on the model asks for one alongside",
 check("and still hands back a take that did not wait for it",
       TakeAdvance.candidate(mode: .somethingElse, state: state,
                             source: .model, progression: progression)?.source != .model)
+
+// MARK: - The third aim
+
+print()
+print("── same, changed: the seed is held ────────────────────")
+
+// The property the aim exists for: at a held seed, the only difference is
+// whatever the caller just changed. Bass had this and it was written as
+// plumbing; it is a third aim and it applies to every source whose draw is
+// deterministic — ROADMAP H14, answered.
+var held = playing()
+if var take = held.currentTake {
+    take.seed = 0xA11CE
+    held.history[0] = take
+    held.currentTakeID = take.id
+}
+let atHeldSeed = TakeAdvance.candidate(mode: .sameChanged, state: held,
+                                       source: .composed, progression: progression)
+check("it answers", atHeldSeed != nil && !(atHeldSeed?.notes.isEmpty ?? true))
+check("at the seed the current take was drawn at",
+      atHeldSeed?.seed == held.currentTake?.seed,
+      "\(atHeldSeed?.seed ?? 0) vs \(held.currentTake?.seed ?? 0)")
+let atHeldSeedAgain = TakeAdvance.candidate(mode: .sameChanged, state: held,
+                                            source: .composed, progression: progression)
+check("and it is repeatable, because a held seed is the whole point",
+      atHeldSeedAgain?.notes == atHeldSeed?.notes)
+check("the setup travels with it untouched",
+      atHeldSeed?.progressionText == held.progressionText)
+check("and so does the rest of it",
+      atHeldSeed?.temperature == held.temperature
+        && atHeldSeed?.durationPalette == held.durationPalette)
+
+// One thing changed, and it is the thing that differs.
+var nudged = held
+nudged.durationPalette = nudged.durationPalette == .even ? .mixed : .even
+let afterNudge = TakeAdvance.candidate(mode: .sameChanged, state: nudged,
+                                       source: .composed, progression: progression)
+check("changing one aim changes the take at the same seed",
+      afterNudge?.seed == atHeldSeed?.seed && afterNudge?.notes != atHeldSeed?.notes)
+
+// No seed to hold: fall through rather than refuse. A verb that sometimes does
+// nothing is worse than one that sometimes does slightly more.
+var seedless = playing()
+if var take = seedless.currentTake {
+    take.seed = 0
+    seedless.history[0] = take
+    seedless.currentTakeID = take.id
+}
+check("with no seed to hold it falls through to another like this, rather than nil",
+      TakeAdvance.candidate(mode: .sameChanged, state: seedless,
+                            source: .composed, progression: progression) != nil)
+var noTakeYet = playing()
+noTakeYet.history = []
+noTakeYet.currentTakeID = nil
+check("and with no take at all it still answers",
+      TakeAdvance.candidate(mode: .sameChanged, state: noTakeYet,
+                            source: .composed, progression: progression) != nil)
+
+// The one place the grammar softens, and it says so rather than pretending.
+check("on an instant source the promise is exact",
+      AdvanceMode.sameChanged.promise(for: .composed) == "seed held")
+check("on the model it is honest instead",
+      AdvanceMode.sameChanged.promise(for: .model) == "asked again")
+check("and only the model carries the caveat, in a sentence",
+      AdvanceMode.sameChanged.caveat(for: .model)?.contains("similar") == true
+        && AdvanceMode.sameChanged.caveat(for: .composed) == nil)
+check("the other two aims make no promise at all, on any source",
+      MaterialSource.allCases.allSatisfy { source in
+          AdvanceMode.anotherLikeThis.promise(for: source).isEmpty
+            && AdvanceMode.somethingElse.promise(for: source).isEmpty
+            && AdvanceMode.anotherLikeThis.caveat(for: source) == nil
+      })
+check("three aims, narrowest first, and the order is the argument",
+      AdvanceMode.allCases == [.sameChanged, .anotherLikeThis, .somethingElse])
+check("each says what it will do before it does it",
+      AdvanceMode.allCases.allSatisfy {
+          TakeAdvance.subtitle(mode: $0, state: held, source: .composed) != nil
+      })
 
 // MARK: - An advance is not a roll
 

@@ -62,8 +62,9 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
     var lineMode: SelectionMode
     var lockedLineName: String?
     var learnedDraw: LearnedDraw
-    var autoRegenerate: Bool
-    var regenerateEveryPasses: Int
+    /// How often the machine presses each verb. Replaces the two fields that
+    /// between them could express one verb at one interval.
+    var autoVerbs: AutoVerbs
 
     /// Captures the settings in force, leaving the material alone.
     init(name: String, capturing state: MelGenState, id: UUID = UUID(), savedAt: Date = Date()) {
@@ -92,8 +93,7 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
         lineMode = state.lineMode
         lockedLineName = state.lockedLineName
         learnedDraw = state.learnedDraw
-        autoRegenerate = state.autoRegenerate
-        regenerateEveryPasses = state.regenerateEveryPasses
+        autoVerbs = state.autoVerbs
     }
 
     // Field by field, so a setup saved by an older build still loads instead of
@@ -146,10 +146,10 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
         lockedLineName = try container.decodeIfPresent(String.self, forKey: .lockedLineName)
         learnedDraw = try container.decodeIfPresent(LearnedDraw.self, forKey: .learnedDraw)
             ?? fallback.learnedDraw
-        autoRegenerate = try container.decodeIfPresent(Bool.self, forKey: .autoRegenerate)
-            ?? fallback.autoRegenerate
-        regenerateEveryPasses = try container.decodeIfPresent(Int.self, forKey: .regenerateEveryPasses)
-            ?? fallback.regenerateEveryPasses
+        // The one field whose old shape has to survive: three saved setups
+        // exist on the user's device, and a setup that loads with Auto silently
+        // off is a setup that stopped doing what it was named for.
+        autoVerbs = AutoVerbs.decode(from: decoder)
     }
 
     /// A one-line description, so a list of setups is readable without opening them.
@@ -162,9 +162,9 @@ struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {
         parts.append(String(format: "temp %.2f", temperature))
         parts.append(String(format: "%.0f notes/bar", expression.density * 8))
         if liveMutation.isActive { parts.append("drifting") }
-        if autoRegenerate {
-            parts.append("auto every \(regenerateEveryPasses) pass\(regenerateEveryPasses == 1 ? "" : "es")")
-        }
+        // "every N passes" was the wrong noun twice over: it is laps, and it is
+        // now one interval per verb. `AutoVerbs.summary` omits the zeros.
+        if autoVerbs.isActive { parts.append("auto: \(autoVerbs.summary)") }
         return parts.joined(separator: " · ")
     }
 }
@@ -179,7 +179,7 @@ extension MelGenSetup {
     /// on both the corpus and the substitutions, two chords of context, no
     /// modulation, chords rather than a line, templates shuffled, six notes a
     /// bar, a warm temperature, mixed note values, and enough drift that no two
-    /// passes are identical.
+    /// laps are identical.
     ///
     /// Offering it means the first thing anyone sees is a setup that produces
     /// something, rather than an empty list and a note explaining what setups are.
@@ -200,8 +200,10 @@ extension MelGenSetup {
         state.briefMode = .shuffle
         state.liveMutation = LiveMutation(noteOrder: 0.05, accents: 0.3, slides: 0.3,
                                           skipSteps: 0.08, octaves: 0.1)
-        state.autoRegenerate = true
-        state.regenerateEveryPasses = 2
+        // The same behaviour it always described, said in the vocabulary that
+        // can now express it: the drift re-rolls every lap and a take arrives
+        // every second one.
+        state.autoVerbs = AutoVerbs(rollAgainEveryLaps: 1, nextTakeEveryLaps: 2)
         return MelGenSetup(name: "Bold 4-bar comp", capturing: state)
     }
 }
@@ -237,8 +239,7 @@ extension MelGenState {
         lineMode = setup.lineMode
         lockedLineName = setup.lockedLineName
         learnedDraw = setup.learnedDraw
-        autoRegenerate = setup.autoRegenerate
-        regenerateEveryPasses = setup.regenerateEveryPasses
+        autoVerbs = setup.autoVerbs
     }
 
     /// Whether the settings in force still match a setup, so the interface can

@@ -37,9 +37,37 @@ enum TakeAdvance {
                           progression: ChordProgression) -> GenerationRecord? {
         guard progression.totalBeats > 0 else { return nil }
         switch mode {
+        case .sameChanged: return sameChanged(state: state, source: source, over: progression)
         case .anotherLikeThis: return again(state: state, source: source, over: progression)
         case .somethingElse: return elsewhere(state: state, source: source, over: progression)
         }
+    }
+
+    /// The same setup at the same seed, so the only difference is whatever the
+    /// caller just changed.
+    ///
+    /// Bass had this and it was written as plumbing — a control release redraws
+    /// with the seed held, Draw advances it — which made it look like a rule
+    /// about Bass. It is a third aim, it applies to every source whose draw is
+    /// deterministic, and giving it a name is what makes a continuous control
+    /// teachable rather than mysterious.
+    ///
+    /// Falls through to `anotherLikeThis` when there is no seed to hold: a take
+    /// made before takes recorded one, or no current take at all. Falling
+    /// through rather than returning nil, because a verb that sometimes does
+    /// nothing is worse than one that sometimes does slightly more.
+    private static func sameChanged(state: MelGenState,
+                                    source: MaterialSource,
+                                    over progression: ChordProgression) -> GenerationRecord? {
+        guard let held = state.currentTake?.seed, held != 0 else {
+            return again(state: state, source: source, over: progression)
+        }
+        if state.mode == .bass {
+            return bassline(state: state, over: progression,
+                            seed: held, settings: state.bassline)
+        }
+        return rolled(state: state, source: source, template: state.nextTemplate,
+                      over: progression, seed: held)
     }
 
     /// A variant of what is sounding, or the same setup rolled again.
@@ -54,8 +82,8 @@ enum TakeAdvance {
         // of "another like this" here anyway: the figure and the histograms are
         // the idea, and a draw from them is a take of it.
         if state.mode == .bass {
-            return bassline(state: state, over: progression, salt: 0x5EED_A11E,
-                            settings: state.bassline)
+            return bassline(state: state, over: progression,
+                            seed: seed(state, salt: 0x5EED_A11E), settings: state.bassline)
         }
 
         guard let take = state.currentTake,
@@ -93,7 +121,8 @@ enum TakeAdvance {
         }
 
         var record = record(notes: notes, over: progression, state: state,
-                            briefName: take.briefName, source: .mutated)
+                            briefName: take.briefName,
+                            seed: seed(state, salt: 0x5EED_A11E), source: .mutated)
         record.parentTakeID = take.id
         record.derivation = chosen.transform
         return record
@@ -115,19 +144,22 @@ enum TakeAdvance {
     private static func rolled(state: MelGenState,
                                source: MaterialSource,
                                template: MelGenTemplate,
-                               over progression: ChordProgression) -> GenerationRecord? {
+                               over progression: ChordProgression,
+                               seed rolledSeed: UInt64? = nil) -> GenerationRecord? {
         // In Bass the rotation names a figure, so moving it on means putting a
         // different figure on the pad — which is exactly what "something
         // else" should mean in a mode whose character lives there.
         if state.mode == .bass {
             let settings = template.basslineFigure.map(state.bassline.placing) ?? state.bassline
-            return bassline(state: state, over: progression, salt: 0xBA55, settings: settings)
+            return bassline(state: state, over: progression,
+                            seed: seed(state, salt: 0xBA55), settings: settings)
         }
 
         let style = StyleLearner.learn(from: state.curatedTakes)
         let bars = max(2, Int(ceil(progression.totalBeats / 4)))
+        let composeSeed = rolledSeed ?? seed(state, salt: 0xC0FFEE)
         let pattern = MelodyPhrases.compose(bars: min(bars, 8),
-                                            seed: seed(state, salt: 0xC0FFEE),
+                                            seed: composeSeed,
                                             style: style.isEmpty ? nil : style,
                                             preferring: template.gestureRhythms,
                                             contours: template.gestureContours,
@@ -139,7 +171,7 @@ enum TakeAdvance {
                             leading: state.voiceLeading)
         guard !notes.isEmpty else { return nil }
         return record(notes: notes, over: progression, state: state,
-                      briefName: template.name,
+                      briefName: template.name, seed: composeSeed,
                       // A composed take under Chords is a comp, and the log
                       // should not call a voiced draw a line.
                       source: state.mode == .comping ? .comping : .composed)
@@ -148,13 +180,12 @@ enum TakeAdvance {
     /// A bass line under the settings given, as a take.
     private static func bassline(state: MelGenState,
                                  over progression: ChordProgression,
-                                 salt: UInt64,
+                                 seed: UInt64,
                                  settings: BasslineSettings) -> GenerationRecord? {
-        let notes = BasslineGenerator.line(settings, over: progression,
-                                           seed: seed(state, salt: salt))
+        let notes = BasslineGenerator.line(settings, over: progression, seed: seed)
         guard !notes.isEmpty else { return nil }
         return record(notes: notes, over: progression, state: state,
-                      briefName: settings.leadingFigure.name, source: .bassline)
+                      briefName: settings.leadingFigure.name, seed: seed, source: .bassline)
     }
 
     // MARK: - What the button says before it is tapped
@@ -169,6 +200,16 @@ enum TakeAdvance {
                          state: MelGenState,
                          source: MaterialSource) -> String? {
         switch mode {
+        case .sameChanged:
+            // Says the promise rather than the outcome, because the outcome is
+            // "whatever you just changed" and naming that would be guessing at
+            // which control the hand was on.
+            let promise = mode.promise(for: source)
+            if state.mode == .bass { return "\(state.bassline.leadingFigure.name) · \(promise)" }
+            guard let take = state.currentTake else { return nil }
+            let name = take.title.isEmpty ? take.briefName : take.title
+            guard !name.isEmpty else { return nil }
+            return "\(name) · \(promise)"
         case .anotherLikeThis:
             if state.mode == .bass { return "\(state.bassline.leadingFigure.name) · redrawn" }
             guard let take = state.currentTake else { return nil }
@@ -223,6 +264,7 @@ enum TakeAdvance {
                                over progression: ChordProgression,
                                state: MelGenState,
                                briefName: String,
+                               seed: UInt64,
                                source: TakeSource) -> GenerationRecord {
         GenerationRecord(
             progressionText: state.progressionText,
@@ -230,6 +272,7 @@ enum TakeAdvance {
             briefName: briefName,
             density: state.expression.density,
             durationPalette: state.durationPalette,
+            seed: seed,
             source: source,
             analysis: MelodyAnalyser.analyse(notes, over: progression),
             lengthBeats: progression.totalBeats,

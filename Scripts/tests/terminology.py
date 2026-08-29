@@ -29,6 +29,8 @@ MELODY = ROOT / "MelGenExtension" / "Melody"
 # files that carry labels, verbs, explanations and status sentences. Named
 # rather than globbed so that adding one is a decision.
 MELODY_SURFACES = [
+    "ActionTense.swift",        # the three badges and the three verb buttons
+    "MelodyCuration.swift",     # the three aims, and the promise each makes
     "MaterialSource.swift",     # the source rows and the primary action's verb
     "NextStep.swift",           # the one line that says what to do now
     "MelodyComping.swift",      # PlayMode's labels and explanations
@@ -74,7 +76,14 @@ RULES = [
 # disambiguate, neither will whoever reads the code next, which is how a mark
 # ended up keyed on the drift counter.
 CURATION_CONTEXT = re.compile(
-    r"curation|\bmark\b|\bmarks\b|judged|judge|sweep|Review|this pass|passes through",
+    r"curation|\bmark\b|\bmarks\b|judged|judge|sweep|Review|passes through"
+    # A pass with an ordinal or a determiner in front of it is a sweep being
+    # counted, and a lap is never spoken about that way — nobody says "a further
+    # pass" about a loop traversal. Bare "pass" and "passes" stay caught, which
+    # is where the take/pass/loop confusion actually lived.
+    r"|\b(this|that|the same|a further|another|the next|the first|the second"
+    r"|the third|second|third|later) pass\b"
+    r"|\bpass \d",
     re.IGNORECASE)
 
 
