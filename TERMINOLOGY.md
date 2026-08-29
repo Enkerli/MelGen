@@ -20,6 +20,7 @@ than discovered. A term marked **retired** must not appear in the interface.
 | mutation (offline) | **variant** | A transform of a take, offered as a candidate |
 | line (library item) | **stored line** | A take read back as scale degrees |
 | line (mode) | **Line** | Monophonic output, as against Chords |
+| changes (harmony) | **progression** | The chords a take is played against |
 | variant (bass) | **seed** | One of eight draws of one setting, not a transform |
 
 ---
@@ -39,6 +40,20 @@ setup — it has a name and one can be the default a new instance starts from.
 one concept with two words is what this file exists to stop. Corrected
 2026-08-26, after the drawer labelled "Setup" was found to be inscrutable partly
 because the documentation called its contents something else.
+
+**progression** — The chords a take is played against, as leadsheet text.
+`ChordProgression`, `progressionText`. **"Changes" is retired from the
+interface**, and the reason is on record from the second device session: *"New
+changes" only parses if you already read "changes" as a progression.* It is what
+one musician says to another who already knows, and every label in a plug-in is
+read by someone who doesn't yet. The verb is untouched — "re-roll changes what
+you are hearing" is ordinary English, and `Scripts/verify.sh terminology` only
+fires on a determiner or a preposition, which is what makes the word a noun.
+
+Settled 2026-08-23 (`b78dd44`) and back in a dozen strings by 2026-08-28,
+because the decision lived in a commit message, never reached this file, and
+nothing checked it. That is the whole argument for this file having a test
+attached: a clarification nobody can run is a clarification with a half-life.
 
 **loop** — The region being repeated: the take's `lengthBeats`, which is the
 progression's length. A place, not an event.

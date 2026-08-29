@@ -61,8 +61,8 @@ check("and it says nothing can be made rather than scolding",
 
 var broken = MelGenState()
 broken.progressionText = "Hgw9 ||| ??"
-check("changes that don't parse are named as that, not as absent",
-      NextSteps.step(for: broken, context: plain)?.reason.contains("don't parse") == true,
+check("a progression that doesn't parse is named as that, not as absent",
+      NextSteps.step(for: broken, context: plain)?.reason.contains("doesn't parse") == true,
       NextSteps.step(for: broken, context: plain)?.reason ?? "nil")
 
 var empty = MelGenState()

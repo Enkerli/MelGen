@@ -72,7 +72,7 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
         case .composed: return "Compose a phrase"
         case .learned: return "Draw from your style"
         case .played: return "Learn what I play"
-        case .comp: return "Comp these changes"
+        case .comp: return "Comp the progression"
         case .bassline: return "Draw a bass line"
         }
     }

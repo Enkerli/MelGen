@@ -197,12 +197,16 @@ struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {
         self.notes = notes
     }
 
-    /// Whether this take is a variation of another one.
+    /// Whether this take was made from another one.
+    ///
+    /// The property is still called `isVariation`; the word shown is "variant",
+    /// which is the term. TERMINOLOGY.md carries that split for every identifier
+    /// whose rename would change what a saved session decodes.
     var isVariation: Bool { parentTakeID != nil }
 
     /// What to call this take's relationship to its parent, for a caption.
     var derivationLabel: String {
-        derivation.isEmpty ? "a variation" : derivation
+        derivation.isEmpty ? "a variant" : derivation
     }
 }
 

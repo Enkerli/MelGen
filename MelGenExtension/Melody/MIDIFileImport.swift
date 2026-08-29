@@ -130,7 +130,7 @@ enum MIDIImport {
                                       briefName: patternName(from: name),
                                       source: .captured))
             if pattern == nil {
-                warnings.append("The line wouldn't read as degrees against those changes.")
+                warnings.append("The line wouldn't read as degrees against that progression.")
             }
         } else if harmony.text == nil && !melodyNotes.isEmpty {
             warnings.append("Without harmony this file can teach rhythm and contour, "

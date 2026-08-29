@@ -257,7 +257,7 @@ enum PlayMode: String, Codable, CaseIterable, Sendable {
     var explanation: String {
         switch self {
         case .line: return "A monophonic line — point it at a lead sound."
-        case .comping: return "Voicings under the changes — point it at something polyphonic."
+        case .comping: return "Voicings under the progression — point it at something polyphonic."
         case .bass: return "A bass part in its own register — point it at a bass sound."
         }
     }

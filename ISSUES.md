@@ -1,7 +1,8 @@
 # Open issues and ideas
 
-*2026-08-23, after four device sessions. Kept separate from
-[ROADMAP.md](ROADMAP.md), which is about what to build; this is about what's
+*Updated 2026-08-28, after the bass mode merged — see §6, which is the only part
+of this document written from reading rather than from playing. Kept separate
+from [ROADMAP.md](ROADMAP.md), which is about what to build; this is about what's
 wrong, what's unproven, and what we've learned that changes the plan.*
 
 ---
@@ -292,6 +293,119 @@ Ordered by how likely they are to bite.
 15. **The library is `UserDefaults`, not an App Group** (I5/L4).
 16. **`PatternStore` and the learned models have no export or import.**
 17. **`previousTakeID` is encoded but not decoded.**
+
+---
+
+## 6. Bass, from its first reading
+
+*2026-08-28, from reading the merged branch rather than from playing it — the
+mode has still never been heard on device. Four findings, one of them fixed
+here, and one of them a direction rather than a defect.*
+
+### 6.1 It regenerates in real time, and nothing in the interface uses that
+
+The observation that reframes the rest. Bass is instant: a draw is arithmetic
+over two histograms, so a control can move and the part can be different before
+the finger lifts. With Auto on it already behaves that way — the loop redraws on
+a lap boundary and picks up whatever the settings now say — which is the first
+time anything in MelGen has been continuous rather than take-at-a-time.
+
+The interface was built for the take-at-a-time model and doesn't know. Every
+control commits with `reloadKernel: false`; `FigurePad` takes an `onSettle`
+closure and is handed an empty one. So with Auto off, moving a control changes
+nothing you can hear until Draw is pressed, and the connection between the
+gesture and the sound — which is the only way anyone learns what a control does
+— is never made.
+
+The device this is owed to is a **pattern player**: it is always running, and
+every knob is live. That is a different shape from "make a take, judge it, keep
+it", and the two have to be reconciled rather than one bolted onto the other.
+The reconciliation is the open question, not the plumbing:
+
+- A take is the unit everything downstream treats alike — measured, curated,
+  learned from. A control that redraws on every frame produces hundreds of them.
+- So a live redraw is presumably *not* a take until something says so, which
+  makes it the same kind of thing as **drift**: a performance of the settings,
+  not a version of them. That analogy may be the whole answer.
+
+Settling this is upstream of most of §6.2 and §6.3, because "which control does
+what" is a question you answer by moving one and listening.
+
+### 6.2 The pad does not say it can be dragged
+
+Where is a user meant to put a finger? `FigurePad` draws a rounded rectangle, two
+faint axis lines, four labels outside the edges, and an 18pt filled circle that
+looks like an indicator rather than a handle. Nothing about it reads as a target,
+nothing says the region is the control rather than a diagram, and on first open
+the puck sits dead centre where a decorative dot would sit.
+
+The accessibility side is in better shape than the visual one, which is the wrong
+way round for a control whose whole point is direct manipulation: there are
+adjustable actions and named actions, so VoiceOver can drive it, and a sighted
+user is given no affordance at all.
+
+Unresolved, and worth resolving with something on screen rather than with a
+caption: a caption explaining that a control can be dragged is a control that
+failed to say so.
+
+### 6.3 Eleven controls, flat, and no map from one to what it changes
+
+The Bass section is a list: pad, harmony source, reach, range, then shift,
+outside, side-slip, chromatic, runs, leaps, seed and morph behind a disclosure.
+They act on four different things and nothing groups them by which:
+
+| What it acts on | Controls |
+|---|---|
+| **Which note** (`DegreeHistogram`) | Reach, Outside, Side-slip |
+| **How far to the next** (`TransitionHistogram`) | Chromatic, Runs, Leaps |
+| **Where the notes go** (`BasslineFigure`) | the pad's two axes, Shift, Density |
+| **Where it sits** | Range |
+| **Which draw** | Seed, Morph |
+
+Two of them are also easy to read as each other — **Reach** is how far up the
+chord and **Range** is register, and both sound like "how wide". **Leaps** is a
+third thing that also sounds like it ("how wide is each move"). The names may be
+the problem, or the grouping may be, and which of those it is cannot be told
+without §6.1: a control you can hear needs less explaining than one you can't.
+
+### 6.4 A key and a progression are the same control saying two different things
+
+Fixed in part, still open in part.
+
+**Fixed.** Choosing "A key" and drawing used to overwrite the session's
+`progressionText` with the modal chord — so a typed leadsheet was silently
+replaced by `C(dorian)` and could not be got back. The reason was that the piano
+roll coloured against the field rather than against the take, so a take drawn
+over a key was drawn against harmony it had never heard. The roll now asks the
+current take for its own progression, which every take already records, and the
+field is left alone.
+
+**Still open.** The chip says "The progression / A key" and the difference is
+larger than a chip conveys. Over a progression the histograms are rebuilt per
+chord and the part follows the changes; over a key there is one chord for the
+whole form and the part is modal. Those produce different music for the same
+settings, and nothing on screen says so beyond one caption. Whether the key
+should be a *mode of the whole plug-in* rather than a switch inside Bass is the
+question underneath — Line and Chords would both mean something over a key, and
+`DiatonicHarmony` is not bass-specific.
+
+### 6.5 "Changes" had been retired and came back
+
+Fixed 2026-08-28. The harmony is a **progression** on screen; "changes" is what
+one musician says to another who already knows. Settled 2026-08-23 (`b78dd44`) —
+*"New changes" only parses if you already read "changes" as a progression* — and
+back in a dozen interface strings by 2026-08-28, because the decision lived in a
+commit message, never reached [TERMINOLOGY.md](TERMINOLOGY.md), and nothing
+checked it.
+
+Now all three: an entry in TERMINOLOGY, every string corrected, and a rule in
+`Scripts/verify.sh terminology` that fires on the noun and leaves the verb alone.
+Widening that scan from `UI/` to the Melody files whose strings reach the screen
+also caught a second, older drift — a caption reading "a variation", which is the
+one word that file explicitly retires.
+
+The general lesson is the one the hygiene rules in [README.md](README.md) already
+state, arriving again: a clarification nobody can run has a half-life.
 
 ---
 

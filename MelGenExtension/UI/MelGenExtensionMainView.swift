@@ -698,7 +698,7 @@ struct MelGenExtensionMainView: View {
     /// Changes or a key — the one question this mode asks that the others don't.
     private var harmonySourceRow: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            ChipPicker(options: [(false, "The changes"), (true, "A key")],
+            ChipPicker(options: [(false, "The progression"), (true, "A key")],
                        selection: binding(\.bassline.overKey, reloadKernel: false),
                        theme: theme)
                 .frame(maxWidth: 260)
@@ -1802,7 +1802,7 @@ struct MelGenExtensionMainView: View {
             modulateEvery: current.progressionModulation,
             seed: seed
         ) else {
-            statusMessage = "Couldn't generate changes — the corpus tables are missing."
+            statusMessage = "Couldn't generate a progression — the corpus tables are missing."
             return
         }
 
@@ -2048,7 +2048,7 @@ struct MelGenExtensionMainView: View {
     /// rather than silently replacing the old one.
     private var currentTakeSection: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
-            if let changes = try? ChordProgression.parse(state.progressionText) {
+            if let changes = harmonyOfWhatIsPlaying {
                 PianoRoll(notes: state.renderedMelody,
                           progression: changes,
                           lengthBeats: state.currentTake?.lengthBeats ?? 0,
@@ -2500,6 +2500,20 @@ struct MelGenExtensionMainView: View {
         for mode in AdvanceMode.allCases { buffered[mode] = candidate(for: mode) }
     }
 
+    /// The harmony the roll should colour against: the take's own, not the field.
+    ///
+    /// They are the same thing for every source but one. Bass over a key draws
+    /// against a modal chord that was never typed, and the roll used to be given
+    /// the field regardless — so the fix was to *overwrite* the field, which
+    /// threw away whatever leadsheet was in it. A take already records the
+    /// harmony it was drawn over; asking it is both correct and non-destructive,
+    /// and it is what stops any future source that invents its own harmony
+    /// having to vandalise the progression to be drawn properly.
+    private var harmonyOfWhatIsPlaying: ChordProgression? {
+        let text = state.currentTake?.progressionText ?? state.progressionText
+        return try? ChordProgression.parse(text.isEmpty ? state.progressionText : text)
+    }
+
     private func candidate(for mode: AdvanceMode) -> GenerationRecord? {
         guard let changes = try? ChordProgression.parse(liveState.progressionText) else { return nil }
         return TakeAdvance.candidate(mode: mode, state: liveState,
@@ -2594,7 +2608,7 @@ struct MelGenExtensionMainView: View {
                     .font(.system(size: 13, weight: .semibold))
                 Text("Keep as a line")
                     .font(.system(size: 13, weight: .medium))
-                Text("plays over any changes")
+                Text("plays over any progression")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
             }
@@ -2700,7 +2714,7 @@ struct MelGenExtensionMainView: View {
                     isExportingMIDI = true
                 } label: {
                     findLabel("Export the take as MIDI", systemImage: "square.and.arrow.up",
-                              detail: "with the changes attached")
+                              detail: "with its progression attached")
                 }
                 .buttonStyle(.plain)
                 .fileExporter(isPresented: $isExportingMIDI,
@@ -2712,7 +2726,7 @@ struct MelGenExtensionMainView: View {
                     if case .failure(let error) = result {
                         statusMessage = "Export failed: \(error.localizedDescription)"
                     } else {
-                        statusMessage = "Exported with its changes — another app can read them."
+                        statusMessage = "Exported with its progression — another app can read it."
                     }
                 }
 
@@ -2750,7 +2764,7 @@ struct MelGenExtensionMainView: View {
             }
 
             Text("A file from MIDIcurator or ProgGenie carries its leadsheet, so the line "
-                 + "arrives as degrees and plays over any changes. Otherwise the chords are "
+                 + "arrives as degrees and plays over any progression. Otherwise the chords are "
                  + "read from markers, then from a chord track, and the import says which.")
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textMuted)
@@ -2817,7 +2831,7 @@ struct MelGenExtensionMainView: View {
             var sentence = added == 0
                 ? "Nothing became a line."
                 : "\(added) line\(added == 1 ? "" : "s") added"
-                    + (withHarmony > 0 ? ", \(withHarmony) with their own changes." : ".")
+                    + (withHarmony > 0 ? ", \(withHarmony) with their own progression." : ".")
             if !notes.isEmpty { sentence += " " + notes.prefix(2).joined(separator: " ") }
             statusMessage = sentence
         }
@@ -2885,7 +2899,7 @@ struct MelGenExtensionMainView: View {
                 Button {
                     readChangesFromPlaying()
                 } label: {
-                    findLabel("Read the changes", systemImage: "text.magnifyingglass",
+                    findLabel("Read the progression", systemImage: "text.magnifyingglass",
                               detail: readChangesDetail)
                 }
                 .buttonStyle(.plain)
@@ -2932,7 +2946,7 @@ struct MelGenExtensionMainView: View {
             return
         }
         commit { $0.progressionText = read.text }
-        var sentence = "Read \(read.namedBars) bar\(read.namedBars == 1 ? "" : "s") of changes: \(read.text)."
+        var sentence = "Read a \(read.namedBars)-bar progression: \(read.text)."
         if read.namedBars < read.totalBars {
             sentence += " \(read.totalBars - read.namedBars) bar"
                 + (read.totalBars - read.namedBars == 1 ? "" : "s")
@@ -3156,7 +3170,7 @@ struct MelGenExtensionMainView: View {
                     variety: min(1, Double(MelodyComping.maximumPolyphony(of: entry.notes)) / 5)
                 )
             }
-            statusMessage = "\(variants.count) ways to comp these changes."
+            statusMessage = "\(variants.count) ways to comp this progression."
             return
         }
 
@@ -4010,7 +4024,10 @@ struct MelGenExtensionMainView: View {
     /// note and would undo the range. It also owns its harmony — over a key the
     /// take records the modal chord it was actually drawn against, not whatever
     /// is typed in the progression field, so replaying it later means replaying
-    /// it over the same thing.
+    /// it over the same thing. The field is left exactly as it was: a leadsheet
+    /// somebody typed is theirs, and a mode that quietly replaces it with
+    /// `C(dorian)` has deleted work to solve a drawing problem. See
+    /// `harmonyOfWhatIsPlaying`.
     @discardableResult
     private func drawBassline(commitNow: Bool = true) -> GenerationRecord? {
         let current = liveState
@@ -4058,9 +4075,6 @@ struct MelGenExtensionMainView: View {
             commit {
                 $0.add(record)
                 $0.patternCursor += 1
-                // Over a key the field has to say what is sounding, or the piano
-                // roll draws one harmony and the kernel plays another.
-                if settings.overKey { $0.progressionText = progression.text }
             }
             statusMessage = "\(settings.leadingFigure.name): \(notes.count) notes, "
                 + "\(settings.summary)."

@@ -421,8 +421,31 @@ darker.minorness = 1
 check("minorness changes which notes are available",
       Set(BasslineGenerator.line(brighter, over: nil, seed: 33).map { ChordScales.pitchClass(Int($0.note)) })
         != Set(BasslineGenerator.line(darker, over: nil, seed: 33).map { ChordScales.pitchClass(Int($0.note)) }))
-check("with no changes at all a key still plays",
+check("with no progression at all a key still plays",
       !BasslineGenerator.line(overKey, over: nil, seed: 1).isEmpty)
+
+// A take over a key carries the modal chord it was drawn against, so nothing
+// upstream has to be edited for it to be replayed or coloured correctly. This is
+// the check that stands in for the defect it replaced: the first version wrote
+// the modal chord into the session's own progression field, which threw away
+// whatever leadsheet was typed there.
+var keyState = MelGenState()
+keyState.mode = .bass
+keyState.progressionText = "Dm7 G7|C∆"
+keyState.bassline = overKey
+if let take = TakeAdvance.candidate(mode: .anotherLikeThis, state: keyState,
+                                    source: .bassline, progression: changes) {
+    keyState.add(take)
+    check("a take over a key records the modal chord it was drawn against",
+          take.progressionText == vamp?.text, take.progressionText)
+    check("and the typed progression is left exactly as it was",
+          keyState.progressionText == "Dm7 G7|C∆", keyState.progressionText)
+    check("so replaying it means replaying it over the same harmony",
+          (try? ChordProgression.parse(take.progressionText))?.chords.first?.symbol.scaleName
+            == "Dorian")
+} else {
+    check("a take over a key is produced at all", false)
+}
 
 // MARK: - Fitting in
 

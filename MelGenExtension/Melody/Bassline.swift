@@ -577,7 +577,7 @@ struct BasslineSettings: Codable, Hashable, Sendable {
     var summary: String {
         let harmony = overKey
             ? "\(ChordProgression.flatNoteNames[ChordScales.pitchClass(key)]) \(DiatonicHarmony.label(forMinorness: minorness).lowercased())"
-            : "the changes"
+            : "the progression"
         return "\(pad.name.lowercased()) over \(harmony), "
              + "\(ChordProgression.noteName(forMIDINote: range.lowerBound))–"
              + "\(ChordProgression.noteName(forMIDINote: range.upperBound))"
