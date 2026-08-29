@@ -111,10 +111,10 @@ enum NextSteps {
         // Nothing at all works without changes — every source plays against them.
         if !hasChanges {
             return NextStep(
-                title: "Set the changes",
+                title: "Set the progression",
                 reason: state.progressionText.isEmpty
                     ? "Every source plays against a progression, so nothing can be made yet."
-                    : "Those changes don't parse, so nothing can be made against them.",
+                    : "That progression doesn't parse, so nothing can be made against it.",
                 destination: .progression)
         }
 
@@ -186,7 +186,7 @@ enum NextSteps {
         if kept >= 1, !context.hasStoredLineOfYourOwn {
             return NextStep(
                 title: "Keep one as a stored line",
-                reason: "A kept take is still tied to these changes. As a line it is scale "
+                reason: "A kept take is still tied to this progression. As a line it is scale "
                     + "degrees, and plays over any others instantly.",
                 destination: .storedLines)
         }
@@ -201,7 +201,7 @@ enum NextSteps {
             return NextStep(
                 title: "Try a bass part",
                 reason: "Bass draws from a note stack and a figure pad instead of a template, "
-                    + "and it can work from a key rather than from the changes.",
+                    + "and it can work from a key rather than from the progression.",
                 destination: .bass)
         }
 
@@ -219,7 +219,7 @@ enum NextSteps {
             return NextStep(
                 title: "Do something with what you played",
                 reason: "There are captured notes sitting in Your material — learn from them, "
-                    + "or read the changes off them.",
+                    + "or read the progression off them.",
                 destination: .material)
         }
 

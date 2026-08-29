@@ -20,6 +20,7 @@ than discovered. A term marked **retired** must not appear in the interface.
 | mutation (offline) | **variant** | A transform of a take, offered as a candidate |
 | line (library item) | **stored line** | A take read back as scale degrees |
 | line (mode) | **Line** | Monophonic output, as against Chords |
+| changes (harmony) | **progression** | The chords a take is played against |
 | variant (bass) | **seed** | One of eight draws of one setting, not a transform |
 
 ---
@@ -39,6 +40,20 @@ setup — it has a name and one can be the default a new instance starts from.
 one concept with two words is what this file exists to stop. Corrected
 2026-08-26, after the drawer labelled "Setup" was found to be inscrutable partly
 because the documentation called its contents something else.
+
+**progression** — The chords a take is played against, as leadsheet text.
+`ChordProgression`, `progressionText`. **"Changes" is retired from the
+interface**, and the reason is on record from the second device session: *"New
+changes" only parses if you already read "changes" as a progression.* It is what
+one musician says to another who already knows, and every label in a plug-in is
+read by someone who doesn't yet. The verb is untouched — "re-roll changes what
+you are hearing" is ordinary English, and `Scripts/verify.sh terminology` only
+fires on a determiner or a preposition, which is what makes the word a noun.
+
+Settled 2026-08-23 (`b78dd44`) and back in a dozen strings by 2026-08-28,
+because the decision lived in a commit message, never reached this file, and
+nothing checked it. That is the whole argument for this file having a test
+attached: a clarification nobody can run is a clarification with a half-life.
 
 **loop** — The region being repeated: the take's `lengthBeats`, which is the
 progression's length. A place, not an event.
@@ -127,6 +142,19 @@ made a straight walking bass unreachable. `BasslinePad`. **"Diamond" is retired*
 
 **shift** — Moving a bass figure along the bar, wrapping. In eighths. The same
 notes, in different places: an on-beat figure shifted by one is an off-beat one.
+
+**vamp** — A progression with one chord in it, written `C(dorian)` and held for
+as many bars as you want. Not a separate kind of harmony and not a mode of the
+plug-in: there is one progression field and a vamp is something you can put in
+it. `DiatonicHarmony.vamp(key:scale:bars:)` writes one. **"Diatonic mode" is
+retired** — it named a switch that no longer exists, and named it as a mode when
+Line, Chords and Bass are the modes.
+
+**draw** — Making a bass part. Instant, and in Bass it happens whenever a control
+is released rather than only when asked for, because the part can change before
+the finger lifts. Every release is a take. Distinct from **generate**, which
+means the model and costs 1.8 seconds a note, and from **compose**, which is the
+phrase grammar.
 
 **layer** — One of the two things a bass part is made of at once: the on-beat
 figure and the off-beat figure, merged into a single monophonic line. What the

@@ -15,7 +15,7 @@
 
 import Foundation
 
-enum Scale: String, CaseIterable, Sendable {
+enum Scale: String, CaseIterable, Codable, Sendable {
     case ionian, dorian, phrygian, lydian, mixolydian, aeolian, locrian
     case melodicMinor, lydianDominant, mixolydianFlat13, altered, wholeTone
     case lydianAugmented, diminishedWholeHalf, diminishedHalfWhole

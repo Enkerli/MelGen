@@ -535,10 +535,18 @@ extension DiatonicHarmony {
 
     /// The degree histogram for a fractional minorness.
     ///
-    /// Both neighbouring modes' stacks, blended. This is where the dial stops
-    /// being a seven-position switch: between two rungs the flattened degree and
-    /// the natural one both carry weight, in proportion, and the line audibly
-    /// sits between the two modes rather than in one of them.
+    /// Both neighbouring modes' stacks, blended: between two rungs the flattened
+    /// degree and the natural one both carry weight, in proportion, and the line
+    /// audibly sits between the two modes rather than in one of them.
+    ///
+    /// **Nothing calls this today**, and that is a decision rather than an
+    /// oversight. The mode a key is in is now written into the progression as
+    /// `C(dorian)`, and text can only name one mode — so the dial that used to
+    /// be continuous rounds to a rung. What is lost is the in-between, and it is
+    /// worth having back as a *darkness* control that leans the histogram over
+    /// any progression rather than only over a modal one: see ROADMAP H13. Kept
+    /// and tested meanwhile, because deleting it would mean deriving the ladder
+    /// blend a second time when that lands.
     static func degrees(key: Int,
                         minorness: Double,
                         reach: Double,

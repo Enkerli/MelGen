@@ -149,6 +149,13 @@ struct LabelledSlider: View {
     let theme: MelGenTheme
     /// Formats the value for display; defaults to two decimals.
     var format: (Double) -> String = { $0.formatted(.number.precision(.fractionLength(2))) }
+    /// Called when a drag ends, not while it moves.
+    ///
+    /// The distinction is the whole reason this exists: a control that redraws
+    /// on every frame of a gesture makes a hundred of whatever it makes, and one
+    /// that redraws on release makes one you can hear against the last one. See
+    /// `MelGenExtensionMainView.redrawBass()`.
+    var onCommit: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -171,7 +178,9 @@ struct LabelledSlider: View {
                 Text(lowLabel)
                     .frame(width: MelGenMetrics.sliderCaptionWidth, alignment: .trailing)
 
-                Slider(value: $value, in: 0...1)
+                Slider(value: $value, in: 0...1, onEditingChanged: { editing in
+                    if !editing { onCommit() }
+                })
                     .tint(theme.accent)
 
                 Text(highLabel)

@@ -150,21 +150,11 @@ enum TakeAdvance {
                                  over progression: ChordProgression,
                                  salt: UInt64,
                                  settings: BasslineSettings) -> GenerationRecord? {
-        let changes = settings.overKey ? nil : progression
-        let notes = BasslineGenerator.line(settings, over: changes,
+        let notes = BasslineGenerator.line(settings, over: progression,
                                            seed: seed(state, salt: salt))
-        guard !notes.isEmpty,
-              let sounded = BasslineGenerator.progression(for: settings, changes: changes)
-        else { return nil }
-
-        var record = record(notes: notes, over: sounded, state: state,
-                            briefName: settings.leadingFigure.name, source: .bassline)
-        // Over a key the take's harmony is the modal chord, not whatever is in
-        // the progression field — otherwise the take replays against changes it
-        // was never drawn over, and every measurement of it is about a
-        // progression it has never heard.
-        record.progressionText = sounded.text
-        return record
+        guard !notes.isEmpty else { return nil }
+        return record(notes: notes, over: progression, state: state,
+                      briefName: settings.leadingFigure.name, source: .bassline)
     }
 
     // MARK: - What the button says before it is tapped

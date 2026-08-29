@@ -218,6 +218,19 @@ check("the same seed produces the same line",
 check("a different seed produces a different one",
       BasslineGenerator.line(settings, over: changes, seed: 8) != line)
 
+// The property the live redraw rests on: at one seed, moving one control
+// changes the line *because of that control*. If the seed moved too, every
+// release would be a different line and there would be nothing to hear.
+var nudged = settings
+nudged.reach = min(1, settings.reach + 0.4)
+let after = BasslineGenerator.line(nudged, over: changes, seed: 7)
+check("at one seed, one control moved gives a related line rather than a new one",
+      after != line
+        && Set(after.map(\.startBeat)) == Set(line.map(\.startBeat)),
+      "\(line.count) notes → \(after.count), same onsets")
+check("and the notes it changed are the ones the control is about",
+      zip(line, after).contains { $0.note != $1.note })
+
 check("every note is inside the range",
       line.allSatisfy { settings.range.contains(Int($0.note)) },
       "\(settings.range) — lowest \(line.map(\.note).min() ?? 0), highest \(line.map(\.note).max() ?? 0)")
@@ -392,37 +405,65 @@ check("the morph never puts two notes on one grid position",
 // MARK: - Over a key
 
 print()
-print("── over a key rather than changes ─────────────────")
+print("── a key, as a progression with one chord in it ───")
 
-var overKey = BasslineSettings()
-overKey.overKey = true
-overKey.key = 4
-overKey.minorness = 0.5
-overKey.bars = 4
-overKey.outside = 0
-let keyed = BasslineGenerator.line(overKey, over: changes, seed: 33)
-let vamp = BasslineGenerator.progression(for: overKey, changes: changes)
-check("the key wins over whatever is typed",
-      vamp?.chords.count == 1 && vamp?.chords.first?.symbol.rootPitchClass == 4,
-      vamp?.text ?? "nothing")
-check("and the form is as long as the bars asked for",
-      vamp?.totalBeats == 16)
-check("the line stays in the mode",
+// There is no "over a key" path any more. A vamp is leadsheet text, so the same
+// generator reads it and the same field holds it — which is the whole claim
+// worth checking.
+let vampText = DiatonicHarmony.vamp(key: 4, scale: .dorian, bars: 4)
+check("a vamp is written as one chord held for the bars asked for",
+      vampText == "E(dorian)|||", vampText)
+guard let vamp = try? ChordProgression.parse(vampText) else {
+    check("a written vamp parses", false)
+    fatalError("a written vamp must parse")
+}
+check("and parses back to one chord over the whole form",
+      vamp.chords.count == 1 && vamp.totalBeats == 16
+        && vamp.chords[0].symbol.rootPitchClass == 4,
+      vamp.text)
+check("in the mode it names",
+      vamp.chords[0].symbol.scaleName == "Dorian")
+
+var overVamp = BasslineSettings()
+overVamp.outside = 0
+let keyed = BasslineGenerator.line(overVamp, over: vamp, seed: 33)
+check("a bass part over it stays in the mode",
       !keyed.isEmpty && keyed.allSatisfy {
-          Set(DiatonicHarmony.mode(forMinorness: 0.5).intervals.map { (4 + $0) % 12 })
+          Set(Scale.dorian.intervals.map { (4 + $0) % 12 })
               .contains(ChordScales.pitchClass(Int($0.note)))
       },
       "E Dorian, \(keyed.count) notes")
+check("and a different mode gives different notes for the same settings",
+      Set(keyed.map { ChordScales.pitchClass(Int($0.note)) })
+        != Set(BasslineGenerator.line(
+            overVamp,
+            over: try? ChordProgression.parse(DiatonicHarmony.vamp(key: 4, scale: .lydian, bars: 4)),
+            seed: 33).map { ChordScales.pitchClass(Int($0.note)) }))
+check("every rung of the ladder writes something that parses back to itself",
+      DiatonicHarmony.ladder.allSatisfy { scale in
+          let text = DiatonicHarmony.vamp(key: 7, scale: scale, bars: 2)
+          guard let parsed = try? ChordProgression.parse(text) else { return false }
+          return parsed.chords.count == 1 && parsed.totalBeats == 8
+            && parsed.chords[0].symbol.scaleName == scale.displayName
+      })
+check("with no progression at all nothing is drawn, rather than something invented",
+      BasslineGenerator.line(overVamp, over: nil, seed: 1).isEmpty)
 
-var brighter = overKey
-brighter.minorness = 0
-var darker = overKey
-darker.minorness = 1
-check("minorness changes which notes are available",
-      Set(BasslineGenerator.line(brighter, over: nil, seed: 33).map { ChordScales.pitchClass(Int($0.note)) })
-        != Set(BasslineGenerator.line(darker, over: nil, seed: 33).map { ChordScales.pitchClass(Int($0.note)) }))
-check("with no changes at all a key still plays",
-      !BasslineGenerator.line(overKey, over: nil, seed: 1).isEmpty)
+// A take carries the harmony it was drawn over, whatever that harmony was, so
+// nothing upstream has to be edited for it to be replayed or coloured correctly.
+var vampState = MelGenState()
+vampState.mode = .bass
+vampState.progressionText = vampText
+if let take = TakeAdvance.candidate(mode: .anotherLikeThis, state: vampState,
+                                    source: .bassline, progression: vamp) {
+    check("a take over a vamp records the vamp it was drawn against",
+          take.progressionText == vampText, take.progressionText)
+    check("so replaying it means replaying it over the same harmony",
+          (try? ChordProgression.parse(take.progressionText))?.chords.first?.symbol.scaleName
+            == "Dorian")
+} else {
+    check("a take over a vamp is produced at all", false)
+}
 
 // MARK: - Fitting in
 
