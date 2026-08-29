@@ -316,6 +316,14 @@ from their setter, since a tap *is* a release. Only Bass: every other source
 pays for a take, and redrawing them on a slider would be a different feature
 with the same name. Which other instant sources qualify is ROADMAP H14.
 
+**And the seed is held still while it happens**, which is the part that decides
+whether any of this works. The first version advanced the cursor on every
+redraw the way every other source does, so releasing a control gave a line that
+differed in every note — and there was no way to hear what the control had
+done. Same seed, one thing changed, is what a control *is*. Pressing Draw
+advances, because asking for another one and asking for the same one
+differently are different requests.
+
 The reasoning that led here is kept below, because it is still the shape of the
 problem for anything else that becomes continuous.
 

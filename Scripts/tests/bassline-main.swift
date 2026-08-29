@@ -218,6 +218,19 @@ check("the same seed produces the same line",
 check("a different seed produces a different one",
       BasslineGenerator.line(settings, over: changes, seed: 8) != line)
 
+// The property the live redraw rests on: at one seed, moving one control
+// changes the line *because of that control*. If the seed moved too, every
+// release would be a different line and there would be nothing to hear.
+var nudged = settings
+nudged.reach = min(1, settings.reach + 0.4)
+let after = BasslineGenerator.line(nudged, over: changes, seed: 7)
+check("at one seed, one control moved gives a related line rather than a new one",
+      after != line
+        && Set(after.map(\.startBeat)) == Set(line.map(\.startBeat)),
+      "\(line.count) notes → \(after.count), same onsets")
+check("and the notes it changed are the ones the control is about",
+      zip(line, after).contains { $0.note != $1.note })
+
 check("every note is inside the range",
       line.allSatisfy { settings.range.contains(Int($0.note)) },
       "\(settings.range) — lowest \(line.map(\.note).min() ?? 0), highest \(line.map(\.note).max() ?? 0)")

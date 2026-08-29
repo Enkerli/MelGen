@@ -782,7 +782,7 @@ struct MelGenExtensionMainView: View {
     /// slider would be a different feature with the same name.
     private func redrawBass() {
         guard liveState.mode == .bass, !isGenerating else { return }
-        drawBassline()
+        drawBassline(advancing: false)
     }
 
     /// Replaces the progression with a vamp, and says what it replaced.
@@ -4098,8 +4098,16 @@ struct MelGenExtensionMainView: View {
     /// second harmony source behind a switch here; it is now `C(dorian)` in the
     /// progression field, which every mode reads and the piano roll already
     /// draws. One harmony, one field, no branch.
+    /// - Parameter advancing: whether the seed moves on. It must *not* when a
+    ///   control was released, and that is the difference between the live
+    ///   redraw working and not: if the seed moved too, every draw would be a
+    ///   different line and there would be no way to hear what the control you
+    ///   just moved actually did. Same seed, one thing changed, is the whole
+    ///   point of a control. Pressing Draw advances, because asking for another
+    ///   one and asking for the same one differently are different requests.
     @discardableResult
-    private func drawBassline(commitNow: Bool = true) -> GenerationRecord? {
+    private func drawBassline(commitNow: Bool = true,
+                              advancing: Bool = true) -> GenerationRecord? {
         let current = liveState
         let settings = current.bassline
 
@@ -4140,7 +4148,7 @@ struct MelGenExtensionMainView: View {
         if commitNow {
             commit {
                 $0.add(record)
-                $0.patternCursor += 1
+                if advancing { $0.patternCursor += 1 }
             }
             statusMessage = "\(settings.leadingFigure.name): \(notes.count) notes, "
                 + "\(settings.summary)."
