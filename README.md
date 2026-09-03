@@ -132,6 +132,8 @@ Scripts/verify.sh chords     # one suite
 | `terminology` | Every interface string against TERMINOLOGY.md — one word per concept |
 | `icon` | `MelGen.icon` against the design pass — bar geometry, theme tokens, a dark value on every fill |
 | `contrast` | WCAG 2.1 AA on every theme token pairing the UI uses, both themes |
+| `proggen` | The deterministic half of the progression engine against ProgGenie's own answers — how a corpus label splits, where its numeral lands, and what MelGen refuses to play ([PORTING.md](PORTING.md)) |
+| `boundary` | The seam a sibling plug-in would be built on — which sources are foundation, and every place one still reaches up into MelGen ([PORTING.md](PORTING.md)) |
 | `kernel` | Melody scheduling — direction, host sync, note-off discipline, loop counter |
 
 The `chords` suite needs [music-suite](https://github.com/Enkerli/music-suite)
