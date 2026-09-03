@@ -11,50 +11,6 @@
 
 import Foundation
 
-/// Where a take's notes came from.
-enum TakeSource: String, Codable, Sendable {
-    /// Composed by the on-device model.
-    case model
-    /// A stored line fitted to this progression — instant, no model.
-    case pattern
-    /// Built here and now out of gestures, by the phrase grammar. Also instant,
-    /// and unlike a stored line it has never existed before.
-    case composed
-    /// Drawn from the slot statistics of the takes you kept. Instant too, and the
-    /// only one of the four that sounds like *your* material rather than like a
-    /// vocabulary somebody wrote down.
-    case sampled
-    /// Walked through the variable-order model of what follows what in that same
-    /// material. Also yours, and — unlike the slot draw — it has phrases, because
-    /// it remembers what it just played.
-    case chained
-    /// A transform of another take, or a point on the morph between two of them.
-    /// The only source whose provenance names a parent rather than a progression.
-    case mutated
-    /// Played in. The only source that didn't come from this plug-in at all.
-    case captured
-    /// Chords rather than a line.
-    case comping
-    /// A bass part, drawn from a degree histogram and a transition histogram
-    /// through a rhythmic figure. Instant, and the only source that decides a
-    /// register rather than inheriting one.
-    case bassline
-
-    var label: String {
-        switch self {
-        case .model: return "model"
-        case .pattern: return "line"
-        case .composed: return "phrase"
-        case .sampled: return "learned"
-        case .chained: return "chained"
-        case .mutated: return "variant"
-        case .captured: return "played"
-        case .comping: return "comp"
-        case .bassline: return "bass"
-        }
-    }
-}
-
 /// One take. `notes` is the raw output, before expression is applied, so changing
 /// the expression controls re-renders old takes too.
 struct GenerationRecord: Codable, Hashable, Sendable, Identifiable {

@@ -83,11 +83,13 @@ THEORY_FILES = {
 }
 
 CARRIER_FILES = {
+    "MelodyPattern.swift",      # THE interchange format: a degree-relative line
     "MelodyModels.swift",       # SequencedNote — what the kernel and the MIDI files speak
     "MelodyAnalysis.swift",     # measurement, which curation needs and melody doesn't own
-    "MaterialSource.swift",     # where material comes from, and what it costs
+    "MaterialSource.swift",     # where material comes from, and what a take came from
     "ActionTense.swift",        # now / take / aims — the interaction grammar, not the music
     "MelodyCuration.swift",     # dispositions, passes, facets, the tag vocabulary
+    "DeadAir.swift",            # a realization repair, not an expression setting
     "PatternStore.swift",
     "StandardMIDIFile.swift",
     "MIDIFileImport.swift",
@@ -140,26 +142,14 @@ SEAMS: dict[tuple[str, str], str] = {
         "the same call, its argument type. Closes with the one above.",
 
     # ── The carrier reaching upward ─────────────────────────────────────────
-    # All of it is the pattern format. Deciding whether MelodyPattern is
-    # foundation is the first extraction task, and it closes five of these.
-    ("MIDIFileImport.swift", "MelodyPattern"):
-        "the pattern format — probably foundation; decide and this closes",
-    ("MIDIFileImport.swift", "MelodyPatterns"):
-        "the format's namespace enum, same call",
-    ("MIDIFileImport.swift", "PatternOrigin"):
-        "provenance on an imported pattern, same call",
-    ("PatternStore.swift", "MelodyPattern"):
-        "same call as MIDIFileImport",
-    ("PatternStore.swift", "MelodyPatterns"):
-        "same call as MIDIFileImport",
+    # What is left after MelodyPattern was ruled the interchange format, which
+    # closed five of these and, by moving TakeSource down with it, a sixth.
     ("PatternStore.swift", "MelodyStepPatterns"):
         "interval cells — melody-specific. The store should be generic over "
         "what it stores rather than naming both kinds.",
     ("MaterialSource.swift", "PlayMode"):
         "line / chords / bass. A MelGen distinction; the source list should "
         "be filtered by a predicate the app supplies.",
-    ("MelodyCuration.swift", "TakeSource"):
-        "curation reads a MelGen enum off the session. Pass a String tag.",
 
     # ── The UI kit reaching upward ──────────────────────────────────────────
     ("CurationView.swift", "GenerationRecord"):

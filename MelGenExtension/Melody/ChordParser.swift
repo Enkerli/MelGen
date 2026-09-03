@@ -219,3 +219,28 @@ struct ChordProgression: Sendable {
         flatNoteNames[((note % 12) + 12) % 12] + String(note / 12 - 1)
     }
 }
+
+extension ChordProgression {
+
+    /// The harmony of an arbitrary span, rebased so the span starts at beat 0.
+    ///
+    /// A chord straddling either edge is clipped to the span, so the slice always
+    /// has harmony for its whole length. Used both for splitting into requests
+    /// and for fitting a stored line into a stretch the model left empty.
+    func slice(from start: Double, to end: Double) -> ChordProgression {
+        let local: [PlacedChord] = chords.compactMap { placed in
+            let chordEnd = placed.startBeat + placed.durationBeats
+            guard chordEnd > start + 0.001, placed.startBeat < end - 0.001 else { return nil }
+            let clippedStart = max(placed.startBeat, start)
+            let clippedEnd = min(chordEnd, end)
+            return PlacedChord(symbol: placed.symbol,
+                               startBeat: clippedStart - start,
+                               durationBeats: clippedEnd - clippedStart)
+        }
+        return ChordProgression(
+            text: local.map(\.symbol.text).joined(separator: " "),
+            chords: local,
+            totalBeats: max(0, end - start)
+        )
+    }
+}

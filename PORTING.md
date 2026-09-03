@@ -43,30 +43,31 @@ webapps run in any browser from any year. Nothing about that changes.
 
 ## 1. What is measured, and what it says
 
-`Scripts/verify.sh boundary` strips comments and string literals from all 72
-Swift sources in the extension, finds all 227 top-level type declarations, and
-calls it an edge whenever one file names a type another declares — 435
+`Scripts/verify.sh boundary` strips comments and string literals from all 73
+Swift sources in the extension, finds all 228 top-level type declarations, and
+calls it an edge whenever one file names a type another declares — 436
 cross-file references. Layered as below, and today it reports:
 
 ```
       core      46 lines  (foundation)
-    theory   2,809 lines  (foundation)
-   carrier   2,168 lines  (foundation)
+    theory   2,834 lines  (foundation)
+   carrier   2,773 lines  (foundation)
      shell     909 lines  (foundation)
         ui   2,017 lines  (foundation)
-       app  16,553 lines  (MelGen)
-             7,949 lines  foundation total (32%)
+       app  15,957 lines  (MelGen)
+             8,579 lines  foundation total (35%)
 
-  PASS  no upward references beyond the 18 known seams
-  PASS  every listed seam is still real (18 to cut)
+  PASS  no upward references beyond the 12 known seams
+  PASS  every listed seam is still real (12 to cut)
 ```
 
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
-plug-in would stand on, and it was held together, when this was first measured,
-by nineteen places where a lower layer reached up into the melody app. One has
-since been cut (§3), which is why the check now says eighteen. That number is
-the real answer to "could we port other plug-ins": not a yes or a no, but
-*eighteen named cuts, then yes.*
+plug-in would stand on, and when this was first measured it was held together by
+nineteen places where a lower layer reached up into the melody app. Seven have
+since been cut (§3) and the foundation has grown from 32% to 35%, because
+deciding a file is foundation moves its lines as well as closing its seams. That
+number is the real answer to "could we port other plug-ins": not a yes or a no,
+but *twelve named cuts, then yes.*
 
 The check ships and runs in `verify.sh` because the layering is not enforced by
 the compiler — one target, one module, every type visible to every file — so
@@ -95,11 +96,11 @@ It is the work the suite was already set up to do.
 | Layer | What it is | Lines | Would be called |
 |---|---|---:|---|
 | **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | — |
-| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the progression generator and its corpus tables | 2,809 | the Swift port of `@enkerli/theory` (+ `proggen`) |
-| **carrier** | What a take is made of and what happens to it: `SequencedNote`, measurement, material sources, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,168 | the part with no equivalent in the suite — invented here |
+| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the progression generator and its corpus tables | 2,834 | the Swift port of `@enkerli/theory` (+ `proggen`) |
+| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,773 | the part with no equivalent in the suite — invented here |
 | **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 909 | the Swift `enkerli-juce` |
 | **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the pinned verb bar | 2,017 | the Swift `@enkerli/ui` |
-| **app** | MelGen | 16,553 | — |
+| **app** | MelGen | 15,957 | — |
 
 Two observations worth more than the table.
 
@@ -118,7 +119,7 @@ travel is worth keeping in view: porting is not only outward.
 
 ---
 
-## 3. The seams — one cut, eighteen to go
+## 3. The seams — seven cut, twelve to go
 
 They are listed in `Scripts/tests/foundation-boundary.py`, each with a note on
 how it gets cut, and that list is the work order rather than a copy of one.
@@ -134,12 +135,36 @@ and the right one to make first, because it proves the audit finds real things
 rather than modelling artefacts — and because the loop it demonstrates (cut,
 re-run, watch the list shrink) is the whole method.
 
-**`MelodyPattern` and its namespace.** Five of the eighteen are the carrier
-reaching for the pattern format. One decision — *is `MelodyPattern` foundation
-or app?* — closes all five. It probably is foundation: a degree-relative line
-with lengths and rests is exactly what any of these plug-ins would exchange,
-and it is already the thing MIDI import, the pattern store and the corpus
-exporter all speak.
+**`MelodyPattern` and its namespace** — ✅ *cut, and it took five with it, then
+a sixth*. Five seams were the carrier reaching for the pattern format, and one
+decision closed all of them: **a degree-relative line with lengths and rests is
+the interchange format**, not a MelGen internal. It is already what MIDI import,
+the pattern store and the corpus exporter all speak, and it is the thing a
+sibling plug-in would hand this one.
+
+Ruling it foundation forced three of its own reaches downward, and each turned
+out to be a thing in the wrong place rather than a coupling to break:
+
+- **`TakeSource`** lived in `MelGenState.swift`, which made it session state. It
+  isn't: it is stamped into `PatternOrigin`, so it travels inside every exported
+  pattern and every `.mid` this plug-in writes. It moves beside `MaterialSource`
+  — the same question, asked after the fact — which also cut the separate
+  `MelodyCuration → TakeSource` seam that had been listed with the wrong remedy
+  ("pass a String tag"). Two subsystems reaching up for the same type was the
+  evidence that the type, not the reaching, was misplaced.
+- **`capDeadAir`** sat inside `MelodyExpression`, next to swing and metric
+  accent. Expression is how a take is *performed*; this is a repair to what the
+  take *is*, applied during realization, before any of that. It moves to
+  `DeadAir.cap` and knows nothing about melody, chords or MelGen — it takes
+  notes and beats.
+- **`MelodyChunker.slice`** was never chunking. It clips a progression to a beat
+  window and rebases it, using only theory types, and it happened to live in the
+  file that first needed it. It becomes `ChordProgression.slice(from:to:)`,
+  where a reader would look for it.
+
+That is the pattern worth naming for the remaining twelve: **an upward reference
+is usually a file in the wrong place, not a dependency that has to be broken.**
+Three of these four cuts were moves, and none changed a line of logic.
 
 **`ChordVoicing` → `DegreeHistogram`.** The only one that is a design decision
 rather than a tidy-up. The Drawn voicing asks the learned degree histogram
@@ -330,8 +355,11 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    `MelodyExpression.swift` into `SeededRandom.swift`, which is now a `core`
    layer below theory: primitives with no music in them. The seam list went
    from 19 to 18 and `verify.sh boundary` still passes, which is the loop
-   working. **Next:** decide `MelodyPattern`'s layer — one decision closes five
-   more.
+   working. Then `MelodyPattern` was ruled the interchange format, which closed
+   five more and dragged `TakeSource`, `capDeadAir` and `slice` into the places
+   they belonged — 19 → 12, and the foundation grew to 35%. **Next:** the
+   `ChordVoicing → DegreeHistogram` inversion, which is the only remaining seam
+   that is a design decision rather than a move.
 2. **Hold the port to ProgGenie's own answers.** ✅ *built, not yet run against
    Swift* — `verify.sh proggen` compares the deterministic half: how a corpus
    label splits, where its numeral lands in semitones, and what MelGen refuses

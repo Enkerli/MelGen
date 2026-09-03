@@ -262,7 +262,7 @@ let sparse: [SequencedNote] = [
     // six beats of nothing
     SequencedNote(note: 64, velocity: 90, startBeat: 6.5, durationBeats: 0.5),
 ]
-let capped = MelodyExpression.capDeadAir(sparse, totalBeats: 8)
+let capped = DeadAir.cap(sparse, totalBeats: 8)
 check("a six-beat gap is trimmed", capped[0].durationBeats > sparse[0].durationBeats,
       "\(sparse[0].durationBeats) → \(capped[0].durationBeats)")
 let cappedGap = capped[1].startBeat - (capped[0].startBeat + capped[0].durationBeats)
@@ -276,7 +276,7 @@ check("onsets are never moved", zip(capped, sparse).allSatisfy { $0.startBeat ==
 // The first four notes are back-to-back, so nothing to absorb. The fifth ends at
 // beat 4 with the next at 7.5 — 3.5 beats of silence, which is dead air by design.
 check("ordinary gaps are left alone",
-      MelodyExpression.capDeadAir(raw, totalBeats: 8).prefix(4).map(\.durationBeats)
+      DeadAir.cap(raw, totalBeats: 8).prefix(4).map(\.durationBeats)
         == raw.prefix(4).map(\.durationBeats))
 
 // 11f. The history export carries the settings and the timing.

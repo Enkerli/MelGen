@@ -19,7 +19,7 @@ let holed: [SequencedNote] = [
     SequencedNote(note: 64, velocity: 90, startBeat: 36, durationBeats: 4),
     SequencedNote(note: 67, velocity: 90, startBeat: 48, durationBeats: 2),
 ]
-let capped = MelodyExpression.capDeadAir(holed, totalBeats: 64)
+let capped = DeadAir.cap(holed, totalBeats: 64)
 let heldNote = capped[1]
 check("a note already at the old cap is now extended",
       heldNote.durationBeats > 4, "\(heldNote.durationBeats) beats")
@@ -36,8 +36,8 @@ check("the extended note stays within two bars",
 // before it hit maxHold.
 func honoursContract(_ notes: [SequencedNote], totalBeats: Double,
                      maxRest: Double = 2, maxHold: Double = 8) -> Bool {
-    let out = MelodyExpression.capDeadAir(notes, totalBeats: totalBeats,
-                                          maxRest: maxRest, maxHold: maxHold)
+    let out = DeadAir.cap(notes, totalBeats: totalBeats,
+                          maxRest: maxRest, maxHold: maxHold)
     for (index, note) in out.enumerated() {
         let nextStart = index + 1 < out.count ? out[index + 1].startBeat : totalBeats
         let gap = nextStart - (note.startBeat + note.durationBeats)
@@ -90,7 +90,7 @@ check("a line with only phrasing rests is left alone",
 
 // The combination, in the order the generator runs them: the reported hole is
 // filled, and nothing is left that reads as the line having stopped.
-let pipeline = MelodyExpression.capDeadAir(
+let pipeline = DeadAir.cap(
     MelodyExpression.ensureBreathing(
         MelodyPatterns.fillHoles(in: holed, over: progression, pattern: MelodyPatterns.arch),
         totalBeats: 64),
