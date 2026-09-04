@@ -51,11 +51,11 @@ cross-file references. Layered as below, and today it reports:
 ```
       core      46 lines  (foundation)
     theory   2,834 lines  (foundation)
-   carrier   2,773 lines  (foundation)
+   carrier   2,772 lines  (foundation)
      shell     909 lines  (foundation)
         ui   2,017 lines  (foundation)
        app  15,957 lines  (MelGen)
-             8,579 lines  foundation total (35%)
+             8,578 lines  foundation total (35%)
 
   PASS  no upward references beyond the 12 known seams
   PASS  every listed seam is still real (12 to cut)
@@ -97,7 +97,7 @@ It is the work the suite was already set up to do.
 |---|---|---:|---|
 | **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | — |
 | **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the progression generator and its corpus tables | 2,834 | the Swift port of `@enkerli/theory` (+ `proggen`) |
-| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,773 | the part with no equivalent in the suite — invented here |
+| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,772 | the part with no equivalent in the suite — invented here |
 | **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 909 | the Swift `enkerli-juce` |
 | **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the pinned verb bar | 2,017 | the Swift `@enkerli/ui` |
 | **app** | MelGen | 15,957 | — |
@@ -360,19 +360,29 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    they belonged — 19 → 12, and the foundation grew to 35%. **Next:** the
    `ChordVoicing → DegreeHistogram` inversion, which is the only remaining seam
    that is a design decision rather than a move.
-2. **Hold the port to ProgGenie's own answers.** ✅ *built, not yet run against
-   Swift* — `verify.sh proggen` compares the deterministic half: how a corpus
-   label splits, where its numeral lands in semitones, and what MelGen refuses
-   to play. `Scripts/tests/proggen-reference.mjs` runs against the real
+2. **Hold the port to ProgGenie's own answers.** ✅ *run, and they agree* —
+   `verify.sh proggen` compares the deterministic half: how a corpus label
+   splits, where its numeral lands in semitones, and what MelGen refuses to
+   play. `Scripts/tests/proggen-reference.mjs` runs against the real
    `@enkerli/proggen`; `Scripts/tests/proggen-diff.py` states in code what is
-   compared and what is allowed to differ. The Swift emitter
-   (`proggen-swift-main.swift`) uses only call shapes
-   `progression-main.swift` already compiles, but **it has never been through a
-   compiler** — this was written on a machine with no `swiftc`. First run on a
-   Mac is the outstanding step, and the first real differences are the point.
-   Then promote the case list into `packages/proggen/vectors/` in the monorepo,
-   the way `gen-rhythm-codecs.mjs` and `gen-accompaniment-vectors.mjs` already
-   do, so the Lua and C++ consumers inherit it.
+   compared and what is allowed to differ.
+
+   First run on a Mac, 2026-09-04: the Swift emitter compiled unchanged, and the
+   comparison reports **44 labels in 3 keys, 0 differences**. The first real
+   differences were supposed to be the point, so a zero needed justifying rather
+   than celebrating. Two things justify it. The check is not thin — 132 realized
+   cells, 120 playable, all twelve semitone classes and twelve distinct quality
+   keys. And it is not inert: a planted wrong `rootPc`, `semitonesAboveTonic`,
+   `qualityKey` or `playable` flag, and a dropped label, each produce exactly
+   one named `DIFF`, while a spelling-only change produces none — which is the
+   single divergence it exists to tolerate. `IBass` and `VIII` come back
+   unplayable on both sides, as §7 says they should.
+
+   **Next:** promote the case list into `packages/proggen/vectors/` in the
+   monorepo, the way `gen-rhythm-codecs.mjs` and `gen-accompaniment-vectors.mjs`
+   already do, so the Lua and C++ consumers inherit it. The agreement is
+   currently a fact about two checkouts on one machine; a vector file is what
+   makes it a contract.
 3. **Decide what the foundation is called and where it lives** — a local Swift
    package in this repo, or a sibling `enkerli-swift` repo the way
    `enkerli-juce` is a sibling. Sibling is more honest about intent and worse
