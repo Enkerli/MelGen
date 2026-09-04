@@ -44,6 +44,10 @@
 #             a dark value on every fill, and nothing baked into the artwork
 #   identity — the audio component triple is unique across the suite and matches
 #              the host app's lookup
+#   boundary — the seam a sibling plug-in would be built on: which sources are
+#              foundation, and every place one still reaches up into MelGen
+#   proggen  — the deterministic half of the progression engine against
+#              ProgGenie's own answers: labels, degrees and what is playable
 #
 set -uo pipefail
 
@@ -344,6 +348,36 @@ run_contrast() {
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
 }
 
+run_boundary() {
+    echo "── boundary ───────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/foundation-boundary.py" || status=1
+}
+
+run_proggen() {
+    echo "── proggen ────────────────────────────────────────"
+    # The deterministic half of ProgGenie, against ProgGenie. PORTING.md §7:
+    # packages/proggen ships no vectors, so until this existed nothing checked
+    # that Swift and JS agreed on what a corpus label means. Sampling is NOT
+    # compared — Surprise, Freshness and Reharm diverge on purpose.
+    if [ ! -f "$MUSIC_SUITE/packages/proggen/src/index.js" ] || \
+       [ ! -d "$MUSIC_SUITE/packages/theory/dist" ]; then
+        echo "SKIP: music-suite not built at $MUSIC_SUITE (set MUSIC_SUITE=..., npm install there)"
+        return 0
+    fi
+
+    MUSIC_SUITE="$MUSIC_SUITE" node "$REPO/Scripts/tests/proggen-reference.mjs" \
+        > "$BUILD/proggen-reference.json" || {
+        echo "FAIL: reference harness did not run"; status=1; return 0; }
+
+    cp "$REPO/Scripts/tests/proggen-swift-main.swift" "$BUILD/main.swift"
+    # shellcheck disable=SC2046
+    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/proggen" || { status=1; return 0; }
+    "$BUILD/proggen" > "$BUILD/proggen-swift.json" || { status=1; return 0; }
+
+    python3 "$REPO/Scripts/tests/proggen-diff.py" \
+        "$BUILD/proggen-reference.json" "$BUILD/proggen-swift.json" || status=1
+}
+
 run_kernel() {
     echo "── kernel ─────────────────────────────────────────"
     clang++ -std=gnu++17 -fobjc-arc -x objective-c++ \
@@ -354,7 +388,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_histograms; run_bassline; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_nextstep; run_docs; run_terminology; run_icon; run_contrast; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_histograms; run_bassline; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_nextstep; run_docs; run_terminology; run_icon; run_contrast; run_boundary; run_proggen; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -385,8 +419,10 @@ case "$which" in
     contrast) run_contrast ;;
     terminology) run_terminology ;;
     identity) run_identity ;;
+    boundary) run_boundary ;;
+    proggen)  run_proggen ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|histograms|bassline|capture|comping|drift|templates|progression|analysis|midi|midifile|nextstep|docs|terminology|icon|contrast|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|histograms|bassline|capture|comping|drift|templates|progression|analysis|midi|midifile|nextstep|docs|terminology|icon|contrast|boundary|proggen|kernel]"; exit 2 ;;
 esac
 
 echo

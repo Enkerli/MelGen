@@ -278,7 +278,7 @@ enum MelodyPatterns {
             }
         }
 
-        return MelodyExpression.capDeadAir(
+        return DeadAir.cap(
             monophonic(placed, honouringRestsFrom: ordered, repetitions: repetitions),
             totalBeats: progression.totalBeats
         )
@@ -320,7 +320,7 @@ enum MelodyPatterns {
             let start = (hole.start / beatsPerBar).rounded(.up) * beatsPerBar
             guard hole.end - start >= beatsPerBar else { continue }
 
-            let slice = MelodyChunker.slice(progression, from: start, to: hole.end)
+            let slice = progression.slice(from: start, to: hole.end)
             for note in realize(pattern, over: slice) {
                 var shifted = note
                 shifted.startBeat += start

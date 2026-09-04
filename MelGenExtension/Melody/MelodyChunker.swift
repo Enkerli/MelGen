@@ -50,30 +50,6 @@ enum MelodyChunker {
     /// Bars asked for in one request.
     static let defaultBarsPerRequest = 4
 
-    /// The harmony of an arbitrary span, rebased so the span starts at beat 0.
-    ///
-    /// A chord straddling either edge is clipped to the span, so the slice always
-    /// has harmony for its whole length. Used both for splitting into requests
-    /// and for fitting a stored line into a stretch the model left empty.
-    static func slice(_ progression: ChordProgression,
-                      from start: Double,
-                      to end: Double) -> ChordProgression {
-        let local: [PlacedChord] = progression.chords.compactMap { placed in
-            let chordEnd = placed.startBeat + placed.durationBeats
-            guard chordEnd > start + 0.001, placed.startBeat < end - 0.001 else { return nil }
-            let clippedStart = max(placed.startBeat, start)
-            let clippedEnd = min(chordEnd, end)
-            return PlacedChord(symbol: placed.symbol,
-                               startBeat: clippedStart - start,
-                               durationBeats: clippedEnd - clippedStart)
-        }
-        return ChordProgression(
-            text: local.map(\.symbol.text).joined(separator: " "),
-            chords: local,
-            totalBeats: max(0, end - start)
-        )
-    }
-
     /// Splits at bar lines. A chord straddling a boundary appears in both
     /// chunks, clipped to each, so every chunk has harmony for its whole span.
     static func chunks(for progression: ChordProgression,
@@ -94,7 +70,7 @@ enum MelodyChunker {
             chunks.append(MelodyChunk(
                 startBeat: start,
                 beats: beats,
-                progression: slice(progression, from: start, to: end)
+                progression: progression.slice(from: start, to: end)
             ))
             start = end
         }

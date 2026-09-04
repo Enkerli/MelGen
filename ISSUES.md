@@ -39,7 +39,7 @@ bigram entropy — would let that be checked instead of debated.
 **Specific model failures observed**, none yet reproduced in a test:
 
 - A generated pattern with an empty first bar that wasn't counted as a rest.
-  `ensureBreathing` and `capDeadAir` both reason about gaps *between* notes; a
+  `ensureBreathing` and `DeadAir.cap` both reason about gaps *between* notes; a
   leading silence has no note before it, so neither sees it. Probably a real bug
   with a small fix.
 - Ostinati at any temperature. Partly alleviated by variety scoring, which

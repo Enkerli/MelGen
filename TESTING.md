@@ -3,7 +3,7 @@
 *Written 2026-08-26. What `Scripts/verify.sh` cannot answer, and how to answer it
 on a device in about forty minutes.*
 
-`verify.sh` checks 27 suites and none of them can hear anything. It cannot tell
+`verify.sh` checks 33 suites and none of them can hear anything. It cannot tell
 you whether a line is worth keeping, whether a control is findable, or whether a
 sentence means what it says. This document is the other half, and it is
 deliberately short: a long test plan is one nobody runs.
