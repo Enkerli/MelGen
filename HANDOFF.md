@@ -6,8 +6,44 @@ what is definitely not proven.*
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and
-the MIDI interchange work. Everything is verified outside Xcode by
-`Scripts/verify.sh` — **31 suites** — and compiles in the extension target.
+the MIDI interchange work. Everything up to `bassline-and-histograms` is
+verified outside Xcode by `Scripts/verify.sh` — **33 suites** — and compiles in
+the extension target. The current branch is the exception, and it is the first
+thing below.
+
+**On `music-suite-plugin-porting` (2026-09-03) — READ THIS BEFORE BUILDING.**
+Seven declarations moved between files, and **none of it has been through a
+compiler**: it was written on a Linux box with no `swiftc`. Everything checkable
+without one was checked — brace balance across all 100 Swift files, exactly one
+declaration of each moved type, no stale call sites, and every suite that needs
+neither `swiftc` nor `clang++` green (`boundary`, `docs`, `terminology`, `icon`,
+`contrast`, `identity`, and both codegen drift checks; `midi` skipped for a
+missing `mido`) — but "compiles" is a claim nobody has earned yet. See
+[What to do next](#what-to-do-next) §0 for the ten-minute version of earning it.
+
+What the branch is *for* is [PORTING.md](PORTING.md): whether a second AUv3 —
+ProgGenie first — could stand on this codebase without JUCE, answered with a
+measurement rather than an estimate. About a third of the extension is
+foundation a sibling plug-in would share, and `verify.sh boundary` now enforces
+the layering the compiler can't (one target, one module, every type visible to
+every file). Nineteen upward references were found; seven are cut and the
+remaining twelve are listed in `Scripts/tests/foundation-boundary.py` with how
+each one goes, so that script is the work list.
+
+The moves, all pure — no logic changed:
+
+| Was | Is now | Why |
+|---|---|---|
+| `SplitMix64` in `MelodyExpression.swift` | `SeededRandom.swift` | every generator reaches for it, including one that is theory |
+| `TakeSource` in `MelGenState.swift` | `MaterialSource.swift` | it is stamped into `PatternOrigin`, so it travels in every exported pattern — interchange, not session state |
+| `MelodyExpression.capDeadAir` | `DeadAir.cap` | a repair to what a take *is*, not how it is performed |
+| `MelodyChunker.slice` | `ChordProgression.slice(from:to:)` | it was never chunking — it clips a progression |
+
+`MelodyPattern` is now formally the interchange format, which is what closed
+five of the seven seams. Also new: `verify.sh proggen`, which holds the
+progression port to ProgGenie's own answers — the first cross-language check
+`packages/proggen` has ever had, and it found two divergences before any Swift
+ran (see PORTING.md §7).
 
 **On `bassline-and-histograms` (2026-08-28)**, the newest work and the one thing
 here that has *not* been heard on device: a third mode, a seventh source, and the
@@ -142,7 +178,18 @@ New suites on this branch: `extraction`, `curation`, `phrases`, `stylemodel`,
 `chain`, `mutation`, `retrieval`, `topics`, `steps`, `capture`, `comping`,
 `progression`. The last one also fails if the generated ProgGenie tables have
 drifted from music-suite. Added on `bassline-and-histograms`: `histograms` and
-`bassline`.
+`bassline`. Added on `music-suite-plugin-porting`: `boundary` (the layering,
+pure Python — runs anywhere) and `proggen` (the progression port against
+ProgGenie's own answers).
+
+`chords` and `proggen` both need a **built** music-suite beside this checkout,
+and both print SKIP and pass without one — so a green run on a machine that
+lacks it is a weaker green than it looks:
+
+```bash
+git clone https://github.com/Enkerli/music-suite ../../music-suite
+cd ../../music-suite && npm install     # builds packages/theory/dist
+```
 
 Not part of `verify.sh`, because it needs data rather than fixtures:
 
@@ -236,25 +283,74 @@ Ordered by how likely they are to bite.
 
 ## What to do next
 
-1. **Run [TESTING.md](TESTING.md).** Five scenarios, about forty minutes, and
+0. **Compile the porting branch, before anything else.** Ten minutes, and it
+   gates everything below. Seven declarations moved between files without a
+   compiler ever seeing the result.
+
+   ```bash
+   Scripts/verify.sh          # the real check — 33 suites, outside Xcode
+   ```
+
+   Then build both schemes, because `verify.sh` compiles the Melody sources on
+   their own and says nothing about target membership or the SwiftUI layer:
+
+   ```bash
+   /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
+     -project MelGen.xcodeproj -scheme MelGenExtension \
+     -destination 'generic/platform=iOS Simulator' -configuration Debug \
+     build CODE_SIGNING_ALLOWED=NO
+   ```
+
+   **Where it will break, if it breaks.** These are predictions, not
+   observations — treat a clean run as the prediction being wrong, not as
+   nothing having been at risk:
+
+   - **Two new files** (`SeededRandom.swift`, `DeadAir.swift`) in
+     `MelGenExtension/Melody/`. The project uses synchronized folder groups so
+     they should join the extension target on their own. If the linker cannot
+     see `SplitMix64` or `DeadAir`, that assumption was wrong and membership is
+     the first place to look.
+   - **`DeadAir.cap`** replaced `MelodyExpression.capDeadAir` at seven call
+     sites, two in sources and five in `Scripts/tests/`. A missed one is a
+     compile error, not a silent wrong answer.
+   - **`ChordProgression.slice(from:to:)`** is a new extension in
+     `ChordParser.swift`, which is one of the five files the `chords` suite
+     compiles *by name* rather than by glob. Its body only touches types
+     declared in that same file, so it should be fine — but `verify.sh chords`
+     is where it would show.
+   - **`TakeSource`** left `MelGenState.swift` for `MaterialSource.swift`. Same
+     module, so this is the safest of the four; a failure here would mean the
+     enum was reached from the host app target, which nothing suggests.
+
+   If something does break, fix it and say so in the commit — the interesting
+   record is which prediction was wrong, not that it was fixed.
+
+1. **Run `Scripts/verify.sh proggen` and read the differences.** It has never
+   run against Swift. It compares MelGen's progression port to ProgGenie's own
+   answers over 44 labels in three keys, and it is *expected* to report
+   something: the two spell differently on purpose and the check is written to
+   allow that, so any difference it does print is either a real port bug or a
+   contract nobody has written down yet. Both outcomes are worth a commit.
+
+2. **Run [TESTING.md](TESTING.md).** Five scenarios, about forty minutes, and
    three of them are about things no suite can reach: whether the next-step line
    is read or scrolled past, whether the two drawers make sense once you are sent
    to them, and whether a MIDI round trip survives another application. Predict
    before you look — that is the whole method, and every finding in ISSUES that
    mattered came from a contradicted expectation.
-2. **Chord-mode authoring** (T3). One line: `authorRow` is gated on
+3. **Chord-mode authoring** (T3). One line: `authorRow` is gated on
    `state.mode == .line` while the measured ceiling says chord mode has eight
    template slots free. Cheapest real variety on the list.
-3. **Give the corpus baseline its floors** (S6 step 2b). Until then "beats the
+4. **Give the corpus baseline its floors** (S6 step 2b). Until then "beats the
    baseline" is a sentence a model that learned nothing can satisfy — the chain's
    held-out perplexity measured *worse than uniform*. Nothing downstream in the
    S6/S7 family means anything until this lands.
-4. **Store the learned models** (S4). Fixes loose end 2, and the 2026-08-25
+5. **Store the learned models** (S4). Fixes loose end 2, and the 2026-08-25
    review reframed it as the bigger item: because both types already round-trip
    through JSON, S4 is also the *interchange* slot for a style fitted off-device
    — and the same slot a Core ML model would compete for. See
    [COREML.md](COREML.md).
-5. **Trade fours** (N6). It was XL because the model couldn't answer in four
+6. **Trade fours** (N6). It was XL because the model couldn't answer in four
    bars. The chain answers in microseconds and is *about* what it just heard, so
    what's left is bar-accurate switching — the most interesting item on the
    roadmap and no longer the most expensive.
