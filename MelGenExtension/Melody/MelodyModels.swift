@@ -127,3 +127,32 @@ struct AuthoredTemplateIdea {
     var shape: String
 }
 #endif
+
+// MARK: - What came off the wire
+
+/// One note-on or note-off, as the render thread saw it.
+///
+/// Here rather than in `MelodyCapture.swift`, where it started, because the
+/// capture ring that fills it is in the C++ kernel — so the AU shell has to name
+/// this type, and the shell may not reach up into the app. What an event *means*
+/// is the app's business; what one *is* is the same for any plug-in with a
+/// lock-free ring under it. PORTING.md's `MelGenExtensionAudioUnit →
+/// CapturedMIDIEvent` seam.
+struct CapturedMIDIEvent: Hashable, Sendable {
+    /// Timeline position in beats.
+    var beat: Double
+    var note: UInt8
+    var velocity: UInt8
+    var isOn: Bool
+}
+
+extension SequencedNote {
+    /// The three fields chord detection needs, and nothing else.
+    ///
+    /// The conversion lives here rather than in `ChordDetection` because the
+    /// direction matters: theory may not name a carrier type, and carrier may
+    /// name a theory one. PORTING.md's last listed seam, cut this way round.
+    var sounding: SoundingNote {
+        SoundingNote(startBeat: startBeat, durationBeats: durationBeats, pitch: Int(note))
+    }
+}

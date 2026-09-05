@@ -49,7 +49,7 @@ func playing(_ mode: PlayMode = .line) -> MelGenState {
 print("── every mode and every source produces a take ────────")
 
 for mode in PlayMode.allCases {
-    for source in MaterialSource.all(for: mode) {
+    for source in mode.sources {
         for aim in AdvanceMode.allCases {
             let candidate = TakeAdvance.candidate(mode: aim,
                                                   state: playing(mode),

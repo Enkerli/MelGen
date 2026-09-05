@@ -474,11 +474,11 @@ check("Bass is a mode, and a monophonic one",
       PlayMode.allCases.contains(.bass) && !PlayMode.bass.isPolyphonic
         && PlayMode.bass.label == "Bass")
 check("its sources are the ones that can produce a bass part",
-      MaterialSource.all(for: .bass) == [.bassline, .learned, .model],
-      "\(MaterialSource.all(for: .bass).map(\.name))")
+      PlayMode.bass.sources == [.bassline, .learned, .model],
+      "\(PlayMode.bass.sources.map(\.name))")
 check("the bassline source is instant and says whose vocabulary it is",
       MaterialSource.bassline.isInstant && !MaterialSource.bassline.provenance.isEmpty
-        && MaterialSource.bassline.verb(mode: .bass) == "Draw a bass line")
+        && MaterialSource.bassline.verb(generating: PlayMode.bass.material) == "Draw a bass line")
 check("its templates are the figures",
       MelGenTemplates.all(for: .bass).count == BasslineFigure.all.count
         && MelGenTemplates.all(for: .bass).allSatisfy { $0.basslineFigure != nil })

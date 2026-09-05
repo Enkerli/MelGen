@@ -16,6 +16,12 @@
 //  construction, and offering them under Chords would be offering something the
 //  mode can't deliver.
 //
+//  That filter used to live here, as `all(for: PlayMode)`, which made a carrier
+//  type name a MelGen mode — PORTING.md's `MaterialSource → PlayMode` seam. It
+//  is now `PlayMode.sources`, beside the mode it is about. A sibling plug-in
+//  gets the list and supplies its own answer to "which of these can I use",
+//  which is the only part that was ever MelGen's.
+//
 
 import Foundation
 
@@ -60,14 +66,14 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
     var isInstant: Bool { self != .model }
 
     /// What the button will do, named as the action rather than as the feature.
-    func verb(mode: PlayMode) -> String {
+    ///
+    /// Only the model's verb depends on what the plug-in is producing, and what
+    /// it is producing is a MelGen distinction — so the caller names the
+    /// material and the carrier never learns that `PlayMode` exists. The naming
+    /// of the object lives beside the mode, in `PlayMode.material`.
+    func verb(generating material: String) -> String {
         switch self {
-        case .model:
-            switch mode {
-            case .comping: return "Generate a comp"
-            case .bass: return "Generate a bass part"
-            case .line: return "Generate a line"
-            }
+        case .model: return "Generate \(material)"
         case .stored: return "Play a stored line"
         case .composed: return "Compose a phrase"
         case .learned: return "Draw from your style"
@@ -87,30 +93,6 @@ enum MaterialSource: String, CaseIterable, Codable, Sendable, Identifiable {
         case .comp: return "pianokeys"
         case .bassline: return "waveform.path"
         }
-    }
-
-    /// Which sources can produce what this mode asks for.
-    ///
-    /// A melodic source under Chords would be offering something the mode can't
-    /// deliver — the whole reason the mode exists is that the receiving
-    /// instrument differs.
-    static func all(for mode: PlayMode) -> [MaterialSource] {
-        switch mode {
-        case .comping: return [.comp, .model, .learned]
-        // Bass narrows harder than Chords does, and for the same reason. The
-        // bassline draw is the only source that knows about a register, and a
-        // register is most of what makes a bass part one: the melodic sources
-        // would hand back a line in the wrong octave with the right notes in it,
-        // which is a lead part played low rather than a bass part. What survives
-        // alongside it is your own material, which carries whatever register it
-        // was played in, and the model, which is told where to write.
-        case .bass: return [.bassline, .learned, .model]
-        case .line: return [.model, .stored, .composed, .learned, .played]
-        }
-    }
-
-    static func first(for mode: PlayMode) -> MaterialSource {
-        all(for: mode).first ?? .composed
     }
 }
 

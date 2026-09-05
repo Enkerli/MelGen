@@ -193,3 +193,23 @@ enum ChordScales {
         ((value % 12) + 12) % 12
     }
 }
+
+// MARK: - How a note sits against the chord
+
+/// How each note sits against the chord under it.
+///
+/// It lived in `MelodyAnalysis.swift`, which made it carrier — but it is a
+/// question about a semitone and a chord's scale, and nothing else, so both
+/// `DegreeContext.role(ofSemitone:)` and the pattern format were reaching up
+/// for it from below. Moved here as part of PORTING.md's `ChordVoicing`
+/// seam: the file it lived in was the accident, not the coupling.
+enum HarmonicRole: String, Codable, Sendable {
+    /// A tone of the chord itself.
+    case chordTone
+    /// In the scale, not in the chord — the colour notes.
+    case colour
+    /// A scale tone a semitone above a chord tone: unstable if landed on.
+    case avoid
+    /// Outside the chord's scale entirely — a chromatic approach, or a mistake.
+    case offScale
+}

@@ -235,7 +235,7 @@ enum MIDIImport {
                           startBeat: $0.startBeat,
                           durationBeats: $0.durationBeats)
         }
-        guard let read = ChordDetection.changes(in: notes,
+        guard let read = ChordDetection.changes(in: notes.map(\.sounding),
                                                 beatsPerBar: beatsPerBar,
                                                 endBeat: endBeat) else { return nil }
         if read.namedBars < read.totalBars {

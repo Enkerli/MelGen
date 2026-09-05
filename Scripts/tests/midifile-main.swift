@@ -265,7 +265,7 @@ for voicing in voicings {
                                     startBeat: voicing.beat, durationBeats: 4))
     }
 }
-let readLive = ChordDetection.changes(in: played)
+let readLive = ChordDetection.changes(in: played.map(\.sounding))
 check("playing the changes in reads them back",
       readLive?.text == "Dm7|G7|Cmaj7", readLive?.text ?? "nil")
 check("and every bar was nameable",
@@ -286,15 +286,15 @@ for voicing in voicings {
     }
 }
 check("an arpeggio is read, and flagged as a guess",
-      ChordDetection.changes(in: rolled)?.looksArpeggiated == true)
+      ChordDetection.changes(in: rolled.map(\.sounding))?.looksArpeggiated == true)
 // A melody will always spell *something* — four notes in a bar are four pitch
 // classes and the dictionary has 172 entries. The answer isn't to refuse it,
 // it's to never present it as read rather than inferred.
 check("a single line still names something, and is never presented as read",
-      ChordDetection.changes(in: line).map { !$0.text.isEmpty && $0.looksArpeggiated } == true,
-      ChordDetection.changes(in: line)?.text ?? "nil")
+      ChordDetection.changes(in: line.map(\.sounding)).map { !$0.text.isEmpty && $0.looksArpeggiated } == true,
+      ChordDetection.changes(in: line.map(\.sounding))?.text ?? "nil")
 check("which means only real voicings are confident",
-      ChordDetection.changes(in: line)?.isConfident == false
+      ChordDetection.changes(in: line.map(\.sounding))?.isConfident == false
         && readLive?.isConfident == true)
 
 print()

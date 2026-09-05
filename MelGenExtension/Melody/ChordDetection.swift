@@ -66,6 +66,25 @@ struct DetectedChord: Hashable, Sendable {
     }
 }
 
+/// A note, as reading harmony off one needs it: when it starts, how long it
+/// sounds, and which pitch it is.
+///
+/// Three fields, deliberately. `SequencedNote` has velocity and a channel and
+/// belongs to the carrier layer above this one; detection has no use for either,
+/// and taking the whole thing was the only reason theory named a carrier type.
+struct SoundingNote: Hashable, Sendable {
+    var startBeat: Double
+    var durationBeats: Double
+    /// MIDI note number. Detection only ever reduces it mod 12.
+    var pitch: Int
+
+    init(startBeat: Double, durationBeats: Double, pitch: Int) {
+        self.startBeat = startBeat
+        self.durationBeats = durationBeats
+        self.pitch = pitch
+    }
+}
+
 enum ChordDetection {
 
     // MARK: - Entry points
@@ -213,11 +232,17 @@ enum ChordDetection {
 
     /// Reads a progression off notes that were played rather than named.
     ///
+    /// It takes `SoundingNote` rather than the carrier's `SequencedNote`, which
+    /// is PORTING.md's last listed seam: detection needs a pitch, a start and a
+    /// length, and nothing else a note carries. Taking the smaller thing is what
+    /// makes this usable from a plug-in whose notes are a different struct — and
+    /// the conversion is one `map` at the two call sites that have real notes.
+    ///
     /// One chord a bar, from everything *sounding during* the bar rather than
     /// merely starting in it — a whole note tied across is still the harmony of
     /// the bar it covers. This is the shared implementation behind an imported
     /// chord track and behind "what did I just play"; two of them would drift.
-    static func changes(in notes: [SequencedNote],
+    static func changes(in notes: [SoundingNote],
                         beatsPerBar: Double = 4,
                         endBeat: Double? = nil) -> ReadChanges? {
         guard !notes.isEmpty else { return nil }
@@ -233,7 +258,7 @@ enum ChordDetection {
             let sounding = notes.filter {
                 $0.startBeat < end - 0.001 && $0.startBeat + $0.durationBeats > start + 0.001
             }
-            guard let chord = detect(pitches: sounding.map { Int($0.note) }) else {
+            guard let chord = detect(pitches: sounding.map(\.pitch)) else {
                 bars.append("")
                 continue
             }
@@ -260,7 +285,7 @@ enum ChordDetection {
     /// bar are four pitch classes and the dictionary has 172 entries. Naming
     /// them without saying it was inferred is how a melody becomes a
     /// progression nobody played.
-    static func isArpeggiated(_ notes: [SequencedNote], beatsPerBar: Double) -> Bool {
+    static func isArpeggiated(_ notes: [SoundingNote], beatsPerBar: Double) -> Bool {
         guard notes.count >= 3 else { return false }
         let onsets = Set(notes.map { ($0.startBeat * 48).rounded() })
         let polyphony = Double(notes.count) / Double(max(1, onsets.count))

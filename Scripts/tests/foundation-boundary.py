@@ -78,18 +78,24 @@ THEORY_FILES = {
     "DiatonicHarmony.swift",
     "VoiceLeading.swift",
     "ChordVoicing.swift",
+    "DegreeHistogram.swift",     # weights over the twelve semitones above a root:
+                                 # as theoretical as a chord scale, and derived,
+                                 # not learned — see DegreeObservation.swift
     "ProgressionGenerator.swift",
     "ProgressionTables+Generated.swift",
 }
 
 CARRIER_FILES = {
     "MelodyPattern.swift",      # THE interchange format: a degree-relative line
+    "MelodyStepPattern.swift",  # interval cells — a line described by its moves,
+                                # which is a degree-relative line one level down
     "MelodyModels.swift",       # SequencedNote — what the kernel and the MIDI files speak
     "MelodyAnalysis.swift",     # measurement, which curation needs and melody doesn't own
     "MaterialSource.swift",     # where material comes from, and what a take came from
     "ActionTense.swift",        # now / take / aims — the interaction grammar, not the music
     "MelodyCuration.swift",     # dispositions, passes, facets, the tag vocabulary
     "DeadAir.swift",            # a realization repair, not an expression setting
+    "DegreePlacement.swift",    # a drawn semitone, back into the pattern format
     "PatternStore.swift",
     "StandardMIDIFile.swift",
     "MIDIFileImport.swift",
@@ -116,46 +122,13 @@ UIKIT_FILES = {
 # a line here fails the check.
 
 SEAMS: dict[tuple[str, str], str] = {
-    # ── The shell's hooks into the app ──────────────────────────────────────
-    # Expected, and the shape enkerli-juce uses for its archetype functions:
-    # a foundation that is generic over the app it hosts. Three of these become
-    # one generic parameter and one protocol.
-    ("AudioUnitViewController.swift", "MelGenExtensionMainView"):
-        "the root view — becomes a generic parameter",
-    ("MelGenExtensionAudioUnit.swift", "MelGenState"):
-        "session state — becomes a Codable the app supplies",
-    ("MelGenExtensionAudioUnit.swift", "SetupStore"):
-        "named setups — same treatment as MelGenState",
-    ("MelGenExtensionAudioUnit.swift", "CapturedMIDIEvent"):
-        "the capture ring's event type. The ring is foundation (it is in the "
-        "C++ kernel); what an event means is not. Move the struct down.",
-
     # ── Theory reaching upward ──────────────────────────────────────────────
-    ("ChordDetection.swift", "SequencedNote"):
-        "detection takes the carrier's note type. Harmless as a rank, listed "
-        "because theory should take [Int] pitch classes and let the caller "
-        "unwrap — that is what makes it portable to a plug-in with no notes.",
-    ("ChordVoicing.swift", "DegreeHistogram"):
-        "REAL coupling: the Drawn voicing asks the learned histogram which "
-        "colour this chord can carry. Invert it — the caller passes weights "
-        "in, theory never reaches up for them.",
-    ("ChordVoicing.swift", "DegreeContext"):
-        "the same call, its argument type. Closes with the one above.",
 
     # ── The carrier reaching upward ─────────────────────────────────────────
     # What is left after MelodyPattern was ruled the interchange format, which
     # closed five of these and, by moving TakeSource down with it, a sixth.
-    ("PatternStore.swift", "MelodyStepPatterns"):
-        "interval cells — melody-specific. The store should be generic over "
-        "what it stores rather than naming both kinds.",
-    ("MaterialSource.swift", "PlayMode"):
-        "line / chords / bass. A MelGen distinction; the source list should "
-        "be filtered by a predicate the app supplies.",
 
     # ── The UI kit reaching upward ──────────────────────────────────────────
-    ("CurationView.swift", "GenerationRecord"):
-        "the take record. The view wants four fields of it — take a small "
-        "view-model struct instead.",
 }
 
 # Files that are melody-specific by construction and are NOT proposed for the
@@ -163,6 +136,12 @@ SEAMS: dict[tuple[str, str], str] = {
 # oversight. FigurePad draws bass figures; the main view is the app.
 NOT_FOUNDATION = {
     "FigurePad.swift": "draws bass seeds — a MelGen control, not a suite one",
+    "AudioUnitViewController.swift":
+        "MelGen's three overrides on PluginViewController. Info.plist names this "
+        "class, so it keeps the name and the shell took the other one",
+    "MelGenExtensionAudioUnit.swift":
+        "MelGen's session half of PluginAudioUnit — the state, and what the "
+        "kernel plays out of it",
     "MelGenExtensionMainView.swift": "the app",
     "MelGenState.swift": "enumerates every MelGen subsystem",
     "MelGenSetup.swift": "the same, saved",

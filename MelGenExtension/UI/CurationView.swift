@@ -260,8 +260,18 @@ struct TagField: View {
 
 /// One row of the review queue: what it is, what was last said about it, and
 /// when that was said.
+///
+/// It takes the four things it draws rather than the take they came off, which
+/// is PORTING.md's `CurationView → GenerationRecord` seam: a row that only reads
+/// a name, its facets, its tags and its latest mark does not need to know that a
+/// take record exists, and a sibling plug-in reviewing something other than a
+/// melody has all four without having MelGen's record. The call site does the
+/// unwrapping the row used to do; nothing else changed.
 struct ReviewRow: View {
-    let take: GenerationRecord
+    let name: String
+    let facets: TakeFacets
+    let tags: [String]
+    let latestMark: CurationMark?
     let isCurrent: Bool
     let currentPass: Int
     let theme: MelGenTheme
@@ -276,13 +286,13 @@ struct ReviewRow: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(take.displayName)
+                    Text(name)
                         .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
                         .foregroundStyle(theme.text)
                         .lineLimit(1)
-                    FacetChips(facets: take.facets, theme: theme)
-                    if !take.tags.isEmpty {
-                        Text(take.tags.joined(separator: " · "))
+                    FacetChips(facets: facets, theme: theme)
+                    if !tags.isEmpty {
+                        Text(tags.joined(separator: " · "))
                             .font(.system(size: 10))
                             .foregroundStyle(theme.textMuted)
                             .lineLimit(1)
@@ -291,7 +301,7 @@ struct ReviewRow: View {
 
                 Spacer(minLength: 0)
 
-                if let mark = take.latestMark {
+                if let mark = latestMark {
                     VStack(alignment: .trailing, spacing: 2) {
                         HStack(spacing: 3) {
                             Image(systemName: mark.disposition.symbolName)
@@ -319,11 +329,11 @@ struct ReviewRow: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(take.displayName)
+        .accessibilityLabel(name)
         // Says which pass. A screen-reader user hearing "keep, pass 2" has the
         // same problem the vocabulary exists to fix — there are two counters in
         // this app and only one of them is a judgement.
-        .accessibilityValue(take.latestMark.map { "\($0.disposition.label), judged on pass \($0.pass)" }
+        .accessibilityValue(latestMark.map { "\($0.disposition.label), judged on pass \($0.pass)" }
                             ?? "Not yet judged")
         .accessibilityHint("Loads this take so you can hear it")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)

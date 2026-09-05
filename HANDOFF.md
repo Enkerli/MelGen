@@ -4,6 +4,29 @@
 in Xcode. Written while moving fast on purpose: what landed, what's loose, and
 what is definitely not proven.*
 
+**On `foundation-package` (2026-09-05) — the seam list is empty.** All nineteen
+upward references PORTING.md found are cut; the foundation is 9,596 lines, 38%
+of the extension, and names nothing above itself. `verify.sh` is green with
+nothing skipped and all four Xcode builds succeed. Detail in
+[PORTING.md](PORTING.md) §1 and §3; the short version is that fifteen of the
+nineteen were files in the wrong place, including the one §3 had singled out as
+the only real design decision — `ChordVoicing → DegreeHistogram` turned out to
+be two things sharing a file, and reading the call site is what showed it.
+
+The shell now splits into a base and a subclass: `PluginAudioUnit` and
+`PluginViewController` are the ~874 lines any AUv3 in this suite needs,
+`MelGenExtension/AudioUnit/` holds MelGen's session and its three overrides. A
+sibling plug-in writes those two small files. This is the shape §3 predicted as
+"one generic parameter and one protocol"; a generic parameter turned out to be
+unavailable, because `Info.plist` names the principal class and the ObjC runtime
+looks it up by name.
+
+**What this does not yet say** is that the foundation *builds* on its own —
+there is no separate module to build it in. That is PORTING.md §7 step 4, and
+it is the next thing: a local Swift package, layered targets so the compiler
+takes over from `foundation-boundary.py`, and an access-level sweep the one-module
+build has never made anyone do.
+
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and
 the MIDI interchange work. **Every branch is now merged into `main`** —

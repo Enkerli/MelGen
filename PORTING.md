@@ -43,31 +43,39 @@ webapps run in any browser from any year. Nothing about that changes.
 
 ## 1. What is measured, and what it says
 
-`Scripts/verify.sh boundary` strips comments and string literals from all 74
-Swift sources in the extension, finds all 229 top-level type declarations, and
-calls it an edge whenever one file names a type another declares — 440
+`Scripts/verify.sh boundary` strips comments and string literals from all 78
+Swift sources in the extension, finds all 232 top-level type declarations, and
+calls it an edge whenever one file names a type another declares — 454
 cross-file references. Layered as below, and today it reports:
 
 ```
       core      46 lines  (foundation)
-    theory   2,834 lines  (foundation)
-   carrier   2,772 lines  (foundation)
-     shell     909 lines  (foundation)
-        ui   2,196 lines  (foundation)
-       app  16,026 lines  (MelGen)
-             8,757 lines  foundation total (35%)
+    theory   3,330 lines  (foundation)
+   carrier   3,140 lines  (foundation)
+     shell     874 lines  (foundation)
+        ui   2,206 lines  (foundation)
+       app  15,403 lines  (MelGen)
+             9,596 lines  foundation total (38%)
 
-  PASS  no upward references beyond the 10 known seams
-  PASS  every listed seam is still real (10 to cut)
+  PASS  no upward references beyond the 0 known seams
+  PASS  the layer manifest matches the sources on disk
 ```
 
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
 plug-in would stand on, and when this was first measured it was held together by
-nineteen places where a lower layer reached up into the melody app. Nine have
-since been cut (§3) and the foundation has grown from 32% to 35%, because
+nineteen places where a lower layer reached up into the melody app. **All
+nineteen are cut** (§3), and the foundation has grown from 32% to 38%, because
 deciding a file is foundation moves its lines as well as closing its seams. That
-number is the real answer to "could we port other plug-ins": not a yes or a no,
-but *ten named cuts, then yes.*
+is the answer to "could we port other plug-ins": the foundation names nothing
+above itself, which is the property a separate module needs and the property
+nothing but this check was ever going to establish.
+
+The zero deserves one caution, in the spirit of the rest of this document. It
+says no file names a type declared in a higher layer. It does not say the
+foundation *builds* on its own, because there is no separate module to build it
+in yet — that is §7 step 4, and the access-level sweep it will need (everything
+the shell exposes is `internal` today, because one module never made anyone
+choose) is a thing this check cannot see.
 
 The check ships and runs in `verify.sh` because the layering is not enforced by
 the compiler — one target, one module, every type visible to every file — so
@@ -96,19 +104,25 @@ It is the work the suite was already set up to do.
 | Layer | What it is | Lines | Would be called |
 |---|---|---:|---|
 | **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | — |
-| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the progression generator and its corpus tables | 2,834 | the Swift port of `@enkerli/theory` (+ `proggen`) |
-| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,772 | the part with no equivalent in the suite — invented here |
-| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 909 | the Swift `enkerli-juce` |
-| **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the mini roll, the pinned verb bar | 2,196 | the Swift `@enkerli/ui` |
-| **app** | MelGen | 16,026 | — |
+| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the degree histogram, the progression generator and its corpus tables | 3,330 | the Swift port of `@enkerli/theory` (+ `proggen`) |
+| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, interval cells, SMF read/write | 3,140 | the part with no equivalent in the suite — invented here |
+| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 874 | the Swift `enkerli-juce` |
+| **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the mini roll, the pinned verb bar | 2,206 | the Swift `@enkerli/ui` |
+| **app** | MelGen | 15,403 | — |
 
 Two observations worth more than the table.
 
-**The shell is the smallest layer.** 909 lines, against `enkerli-juce`'s 921
+**The shell is the smallest layer.** 874 lines, against `enkerli-juce`'s 921
 lines of C++/Obj-C for the JUCE equivalent. That is a near-exact match, and it
 is the strongest single argument in this document: the amount of
 platform-specific glue a plug-in needs is roughly a thousand lines *whichever
 framework you pick*, so the framework is not where the cost lives.
+
+It got *smaller* while the seams were being cut, which is the direction that
+matters: `PluginAudioUnit` and `PluginViewController` are what is left after
+MelGen's session and MelGen's root view were lifted out of them into
+`MelGenExtension/AudioUnit/`. A sibling plug-in writes those two small
+subclasses — three overrides and a state property — and inherits the rest.
 
 **The carrier layer has no counterpart in music-suite.** Curation-as-passes,
 dispositions that are not scores, facets derived from measurement, an emergent
@@ -119,11 +133,13 @@ travel is worth keeping in view: porting is not only outward.
 
 ---
 
-## 3. The seams — nine cut, ten to go
+## 3. The seams — all nineteen cut
 
-They are listed in `Scripts/tests/foundation-boundary.py`, each with a note on
-how it gets cut, and that list is the work order rather than a copy of one.
-Three are worth calling out here.
+They were listed in `Scripts/tests/foundation-boundary.py`, each with a note on
+how it gets cut, and that list was the work order rather than a copy of one. The
+list is empty now; the check that reads it stays, because the layering is still
+not enforced by the compiler and a new upward reference would otherwise land in
+silence. Four are worth calling out here.
 
 **`ProgressionGenerator` → `SplitMix64`** — ✅ *cut*. A seeded RNG that happened
 to live in `MelodyExpression.swift`, reachable only because everything is one
@@ -162,18 +178,41 @@ out to be a thing in the wrong place rather than a coupling to break:
   file that first needed it. It becomes `ChordProgression.slice(from:to:)`,
   where a reader would look for it.
 
-That is the pattern worth naming for the remaining ten: **an upward reference
-is usually a file in the wrong place, not a dependency that has to be broken.**
-Three of these four cuts were moves, and none changed a line of logic.
+That is the pattern worth naming, and it held all the way to the end: **an
+upward reference is usually a file in the wrong place, not a dependency that has
+to be broken.** Three of these four cuts were moves, and none changed a line of
+logic. Of the nineteen, fifteen were moves or reclassifications.
 
-**`ChordVoicing` → `DegreeHistogram`.** The only one that is a design decision
-rather than a tidy-up. The Drawn voicing asks the learned degree histogram
-which colour *this* chord can carry, so a major seventh gets its ninth and a
-minor seventh its eleventh without either being written down. That is a good
-feature and it is theory reaching upward into learned state. The cut is to
-invert it — the caller passes the weights in, theory never reaches for them —
-which is also what makes it usable from a plug-in that has no take history at
-all.
+**`ChordVoicing` → `DegreeHistogram`** — ✅ *cut, and the remedy written here
+was wrong.* This was called the only seam that was a design decision rather than
+a tidy-up: the Drawn voicing asks the *learned* degree histogram which colour
+this chord can carry, so invert it and have the caller pass weights in. Reading
+the call site said otherwise. `drawnIntervals` only ever calls
+`DegreeHistogram.stack(over:reach:)`, which is built from the chord's own scale
+with its avoid notes damped — derived, not learned — and no caller has ever
+passed it a histogram read off takes. Nothing was reaching up into learned
+state; two things were sharing a file.
+
+So the cut was the ordinary one after all. `DegreeHistogram.swift` split three
+ways: the distribution and its arithmetic stayed and became theory,
+`DegreeObservation.swift` took the two `observed(in:)` overloads that read a
+histogram off material somebody played, and `DegreePlacement.swift` took the
+conversion back into the pattern format. `HarmonicRole` went down to
+`ChordScale.swift` at the same time — it is a question about a semitone and a
+chord's scale and had no business being in `MelodyAnalysis.swift`. That is +566
+lines of theory and one fewer design decision than this document expected.
+
+**The three shell seams** were the ones the prediction got right, and the shape
+was almost the predicted one. §3 said "three of these become one generic
+parameter and one protocol." A generic parameter is not available: the principal
+class is looked up by name out of `Info.plist` through the ObjC runtime, and a
+generic Swift class has no ObjC name and cannot override the `@objc` members
+`AUViewController` declares. A base class with three overrides is what survives
+that constraint. `PluginViewController` and `PluginAudioUnit` are the shell;
+`AudioUnitViewController` (which keeps its name, because `Info.plist` names it)
+and `MelGenExtensionAudioUnit` are MelGen's, and live in
+`MelGenExtension/AudioUnit/`. The session state, the setup store and the root
+view all moved up with them.
 
 ---
 
@@ -376,9 +415,26 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    manifest names files that exist, **not** that every file is named, so a new
    UI file still defaults to `app` in silence.
 
-   **Next:** the `ChordVoicing → DegreeHistogram` inversion, which is the only
-   remaining seam that is a design decision rather than a move. The other nine
-   are moves, and `foundation-boundary.py` names the remedy for each.
+   ✅ **Finished 2026-09-05: 10 → 0.** `MaterialSource` stopped naming
+   `PlayMode` (the mode now answers "which sources can produce what I am
+   producing", which is the only part that was ever MelGen's);
+   `MelodyStepPattern.swift` and `DegreeHistogram.swift` were reclassified after
+   the trial showed neither introduced a new upward reference;
+   `DegreeHistogram.swift` split three ways and `HarmonicRole` moved down to
+   `ChordScale.swift`; `ReviewRow` took four values instead of a
+   `GenerationRecord`; `CapturedMIDIEvent` moved down beside `SequencedNote`,
+   which is what the shell's capture ring actually needs; `ChordDetection` took
+   a three-field `SoundingNote` instead of the carrier's note type; and the AU
+   class and the view controller each split into a shell base and a MelGen
+   subclass (§3). Foundation 35% → 38%, `verify.sh` green with nothing skipped,
+   and all four Xcode builds — extension on iOS Simulator, host app on macOS and
+   generic iOS, Debug and Release — succeed.
+
+   Two things are worth keeping from the pass. The `ChordVoicing` remedy written
+   in §3 was wrong and reading the call site was what showed it (§3 again). And
+   the check earns its keep in an unglamorous way: three times, a reclassification
+   was *proposed* by editing the manifest and running it, which reported exactly
+   which new upward references the proposal would create before any code moved.
 2. **Hold the port to ProgGenie's own answers.** ✅ *run, and they agree* —
    `verify.sh proggen` compares the deterministic half: how a corpus label
    splits, where its numeral lands in semitones, and what MelGen refuses to
@@ -402,17 +458,29 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    already do, so the Lua and C++ consumers inherit it. The agreement is
    currently a fact about two checkouts on one machine; a vector file is what
    makes it a contract.
-3. **Decide what the foundation is called and where it lives** — a local Swift
-   package in this repo, or a sibling `enkerli-swift` repo the way
-   `enkerli-juce` is a sibling. Sibling is more honest about intent and worse
-   for iteration; local first, extracted when a second plug-in exists, is the
-   ordinary answer.
+3. **Decide what the foundation is called and where it lives** — ✅ *decided
+   2026-09-05*. A local Swift package in this repo first, extracted to its own
+   GitHub repo once it has stopped moving and before the first sibling plug-in
+   needs it — the ordinary answer this step already named, chosen because the
+   plug-ins are going into separate repos and a package that is already a
+   package moves cleanly. The targets are named after their music-suite
+   counterparts where they have one (§2's right-hand column).
 4. **Move the foundation into a Swift package target**, MelGen depending on it,
    no behaviour change. Success is `Scripts/verify.sh` still green — which is
    the whole reason the suites run outside Xcode.
+
+   Two things this step has to do that only became visible once the seams were
+   cut. **The access-level sweep**: everything in the foundation is `internal`,
+   because one module never made anyone choose, and `PluginViewController`'s
+   three overrides cannot be `open` until `ObservableAUParameterGroup` is public.
+   **Layered targets, not one**: the layering is a manifest in a Python script
+   today; five package targets would hand it to the compiler, and the check
+   would go back to being what it was built as — a way of proposing a
+   reclassification and seeing what it costs.
 5. **Build ProgGenie as a second AUv3** on that package: new triple (`aumi
-   Prst`, checked by `component-identity.py`), progression generation, playback
-   through the same kernel, per-transition curation as the new work.
+   Prst`, checked by `component-identity.py` — which cannot see a Swift sibling
+   yet, §9), progression generation, playback through the same kernel,
+   per-transition curation as the new work.
 6. **Report back into `JUCE_INDEPENDENCE.md`** with what it actually cost, so
    §3's estimates stop being estimates.
 

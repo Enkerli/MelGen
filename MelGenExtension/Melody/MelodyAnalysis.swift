@@ -21,18 +21,6 @@
 
 import Foundation
 
-/// How each note sits against the chord under it.
-enum HarmonicRole: String, Codable, Sendable {
-    /// A tone of the chord itself.
-    case chordTone
-    /// In the scale, not in the chord — the colour notes.
-    case colour
-    /// A scale tone a semitone above a chord tone: unstable if landed on.
-    case avoid
-    /// Outside the chord's scale entirely — a chromatic approach, or a mistake.
-    case offScale
-}
-
 struct MelodyAnalysis: Codable, Hashable, Sendable {
     // Variety, each 0...1.
     /// Spread of interval sizes. 0 is one interval repeated.

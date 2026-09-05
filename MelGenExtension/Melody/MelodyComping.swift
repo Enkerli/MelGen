@@ -271,6 +271,47 @@ enum PlayMode: String, Codable, CaseIterable, Sendable {
     var isPolyphonic: Bool { self == .comping }
 }
 
+/// What each mode asks of the material list.
+///
+/// This is the MelGen half of PORTING.md's `MaterialSource → PlayMode` seam.
+/// `MaterialSource` is carrier — it travels in every exported pattern — and the
+/// question "which of these can produce what I am producing" is not carrier's
+/// to answer, because a sibling plug-in producing something else would answer
+/// it differently. So the mode answers it, and the enum stays portable.
+extension PlayMode {
+    /// The object of the model's verb, so the button reads "Generate a comp"
+    /// rather than always offering to generate a line.
+    var material: String {
+        switch self {
+        case .line: return "a line"
+        case .comping: return "a comp"
+        case .bass: return "a bass part"
+        }
+    }
+
+    /// Which sources can produce what this mode asks for.
+    ///
+    /// A melodic source under Chords would be offering something the mode can't
+    /// deliver — the whole reason the mode exists is that the receiving
+    /// instrument differs.
+    var sources: [MaterialSource] {
+        switch self {
+        case .comping: return [.comp, .model, .learned]
+        // Bass narrows harder than Chords does, and for the same reason. The
+        // bassline draw is the only source that knows about a register, and a
+        // register is most of what makes a bass part one: the melodic sources
+        // would hand back a line in the wrong octave with the right notes in it,
+        // which is a lead part played low rather than a bass part. What survives
+        // alongside it is your own material, which carries whatever register it
+        // was played in, and the model, which is told where to write.
+        case .bass: return [.bassline, .learned, .model]
+        case .line: return [.model, .stored, .composed, .learned, .played]
+        }
+    }
+
+    var firstSource: MaterialSource { sources.first ?? .composed }
+}
+
 extension CompingFigure {
     static func named(_ name: String) -> CompingFigure {
         all.first { $0.name == name } ?? .charleston
