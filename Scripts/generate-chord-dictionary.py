@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MUSIC_SUITE = REPO_ROOT.parent.parent / "music-suite"
-OUTPUT = REPO_ROOT / "MelGenExtension" / "Melody" / "ChordDictionary+Generated.swift"
+OUTPUT = REPO_ROOT / "EnkerliSwift" / "Sources" / "Theory" / "ChordDictionary+Generated.swift"
 
 # One dictionary entry per line in chords.ts, e.g.
 #   { key: "maj7", fullName: "major seventh", displayName: "∆", pcs: [0,4,7,11], ... }
@@ -111,7 +111,7 @@ def render(qualities: list[dict], manual: dict[str, str], display: dict[str, str
         "extension ChordDictionary {",
         "",
         f"    /// Every chord quality in the dictionary ({len(qualities)} entries).",
-        "    static let allQualities: [ChordQuality] = [",
+        "    public static let allQualities: [ChordQuality] = [",
     ]
     for quality in qualities:
         pcs = ", ".join(str(pc) for pc in quality["pcs"])
@@ -127,7 +127,7 @@ def render(qualities: list[dict], manual: dict[str, str], display: dict[str, str
         "    ]",
         "",
         "    /// Shorthand suffixes the alias table doesn't cover, mapped to quality keys.",
-        "    static let manualSuffixKeys: [String: String] = [",
+        "    public static let manualSuffixKeys: [String: String] = [",
     ]
     for suffix in sorted(manual):
         lines.append(f"        {swift_string(suffix)}: {swift_string(manual[suffix])},")
@@ -135,7 +135,7 @@ def render(qualities: list[dict], manual: dict[str, str], display: dict[str, str
         "    ]",
         "",
         "    /// Canonical compact suffix used when displaying a quality.",
-        "    static let displaySuffixes: [String: String] = [",
+        "    public static let displaySuffixes: [String: String] = [",
     ]
     for key in sorted(display):
         lines.append(f"        {swift_string(key)}: {swift_string(display[key])},")

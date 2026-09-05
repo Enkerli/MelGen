@@ -5,6 +5,8 @@
 // things that mean something, chiefly that a line you've disagreed with yourself
 // about is the best candidate for "try it again, it's a different day".
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

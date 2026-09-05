@@ -16,7 +16,8 @@ import re
 import sys
 from pathlib import Path
 
-THEME = Path(__file__).resolve().parent.parent.parent / "MelGenExtension" / "UI" / "MelGenTheme.swift"
+THEME = (Path(__file__).resolve().parent.parent.parent
+         / "EnkerliSwift" / "Sources" / "UI" / "MelGenTheme.swift")
 
 TEXT_MIN = 4.5
 COMPONENT_MIN = 3.0

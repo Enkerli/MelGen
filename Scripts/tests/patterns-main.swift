@@ -2,6 +2,8 @@
 // The claim is that a degree-relative line comes out consonant over *any*
 // progression, instantly — so that's what this tries to falsify.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

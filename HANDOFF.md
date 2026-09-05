@@ -4,6 +4,71 @@
 in Xcode. Written while moving fast on purpose: what landed, what's loose, and
 what is definitely not proven.*
 
+**On `foundation-package` (2026-09-05) — the seam list is empty.** All nineteen
+upward references PORTING.md found are cut; the foundation is 9,596 lines, 38%
+of the extension, and names nothing above itself. `verify.sh` is green with
+nothing skipped and all four Xcode builds succeed. Detail in
+[PORTING.md](PORTING.md) §1 and §3; the short version is that fifteen of the
+nineteen were files in the wrong place, including the one §3 had singled out as
+the only real design decision — `ChordVoicing → DegreeHistogram` turned out to
+be two things sharing a file, and reading the call site is what showed it.
+
+The shell now splits into a base and a subclass: `PluginAudioUnit` and
+`PluginViewController` are the ~874 lines any AUv3 in this suite needs,
+`MelGenExtension/AudioUnit/` holds MelGen's session and its three overrides. A
+sibling plug-in writes those two small files. This is the shape §3 predicted as
+"one generic parameter and one protocol"; a generic parameter turned out to be
+unavailable, because `Info.plist` names the principal class and the ObjC runtime
+looks it up by name.
+
+**And the foundation is a package now** — PORTING.md §7 step 4, done.
+`EnkerliSwift/` has `Core`, `Theory`, `Carrier`, `UI` and `Shell` as targets,
+plus `Kernel` for the C++; the extension links all six; `verify.sh` builds the package once and compiles the app against
+the built modules, which is what the plug-in actually ships as and what no suite
+was testing before. 10,694 lines, 41% of the extension. All four Xcode builds
+pass and all 34 suites are green with nothing skipped.
+
+Three things about it are worth carrying forward rather than rediscovering.
+
+**The `public` sweep is over-broad, deliberately.** Every symbol it marked was
+already visible to every file in the extension — one target, one module — so
+nothing was widened that was not already open. But the code has never recorded
+which of those were API and which were helpers nobody meant to expose, and no
+compiler can tell them apart. Narrowing it is a separate pass with no automated
+help, and until it happens a `public` in the package is not a promise.
+
+**Fifty-five memberwise initializers had to be written out**, because a public
+struct's synthesized one is internal. Four rules were rediscovered one broken
+call site at a time; the one to remember is that **a `var` of optional type gets
+an implicit `= nil` in the synthesized init** and nothing tells you when you drop
+it.
+
+**The split found two seams the boundary check is blind to, and one bug in it.**
+`MelodyPatterns.seeds` and `MelodyPatterns.extract` were declared in extensions
+in the app and called from carrier — the check ignores extensions on purpose,
+which is right for ownership and wrong for compilation. And its rank test only
+failed on a strictly higher rank, so `ui → shell` had been passing silently over
+two real edges. Both fixed; the second is the argument for the package made
+better than PORTING.md could make it in the abstract, because **a check you wrote
+shares your blind spot and a compiler does not.**
+
+**The shell went in too, and all three things that made it look hard were
+small.** The kernel is its own target with one `.mm` compile unit — Objective-C++
+rather than C++, because `NS_ENUM` and `AudioToolbox/AUParameters.h` do not
+compile as plain C++. `Shell` imports it as a module, which is what replaces the
+bridging header. And `MelGenExtensionParameterAddresses.h` was a naming problem
+all along: `playMelody`, `playbackDirection` and `hostSync` are the parameters a
+loop player has, not anything about melody, so it is
+`PluginParameterAddresses.h` now and no logic changed.
+
+**What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
+three overrides on `PluginViewController`, and its own parameter tree — the file
+list a sibling plug-in writes. That makes §7 step 5, ProgGenie, the next thing,
+and §9's warning the thing to deal with first: `component-identity.py` finds
+sibling plug-in codes by globbing `*/CMakeLists.txt`, and a Swift AUv3 has an
+`Info.plist` and no CMakeLists, so the second Swift plug-in is invisible to the
+collision check. That check exists because the collision already happened once.
+
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and
 the MIDI interchange work. **Every branch is now merged into `main`** —

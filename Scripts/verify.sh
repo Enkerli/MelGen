@@ -55,9 +55,39 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MELODY="$REPO/MelGenExtension/Melody"
-DSP="$REPO/MelGenExtension/DSP"
-PARAMS="$REPO/MelGenExtension/Parameters"
+# The kernel is the package's `Kernel` target now — header-only C++ with an
+# Objective-C++ compile unit, because the render thread is the one place in
+# this codebase that is not Swift.
+KERNEL="$REPO/EnkerliSwift/Sources/Kernel/include"
+PACKAGE="$REPO/EnkerliSwift"
 MUSIC_SUITE="${MUSIC_SUITE:-$REPO/../../music-suite}"
+
+# The foundation is a Swift package now (PORTING.md §7 step 4), so the suites
+# build it once and compile the app sources against the built modules. That is
+# also the configuration the plug-in actually ships in — before this, every
+# suite compiled foundation and app as one module and could not have caught a
+# missing `public` or a cycle between two targets.
+#
+# Built with whatever `swift` is on PATH, which is deliberately not Xcode-beta's:
+# the whole point of this script is that it runs on a machine with no Xcode, and
+# the package's platform floor is written as a string ("26.0") rather than as
+# `.v26` so the released toolchain can parse the manifest.
+PKG_BIN=""
+build_package() {
+    [ -n "$PKG_BIN" ] && return 0
+    swift build --package-path "$PACKAGE" >/dev/null || {
+        echo "FAIL: the foundation package did not build"; status=1; return 1; }
+    PKG_BIN="$(swift build --package-path "$PACKAGE" --show-bin-path)"
+}
+
+# What a suite links against the package with. Objects rather than a library
+# because SwiftPM emits no archive for a target nothing depends on from outside.
+package_flags() {
+    build_package || return 1
+    echo "-I $PKG_BIN/Modules"
+    find "$PKG_BIN" -name "*.o" ! -path "*/UI.build/*" | sort
+}
+
 # Every Melody source except the one that needs FoundationModels. They are one
 # interdependent set now — the pattern format knows about curation, curation
 # knows about analysis — and keeping a hand-written list per suite meant every
@@ -95,10 +125,8 @@ run_chords() {
 
     # Swift only allows top-level code in a file called main.swift.
     cp "$REPO/Scripts/tests/chord-swift-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" \
-        "$MELODY/DiatonicHarmony.swift" \
-        "$BUILD/main.swift" -o "$BUILD/chords" || { status=1; return 0; }
+    swiftc -O $(package_flags) "$BUILD/main.swift" -o "$BUILD/chords" \
+        || { status=1; return 0; }
     "$BUILD/chords" > "$BUILD/swift.json" || { status=1; return 0; }
 
     python3 - "$BUILD/reference.json" "$BUILD/swift.json" <<'PY' || status=1
@@ -129,7 +157,7 @@ run_state() {
     echo "── state ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/state-expression-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/state" || { status=1; return 0; }
     "$BUILD/state" || status=1
 }
 
@@ -141,9 +169,7 @@ run_identity() {
 run_chunking() {
     echo "── chunking ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/chunking-main.swift" "$BUILD/main.swift"
-    swiftc -O "$MELODY/ChordDictionary.swift" "$MELODY/ChordDictionary+Generated.swift" \
-        "$MELODY/ChordScale.swift" "$MELODY/ChordParser.swift" "$MELODY/MelodyChunker.swift" \
-        "$MELODY/DiatonicHarmony.swift" \
+    swiftc -O $(package_flags) "$MELODY/MelodyChunker.swift" \
         "$BUILD/main.swift" -o "$BUILD/chunking" || { status=1; return 0; }
     "$BUILD/chunking" || status=1
 }
@@ -152,7 +178,7 @@ run_patterns() {
     echo "── patterns ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/patterns-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/patterns" || { status=1; return 0; }
     "$BUILD/patterns" || status=1
 }
 
@@ -160,7 +186,7 @@ run_extraction() {
     echo "── extraction ────────────────────────────────────"
     cp "$REPO/Scripts/tests/extraction-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/extraction" || { status=1; return 0; }
     "$BUILD/extraction" || status=1
 }
 
@@ -168,7 +194,7 @@ run_curation() {
     echo "── curation ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/curation-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/curation" || { status=1; return 0; }
     "$BUILD/curation" || status=1
 }
 
@@ -176,7 +202,7 @@ run_phrases() {
     echo "── phrases ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/phrases-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/phrases" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/phrases" || { status=1; return 0; }
     "$BUILD/phrases" || status=1
 }
 
@@ -184,7 +210,7 @@ run_stylemodel() {
     echo "── stylemodel ────────────────────────────────────"
     cp "$REPO/Scripts/tests/stylemodel-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/stylemodel" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/stylemodel" || { status=1; return 0; }
     "$BUILD/stylemodel" || status=1
 }
 
@@ -192,7 +218,7 @@ run_chain() {
     echo "── chain ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/chain-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/chain" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/chain" || { status=1; return 0; }
     "$BUILD/chain" || status=1
 }
 
@@ -200,7 +226,7 @@ run_mutation() {
     echo "── mutation ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/mutation-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/mutation" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/mutation" || { status=1; return 0; }
     "$BUILD/mutation" || status=1
 }
 
@@ -208,7 +234,7 @@ run_retrieval() {
     echo "── retrieval ─────────────────────────────────────"
     cp "$REPO/Scripts/tests/retrieval-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/retrieval" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/retrieval" || { status=1; return 0; }
     "$BUILD/retrieval" || status=1
 }
 
@@ -216,7 +242,7 @@ run_topics() {
     echo "── topics ────────────────────────────────────────"
     cp "$REPO/Scripts/tests/topics-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/topics" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/topics" || { status=1; return 0; }
     "$BUILD/topics" || status=1
 }
 
@@ -224,7 +250,7 @@ run_steps() {
     echo "── steps ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/steps-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/steps" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/steps" || { status=1; return 0; }
     "$BUILD/steps" || status=1
 }
 
@@ -232,7 +258,7 @@ run_histograms() {
     echo "── histograms ────────────────────────────────────"
     cp "$REPO/Scripts/tests/histograms-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/histograms" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/histograms" || { status=1; return 0; }
     "$BUILD/histograms" || status=1
 }
 
@@ -240,7 +266,7 @@ run_bassline() {
     echo "── bassline ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/bassline-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/bassline" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/bassline" || { status=1; return 0; }
     "$BUILD/bassline" || status=1
 }
 
@@ -248,7 +274,7 @@ run_capture() {
     echo "── capture ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/capture-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/capture" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/capture" || { status=1; return 0; }
     "$BUILD/capture" || status=1
 }
 
@@ -259,7 +285,7 @@ run_comping() {
     export VOICE_LEADING_VECTORS="$MUSIC_SUITE/packages/theory/vectors/voice-leading.json"
     cp "$REPO/Scripts/tests/comping-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/comping" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/comping" || { status=1; return 0; }
     "$BUILD/comping" || status=1
 }
 
@@ -268,7 +294,7 @@ run_progression() {
     python3 "$REPO/Scripts/generate-progression-tables.py" --music-suite "$MUSIC_SUITE" --check || status=1
     cp "$REPO/Scripts/tests/progression-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/progression" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/progression" || { status=1; return 0; }
     "$BUILD/progression" || status=1
 }
 
@@ -276,7 +302,7 @@ run_drift() {
     echo "── drift ─────────────────────────────────────────"
     cp "$REPO/Scripts/tests/drift-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/drift" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/drift" || { status=1; return 0; }
     "$BUILD/drift" || status=1
 }
 
@@ -284,7 +310,7 @@ run_templates() {
     echo "── templates ─────────────────────────────────────"
     cp "$REPO/Scripts/tests/templates-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/templates" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/templates" || { status=1; return 0; }
     "$BUILD/templates" || status=1
 }
 
@@ -292,7 +318,7 @@ run_analysis() {
     echo "── analysis ──────────────────────────────────────"
     cp "$REPO/Scripts/tests/analysis-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/analysis" || { status=1; return 0; }
     "$BUILD/analysis" || status=1
 }
 
@@ -315,7 +341,7 @@ run_advance() {
     echo "── advance ────────────────────────────────────────"
     cp "$REPO/Scripts/tests/advance-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/advance" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/advance" || { status=1; return 0; }
     "$BUILD/advance" || status=1
 }
 
@@ -323,7 +349,7 @@ run_nextstep() {
     echo "── nextstep ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/nextstep-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/nextstep" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/nextstep" || { status=1; return 0; }
     "$BUILD/nextstep" || status=1
 }
 
@@ -331,7 +357,7 @@ run_midifile() {
     echo "── midifile ───────────────────────────────────────"
     cp "$REPO/Scripts/tests/midifile-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/midifile" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/midifile" || { status=1; return 0; }
     local vectors="$MUSIC_SUITE/packages/theory/vectors/chord-detection.json"
     if [ -f "$vectors" ]; then
         CHORD_VECTORS="$vectors" "$BUILD/midifile" || status=1
@@ -378,7 +404,7 @@ run_proggen() {
 
     cp "$REPO/Scripts/tests/proggen-swift-main.swift" "$BUILD/main.swift"
     # shellcheck disable=SC2046
-    swiftc $SWIFT_OPT $(melody_sources) "$BUILD/main.swift" -o "$BUILD/proggen" || { status=1; return 0; }
+    swiftc $SWIFT_OPT $(package_flags) $(melody_sources) "$BUILD/main.swift" -o "$BUILD/proggen" || { status=1; return 0; }
     "$BUILD/proggen" > "$BUILD/proggen-swift.json" || { status=1; return 0; }
 
     python3 "$REPO/Scripts/tests/proggen-diff.py" \
@@ -388,7 +414,7 @@ run_proggen() {
 run_kernel() {
     echo "── kernel ─────────────────────────────────────────"
     clang++ -std=gnu++17 -fobjc-arc -x objective-c++ \
-        "$REPO/Scripts/tests/kernel-scheduling.mm" -I"$DSP" -I"$PARAMS" \
+        "$REPO/Scripts/tests/kernel-scheduling.mm" -I"$KERNEL" \
         -framework Foundation -framework AudioToolbox -framework CoreMIDI \
         -o "$BUILD/kernel" || { status=1; return 0; }
     "$BUILD/kernel" || status=1

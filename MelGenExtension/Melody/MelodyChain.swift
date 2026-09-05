@@ -34,6 +34,9 @@
 //
 
 import Foundation
+import Carrier
+import Core
+import Theory
 
 /// One event, as the chain sees it: what was played and how long it lasted,
 /// with the silence after it. Pitch and rhythm in one token on purpose — a chain

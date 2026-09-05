@@ -34,15 +34,8 @@
 //
 
 import Foundation
-
-/// One note-on or note-off, as the render thread saw it.
-struct CapturedMIDIEvent: Hashable, Sendable {
-    /// Timeline position in beats.
-    var beat: Double
-    var note: UInt8
-    var velocity: UInt8
-    var isOn: Bool
-}
+import Carrier
+import Theory
 
 /// A phrase someone played, with what it cost to write it down.
 struct CapturedPhrase: Sendable, Identifiable {

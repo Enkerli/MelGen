@@ -20,8 +20,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-UI = ROOT / "MelGenExtension" / "UI"
-MELODY = ROOT / "MelGenExtension" / "Melody"
+# The UI kit is the package's `UI` target now; what is left under
+# MelGenExtension/UI is MelGen's own screen. Both are scanned, because the
+# rule this checks is about what a person sees, not about which module
+# drew it.
+UI_DIRS = [ROOT / "MelGenExtension" / "UI",
+           ROOT / "EnkerliSwift" / "Sources" / "UI"]
+MELODY_DIRS = [ROOT / "MelGenExtension" / "Melody",
+               ROOT / "EnkerliSwift" / "Sources" / "Carrier",
+               ROOT / "EnkerliSwift" / "Sources" / "Theory"]
 
 # Melody files whose strings reach the screen. The whole folder would sweep in
 # the prose handed to the model and the fingerprints a parser matches on, which
@@ -110,7 +117,9 @@ def check() -> int:
     failures = 0
     checked = 0
 
-    surfaces = sorted(UI.glob("*.swift")) + [MELODY / name for name in MELODY_SURFACES]
+    surfaces = sorted(p for d in UI_DIRS for p in d.glob("*.swift"))
+    for name in MELODY_SURFACES:
+        surfaces += [d / name for d in MELODY_DIRS if (d / name).exists()]
     for path in surfaces:
         source = path.read_text()
         for number, literal in string_literals(source):

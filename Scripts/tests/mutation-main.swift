@@ -7,6 +7,8 @@
 // nobody can attribute to a cause teaches nothing — and that the morph really
 // interpolates rather than crossfading.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

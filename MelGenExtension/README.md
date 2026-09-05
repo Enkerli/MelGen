@@ -1,3 +1,15 @@
+> **This is Xcode's AUv3 template README, and its layout section is no longer
+> true of this project.** The `Parameters`, `DSP` and `Common` groups it
+> describes are the `EnkerliSwift` package's `Shell` and `Kernel` targets now
+> (see [PORTING.md](../PORTING.md)), and the file names changed with the move —
+> `MelGenExtensionDSPKernel.hpp` is `Sources/Kernel/include/PluginDSPKernel.hpp`,
+> and `MelGenExtensionParameterAddresses.h` is `PluginParameterAddresses.h`.
+> What is left in this folder is MelGen: `Melody/` is the app, `UI/` is its
+> screen, and `AudioUnit/` holds the two small subclasses and the parameter tree
+> that make it a plug-in. Kept because the rest of it — what the four-character
+> codes mean, how a parameter reaches the render thread — is still the clearest
+> short account of what an AUv3 is.
+
 # Audio Unit Extension
 This template serves as a starting point to create a custom plug-in using the latest Audio Unit standard (AUv3). The AUv3 standard builds on the App Extensions model, which means you deliver your plug-in as an extension that’s contained in an app distributed through the App Store or your own store.
 

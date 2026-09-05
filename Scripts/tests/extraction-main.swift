@@ -7,6 +7,8 @@
 // real take off a device, because a round trip through our own arithmetic is
 // only half a proof.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

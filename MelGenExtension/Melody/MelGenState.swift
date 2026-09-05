@@ -10,6 +10,8 @@
 //
 
 import Foundation
+import Carrier
+import Theory
 
 /// One take. `notes` is the raw output, before expression is applied, so changing
 /// the expression controls re-renders old takes too.

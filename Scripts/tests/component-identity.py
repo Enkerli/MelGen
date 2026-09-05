@@ -12,6 +12,10 @@ Checks:
   2. The subtype doesn't collide with any sibling plug-in's PLUGIN_CODE.
   3. The display name follows the "Manufacturer: Product" convention hosts
      expect, so AUM shows "MelGen" rather than a target name.
+
+Siblings are found two ways, because there are two kinds: the JUCE plug-ins
+declare PLUGIN_CODE in CMakeLists.txt, and a Swift AUv3 declares its triple in
+the extension's Info.plist and has no CMakeLists at all.
 """
 
 from __future__ import annotations
@@ -76,11 +80,36 @@ def main() -> None:
                  f"{au_type}/{subtype}/{manufacturer} — the host app won't find the extension")
 
     # 2. No sibling plug-in claims this subtype.
+    #
+    # Two kinds of sibling now. The JUCE plug-ins declare their code in
+    # CMakeLists.txt; a Swift AUv3 has an Info.plist and no CMakeLists at all,
+    # which PORTING.md §9 called out as the point where this check would quietly
+    # stop checking — "the second Swift AUv3 is the point at which that lookup
+    # needs to learn about Info.plist siblings too". This is that.
+    #
+    # The Info.plist search goes two levels deep because a Swift plug-in's
+    # extension plist is at <repo>/<Target>Extension/Info.plist rather than at
+    # the repo root, and it skips this repo's own so MelGen does not collide with
+    # itself.
     siblings: dict[str, list[str]] = {}
     for cmake in sorted(SIBLING_ROOT.glob("*/CMakeLists.txt")):
         text = cmake.read_text(encoding="utf-8", errors="replace")
         for code in re.findall(r"PLUGIN_CODE\s+([A-Za-z0-9]{4})", text):
             siblings.setdefault(code, []).append(cmake.parent.name)
+
+    for plist in sorted(SIBLING_ROOT.glob("*/*/Info.plist")) + sorted(SIBLING_ROOT.glob("*/*/*/Info.plist")):
+        if plist == INFO_PLIST:
+            continue
+        try:
+            with plist.open("rb") as handle:
+                other = plistlib.load(handle)
+            component = other["NSExtension"]["NSExtensionAttributes"]["AudioComponents"][0]
+            code = component["subtype"]
+        except (KeyError, IndexError, ValueError, OSError):
+            continue
+        label = plist.relative_to(SIBLING_ROOT).parts[0]
+        if label not in siblings.setdefault(code, []):
+            siblings[code].append(label)
 
     if not siblings:
         print(f"  SKIP  no sibling plug-ins found next to the checkout ({SIBLING_ROOT})")

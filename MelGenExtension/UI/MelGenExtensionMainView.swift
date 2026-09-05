@@ -7,6 +7,11 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Carrier
+import Theory
+import UI
+import Shell
+import Kernel
 
 // No #Preview here: Xcode can't host previews inside a
 // "com.apple.AudioUnit-UI" app extension, so the layout is checked in a host.
@@ -1234,7 +1239,7 @@ struct MelGenExtensionMainView: View {
             }
 
             // Rule three: one filled action, and it always names what it will do.
-            PrimaryAction(title: source.verb(mode: state.mode),
+            PrimaryAction(title: source.verb(generating: state.mode.material),
                           subtitle: actionSubtitle,
                           systemImage: source.symbolName,
                           isWorking: isGenerating,
@@ -1250,7 +1255,7 @@ struct MelGenExtensionMainView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(theme.textMuted)
                 VStack(spacing: 4) {
-                    ForEach(MaterialSource.all(for: state.mode)) { candidate in
+                    ForEach(state.mode.sources) { candidate in
                         SourceRow(source: candidate,
                                   isSelected: candidate == source,
                                   isAvailable: sourceIsAvailable(candidate),
@@ -1314,8 +1319,8 @@ struct MelGenExtensionMainView: View {
             get: { state.mode },
             set: { newMode in
                 commit(reloadKernel: false) { $0.mode = newMode }
-                if !MaterialSource.all(for: newMode).contains(source) {
-                    source = MaterialSource.first(for: newMode)
+                if !newMode.sources.contains(source) {
+                    source = newMode.firstSource
                 }
             }
         )
@@ -1963,17 +1968,17 @@ struct MelGenExtensionMainView: View {
     private var directionGroup: some View {
         HStack(spacing: 4) {
             DirectionButton(direction: .backward, label: "Backward",
-                            isSelected: direction == MelGenPlaybackDirection.backward.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.backward.rawValue,
                             theme: theme) {
                 setDirection(.backward)
             }
             DirectionButton(direction: .pingPong, label: "Ping-pong",
-                            isSelected: direction == MelGenPlaybackDirection.pingPong.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.pingPong.rawValue,
                             theme: theme) {
                 setDirection(.pingPong)
             }
             DirectionButton(direction: .forward, label: "Forward",
-                            isSelected: direction == MelGenPlaybackDirection.forward.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.forward.rawValue,
                             theme: theme) {
                 setDirection(.forward)
             }
@@ -2076,8 +2081,8 @@ struct MelGenExtensionMainView: View {
 
     private var directionName: String {
         switch direction {
-        case MelGenPlaybackDirection.backward.rawValue: return "Backward"
-        case MelGenPlaybackDirection.pingPong.rawValue: return "Ping-pong"
+        case PluginPlaybackDirection.backward.rawValue: return "Backward"
+        case PluginPlaybackDirection.pingPong.rawValue: return "Ping-pong"
         default: return "Forward"
         }
     }
@@ -2761,8 +2766,8 @@ struct MelGenExtensionMainView: View {
             // sending someone to a heading that isn't drawn.
             panelTab = .play
             commit(reloadKernel: false) { $0.mode = .bass }
-            if !MaterialSource.all(for: .bass).contains(source) {
-                source = MaterialSource.first(for: .bass)
+            if !PlayMode.bass.sources.contains(source) {
+                source = PlayMode.bass.firstSource
             }
         }
         statusMessage = "Opened \(placeName(of: destination))."
@@ -3213,7 +3218,7 @@ struct MelGenExtensionMainView: View {
     /// advance controls follow.
     private var readableChanges: ChordDetection.ReadChanges? {
         guard !capturedEvents.isEmpty else { return nil }
-        return ChordDetection.changes(in: MelodyCapture.notes(from: capturedEvents))
+        return ChordDetection.changes(in: MelodyCapture.notes(from: capturedEvents).map(\.sounding))
     }
 
     /// Fills the progression from what was played, rather than the other way
@@ -3821,7 +3826,10 @@ struct MelGenExtensionMainView: View {
 
                     VStack(spacing: 4) {
                         ForEach(state.reviewQueue.prefix(12)) { take in
-                            ReviewRow(take: take,
+                            ReviewRow(name: take.displayName,
+                                      facets: take.facets,
+                                      tags: take.tags,
+                                      latestMark: take.latestMark,
                                       isCurrent: take.id == state.currentTake?.id,
                                       currentPass: state.curationPass,
                                       theme: theme) {
@@ -4202,7 +4210,7 @@ struct MelGenExtensionMainView: View {
         return Int32(param.value.rounded())
     }
 
-    private func setDirection(_ direction: MelGenPlaybackDirection) {
+    private func setDirection(_ direction: PluginPlaybackDirection) {
         let param: ObservableAUParameter = parameterTree.global.playbackDirection
         param.value = AUValue(direction.rawValue)
     }

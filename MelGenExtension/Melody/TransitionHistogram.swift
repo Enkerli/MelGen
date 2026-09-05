@@ -42,6 +42,8 @@
 //
 
 import Foundation
+import Carrier
+import Theory
 
 /// Weights over the interval to the next note, in semitones.
 struct TransitionHistogram: Codable, Hashable, Sendable {

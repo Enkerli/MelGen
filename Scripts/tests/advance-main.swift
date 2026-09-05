@@ -11,6 +11,8 @@
 // suite compiles `TakeAdvance.swift` without it and would fail to link if it
 // reached for one.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {
@@ -49,7 +51,7 @@ func playing(_ mode: PlayMode = .line) -> MelGenState {
 print("── every mode and every source produces a take ────────")
 
 for mode in PlayMode.allCases {
-    for source in MaterialSource.all(for: mode) {
+    for source in mode.sources {
         for aim in AdvanceMode.allCases {
             let candidate = TakeAdvance.candidate(mode: aim,
                                                   state: playing(mode),

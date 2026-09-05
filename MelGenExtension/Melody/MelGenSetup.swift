@@ -24,6 +24,8 @@
 //
 
 import Foundation
+import Carrier
+import Theory
 
 /// The settings that decide what comes next, under a name.
 struct MelGenSetup: Codable, Hashable, Sendable, Identifiable {

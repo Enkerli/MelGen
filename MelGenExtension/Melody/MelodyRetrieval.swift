@@ -28,6 +28,9 @@
 //
 
 import Foundation
+import Carrier
+import Core
+import Theory
 
 /// A coarse bucket for a line, used to notice which corners of the library are
 /// under-explored. Three axes at three or four levels each is small enough that

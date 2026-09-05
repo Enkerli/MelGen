@@ -20,6 +20,8 @@
 // bass is, and a chord change with no note under it leaves the harmony unstated
 // — which no amount of right notes afterwards recovers.
 import Foundation
+import Carrier
+import Theory
 
 extension Sequence where Element == Double {
     /// Every neighbouring pair, for checking that a sweep is monotonic.
@@ -474,11 +476,11 @@ check("Bass is a mode, and a monophonic one",
       PlayMode.allCases.contains(.bass) && !PlayMode.bass.isPolyphonic
         && PlayMode.bass.label == "Bass")
 check("its sources are the ones that can produce a bass part",
-      MaterialSource.all(for: .bass) == [.bassline, .learned, .model],
-      "\(MaterialSource.all(for: .bass).map(\.name))")
+      PlayMode.bass.sources == [.bassline, .learned, .model],
+      "\(PlayMode.bass.sources.map(\.name))")
 check("the bassline source is instant and says whose vocabulary it is",
       MaterialSource.bassline.isInstant && !MaterialSource.bassline.provenance.isEmpty
-        && MaterialSource.bassline.verb(mode: .bass) == "Draw a bass line")
+        && MaterialSource.bassline.verb(generating: PlayMode.bass.material) == "Draw a bass line")
 check("its templates are the figures",
       MelGenTemplates.all(for: .bass).count == BasslineFigure.all.count
         && MelGenTemplates.all(for: .bass).allSatisfy { $0.basslineFigure != nil })

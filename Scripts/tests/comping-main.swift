@@ -6,6 +6,8 @@
 // as a unit — a player picks the register, not the arrangement, because the
 // arrangement is what makes a rootless A a rootless A.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

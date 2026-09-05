@@ -2,6 +2,8 @@
 // including a replay of the real take whose two-bar hole the first version of
 // the guard failed to touch.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

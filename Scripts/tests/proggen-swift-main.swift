@@ -5,6 +5,7 @@
 // exercises, deliberately: this file exists to be compared, not to discover
 // API. See PORTING.md §7 for what is compared and what is allowed to differ.
 import Foundation
+import Theory
 
 let labels = [
     "I", "Im7", "IM7", "I6", "I7",

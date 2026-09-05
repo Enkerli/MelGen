@@ -40,7 +40,7 @@ HEADER = '''//
 
 import Foundation
 
-enum ProgressionTables {
+public enum ProgressionTables {
 
     /// context;next:count,next:count|context;… — parsed on first use.
 '''
@@ -65,7 +65,7 @@ def swift_string(name, value):
     joined = "\n        + ".join(
         '"' + piece.replace("\\", "\\\\").replace('"', '\\"') + '"' for piece in pieces
     )
-    return f"    static let {name} =\n        {joined}\n"
+    return f"    public static let {name} =\n        {joined}\n"
 
 
 def build(source, top):
@@ -97,7 +97,8 @@ def main():
         return 0
 
     generated = build(source, args.top)
-    target = os.path.join(repo, "MelGenExtension", "Melody", "ProgressionTables+Generated.swift")
+    target = os.path.join(repo, "EnkerliSwift", "Sources", "Theory",
+                          "ProgressionTables+Generated.swift")
 
     if args.check:
         if not os.path.exists(target):

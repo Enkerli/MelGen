@@ -9,9 +9,10 @@ before touching anything.*
 ## The one thing that surprises everybody
 
 **Xcode's test targets cannot reach most of this codebase.** The DSP kernel is
-C++ inside the extension, and every source under `MelGenExtension/Melody/` has
-extension-only target membership. `MelGenTests` sees neither. So a green test
-action in Xcode tells you almost nothing.
+C++ inside the extension; every source under `MelGenExtension/Melody/` has
+extension-only target membership; and the four foundation layers are targets of
+the `EnkerliSwift` package next door. `MelGenTests` sees none of it. So a green
+test action in Xcode tells you almost nothing.
 
 The real check is a shell script:
 
@@ -20,9 +21,10 @@ Scripts/verify.sh            # all 34 suites
 Scripts/verify.sh chords     # just one
 ```
 
-It compiles the Melody sources with `swiftc` outside Xcode, runs the C++ kernel
-under `clang++`, and audits the docs, the icon and the theme contrast with
-Python. **If you can run a terminal, run this before and after every change.**
+It builds the `EnkerliSwift` package with `swift build`, compiles the app's
+Melody sources against it with `swiftc` outside Xcode, runs the C++ kernel under
+`clang++`, and audits the docs, the icon and the theme contrast with Python.
+**If you can run a terminal, run this before and after every change.**
 If you cannot (Xcode's built-in assistant can't), say so plainly and ask for it
 to be run rather than reporting a change as verified — building the two schemes
 is necessary and is not sufficient.
@@ -48,13 +50,27 @@ basslines over a chord progression and loops them as MIDI. Two targets:
 
 | Target | What it is |
 |---|---|
-| `MelGenExtension` | the plug-in. Everything real lives here |
+| `MelGenExtension` | the plug-in: MelGen itself, plus the AU shell |
 | `MelGen` | a host app that loads the extension, for quick testing |
+| `EnkerliSwift` | a local Swift package — `Core`, `Theory`, `Carrier`, `UI`. The third of the codebase a sibling plug-in stands on ([PORTING.md](PORTING.md)) |
+
+**Which half a file belongs in is a real decision, and the compiler enforces it
+now.** A package target may not name anything above it, so a new type that
+belongs to melody goes in `MelGenExtension/`, and one that any plug-in in the
+suite could use goes in the matching `EnkerliSwift/Sources/` target. If you are
+unsure, put it in the app: moving it down later is a `git mv` plus a `public`
+sweep, and moving it up is a compile error you will find immediately.
+
+Everything in the package is `public` because it had to be, not because it was
+designed as API — see PORTING.md §7 step 4. Do not read a `public` there as a
+promise.
 
 The Xcode project uses **synchronized folder groups**, so a new file in
-`MelGenExtension/Melody/` joins the target automatically — no `pbxproj` edit,
-and no forgetting one either. Check membership only if a build complains about
-a symbol you can see on disk.
+`MelGenExtension/` joins the target automatically — a new *directory* too, which
+is how `AudioUnit/` arrived — no `pbxproj` edit, and no forgetting one either.
+A new file in `EnkerliSwift/Sources/` joins its target the same way, because
+that is how SwiftPM works. Check membership only if a build complains about a
+symbol you can see on disk.
 
 Requires Xcode 26+ (**27 to open the project**, format 110) and iOS/macOS 26.0+.
 
@@ -78,37 +94,51 @@ Core ML usable at all. Do not move generation into the render block.
 string by `verify.sh terminology`. If you need a new word, add it there first
 and say why.
 
-**The layering is checked.** See below.
+**The layering is compiled, and also checked.** See below.
 
 ---
 
 ## The layering, and how to change it
 
-`verify.sh boundary` (`Scripts/tests/foundation-boundary.py`) treats this repo
-as five stacked layers and fails on any reference that points upward:
+Five stacked layers, and nothing may point upward:
 
 ```
 core → theory → carrier → shell / ui → app
 ```
 
-The bottom four are the ~8,600 lines a sibling plug-in would stand on
-([PORTING.md](PORTING.md)). Twelve upward references remain; each is listed in
-`SEAMS` at the top of that script with a note on how it gets cut, so **the
-script is the work list**.
+The bottom four are the ~10,700 lines a sibling plug-in stands on
+([PORTING.md](PORTING.md)). **Every one of the nineteen upward references is
+cut**, `SEAMS` in `Scripts/tests/foundation-boundary.py` is empty, and four of
+the five layers are package targets — so an upward reference from one of those
+is a build error, not a report.
 
-Cutting one is a loop, and doing it in this order matters:
+`verify.sh boundary` still runs, and it is worth knowing what is left of its
+job, because two of these are things the build cannot do:
 
-1. Make the change — usually a **move**, not a rewrite. Three of the four cuts
-   made so far were files sitting in the wrong place, not couplings that had to
-   be broken. Suspect that first.
-2. Delete its entry from `SEAMS`.
-3. `Scripts/verify.sh boundary`. It fails if you left a cut seam in the list,
-   and it fails if you introduced a new upward reference.
-4. Update the counts in `PORTING.md` §1 and §3. `verify.sh docs` will not catch
+- **The shell is not a package target yet** (Package.swift says why), so
+  shell → app is only checked there.
+- **Shell and UI are siblings, and Package.swift says so by omission** — neither
+  depends on the other. Add a dependency and the build goes green; only this
+  notices. It got that wrong itself until the package was built, which is how
+  two AU-bound controls sat in the UI kit unremarked.
+- **The counts.** PORTING.md §1's percentage is this script's output.
+- **Proposing a move.** Edit the layer manifest, run it, and it says what a
+  reclassification would cost before a file is touched. Three of the last four
+  cuts were decided that way.
+
+Moving a file down into the foundation is a loop:
+
+1. `git mv` it into the right `EnkerliSwift/Sources/` target — usually that is
+   the whole change. Fifteen of the nineteen cuts were moves or
+   reclassifications, not couplings that had to be broken. Suspect that first.
+2. Mark what it exposes `public`, and write out the memberwise initializer if it
+   is a struct the app constructs — Swift synthesizes one and keeps it internal.
+3. `swift build --package-path EnkerliSwift`, then `Scripts/verify.sh`.
+4. Update the counts in `PORTING.md` §1 and §2. `verify.sh docs` will not catch
    a stale number there, so it is on you.
 
-Adding a *new* upward reference is not forbidden — it is forbidden silently.
-Add it to `SEAMS` with how it would be cut, or move the code so it isn't one.
+Adding a *new* upward reference is not forbidden — it is forbidden silently. Add
+it to `SEAMS` with how it would be cut, or move the code so it isn't one.
 
 ---
 

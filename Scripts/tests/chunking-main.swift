@@ -1,6 +1,7 @@
 // Checks how a progression is split into model requests. The 16-bar case is the
 // real ProgGenie progression that used to fail outright.
 import Foundation
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

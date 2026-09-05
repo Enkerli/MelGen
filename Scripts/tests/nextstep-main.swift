@@ -10,6 +10,8 @@
 // is total and ordered, so there is exactly one answer for any state. And it
 // goes quiet, which is the property that keeps it from becoming furniture.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

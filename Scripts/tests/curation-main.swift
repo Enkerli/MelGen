@@ -6,6 +6,8 @@
 // deferred ahead of what you skipped, because deferring is a promise and
 // skipping isn't.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

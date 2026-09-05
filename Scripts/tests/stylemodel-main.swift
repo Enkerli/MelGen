@@ -5,6 +5,8 @@
 // vote on bar three), it samples something new rather than replaying a take, and
 // what it samples puts notes where the corpus puts them.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {
