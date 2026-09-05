@@ -93,10 +93,14 @@ build_package() {
 
 # What a suite links against the package with. Objects rather than a library
 # because SwiftPM emits no archive for a target nothing depends on from outside.
+#
+# The package's own test targets build into the same directory and their objects
+# carry a second `main`, so they are excluded by name — which is the sort of
+# thing that only shows up the day the package gains tests, and did.
 package_flags() {
     build_package || return 1
     echo "-I $PKG_BIN/Modules"
-    find "$PKG_BIN" -name "*.o" ! -path "*/UI.build/*" | sort
+    find "$PKG_BIN" -name "*.o" ! -path "*/UI.build/*" ! -path "*Tests.build/*" | sort
 }
 
 # Every Melody source except the one that needs FoundationModels. They are one
