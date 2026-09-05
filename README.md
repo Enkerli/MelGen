@@ -103,9 +103,12 @@ git clone https://github.com/Enkerli/enkerli-swift ../../enkerli-swift
 ```
 
 Why it is a separate repo, what the layers are, and what a second plug-in costs:
-[PORTING.md](PORTING.md). The second plug-in exists —
-[ProgGenie](https://github.com/Enkerli/ProgGenie), `aumi PgGn` — and contains no
-theory at all, which is how the extraction is known to have worked.
+[PORTING.md](PORTING.md). Two siblings now stand on the same package —
+[ProgGenie](https://github.com/Enkerli/ProgGenie) (`aumi PgGn`), which contains
+no theory at all, and [Serpe](https://github.com/Enkerli/Serpe) (`aumi Srpe`),
+whose rhythm algorithms went *into* the package while its notation stayed out.
+MelGen gained rhythm replacement from that: `MelodyPattern.performed(on:)` plays
+a line you kept on any mask the suite can express.
 
 ---
 

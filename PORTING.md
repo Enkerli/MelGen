@@ -298,21 +298,44 @@ already reasoned about.
 
 ### What that implies for the work
 
-1. **Port `theory/rhythm.ts` into the foundation's theory layer, held to
-   `vectors/rhythm.json`.** Same method as the chord dictionary: generate or
-   hand-port, then check against the suite's own cases. This is shared code in
-   the strict sense — one implementation, four languages, one vector file.
-2. **Port `applyRhythm` into the carrier layer.** It is the thing that lets
-   MelGen gain rhythm replacement *without becoming Serpe*: a line you kept,
-   performed on a tresillo, is a MelGen feature that costs one function.
-3. **Leave UPI notation to Serpe.** The parser is where Serpe's identity lives,
-   it has almost no vector coverage, and MelGen has no use for a notation
-   language. Swift Serpe can then go somewhere new at the notation and
-   interaction level — which is the point of porting rather than transcribing —
-   while still being provably the same engine underneath.
-4. **Write UPI vectors first, in the monorepo.** One thin file is not enough to
-   hold a port honest. This is a prerequisite for Swift Serpe and it pays off
-   for the Lua/PdLua branch at the same time.
+All four are done, and the order they were done in was 4, 1, 2, 3 — the vectors
+first, which is what step 4 said and which turned out to matter more than it
+sounded.
+
+1. ✅ **`theory/rhythm.ts` is in the foundation's theory layer**, held to
+   `vectors/rhythm.json`. Björklund, Barlow indispensability and its tables, the
+   dilution/concentration transforms, and the codecs. Swift is the fourth
+   language in that contract after TypeScript, Lua and C++.
+
+   Two lines had to be argued about rather than transcribed, and both are the
+   kind of thing a port gets wrong silently. `positionIndispensability` computes
+   a level size that is a *real* number — for length 12 the third level is 12/27
+   — and JavaScript's `%` is a float operation, so writing it as
+   `position % Int(levelSize)` truncates to zero and traps. And the transform's
+   comparator returns "equal" for two positions of the same indispensability,
+   which a stable `Array.sort` resolves by index and Swift's unstable sort does
+   not; position breaks the tie explicitly now.
+
+2. ✅ **`applyRhythm` is in the carrier layer**, both directions — the
+   degree-relative pattern, which survives being replayed over other changes,
+   and the realized notes, which is what is usually in front of you. It is the
+   function this document said "costs one function", and it does.
+
+3. ✅ **UPI notation stayed with Serpe**, and Serpe went somewhere new with it:
+   a rhythm there can be performed as a *chord*, because that plug-in shares a
+   package with a melody plug-in and therefore has 172 chord qualities and
+   taxicab voice leading sitting there. A rhythm tool that can voice a `Dm7♯11`
+   because of who its neighbours are is the dividend this whole document is
+   about, and it is three cases in a switch.
+
+4. ✅ **The UPI vectors were written first**, in the monorepo:
+   `packages/upi/vectors/upi.json`, 100 cases in seven groups, against the
+   3.5 KB of lane-splitting coverage that was there before. Writing them found
+   two undocumented behaviours — `d73` is *seven* steps, not eight, because the
+   width comes from the value's bit length, and `o222` is not a tresillo but a
+   tresillo rotated by one — and the port then found four bugs in itself against
+   them on its first run. Both halves of that are the argument for doing this
+   step before the Swift rather than after.
 
 One convention is non-negotiable and easy to get wrong in a language with no
 prior art here: **first step = leftmost bit = LSB**, and hex/octal digit
@@ -327,7 +350,7 @@ would silently invert.
 | Plugin | Engine | UI | Verdict |
 |---|---|---|---|
 | **ProgGenie** (`aumi PgGn`) | `packages/proggen`, ~1.1k JS; MelGen already ships its tables | 2.7k JS, 1.8k of it one JSX file | ✅ **Built** — [Enkerli/ProgGenie](https://github.com/Enkerli/ProgGenie), §7. `Prst` was the code this table first gave it, and it belongs to the JUCE Progression Studio |
-| **Serpe** (`aumi RPEd`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | Second. Vectors first |
+| **Serpe** (`aumi Srpe`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | ✅ **Built** — [Enkerli/Serpe](https://github.com/Enkerli/Serpe), §5. Vectors first, and they were: 100 cases written into `packages/upi` before any Swift. `RPEd` is the JUCE Rhythm Pattern Explorer's |
 | **PitchFold** (`aumi Pqf1`) | 4,024 LOC C++ quantizer, largely theory MelGen has | 3.1k JS | Third, and the smallest total surface |
 | **MIDIcurator** (`aumi Mcur`) | thin (1,090 LOC shell) | **14.6k JS — the product** | Engine cheap, UI is the plug-in. Wrong shape for a SwiftUI rewrite; best Core ML story (§8) |
 | **DrawnQurve** (`aumi Dqau`) | 25.2k LOC, JUCE-7 native UI + engine | mid-migration | Wait for its WebUI migration, as the suite already says |

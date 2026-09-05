@@ -64,7 +64,30 @@ loop player has, not anything about melody, so it is
 **What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
 three overrides on `PluginViewController`, and its own parameter tree.
 
-**And a second plug-in now writes exactly that file list.**
+**Three plug-ins now stand on it**, and the third is the one that tested the
+layering rather than just using it. [Serpe](https://github.com/Enkerli/Serpe) —
+`aumi Srpe` — is UPI notation in Swift, and building it meant *splitting* an
+engine rather than porting one: the rhythm algorithms (Björklund, Barlow, the
+codecs) went into `enkerli-swift`'s Theory target held to the suite's own
+vectors, and the notation stayed in the plug-in because it is a grammar and
+nobody else wants it. `Scripts/verify.sh upi` reports 59 of 59 notation cases
+passing with none unported.
+
+Two things came out of that worth carrying:
+
+- **The vectors were written first, and they earned it.** `packages/upi` had
+  3.5 KB of coverage against 2,600 lines of engine; it now has 100 cases in
+  seven groups. Writing them found two undocumented behaviours in the
+  JavaScript, and the Swift port then found four bugs in itself against them on
+  its first run. PORTING.md §5 said to do this before the port; it was right for
+  a reason it did not state, which is that the vectors improve the thing they
+  are written about.
+- **A rhythm plug-in can voice a chord**, because it shares a package with a
+  melody plug-in. Three cases in a switch, and no rhythm tool that did not share
+  a foundation would have them. That is the clearest single example of what the
+  layering was for.
+
+**And the second plug-in writes exactly that file list.**
 [ProgGenie](https://github.com/Enkerli/ProgGenie) is `aumi PgGn`, it generates
 chord progressions off the corpus tables, plays them through the same kernel, and
 **contains no theory at all** — no chord dictionary, no pattern format, no UI
@@ -90,7 +113,15 @@ ProgGenie's checkout and vice versa.
   that anyone keeps opinions, which is a change to foundation and wants more
   thought.
 - **`JUCE_INDEPENDENCE.md` has not been written back to** (§7 step 6). It belongs
-  in the monorepo. PORTING.md §7 now carries the measured numbers it needs.
+  in the monorepo. PORTING.md §7 now carries the measured numbers it needs, and
+  §5 carries what a *split* costs as opposed to a port, which is the case that
+  document did not price at all.
+- **Serpe has four named gaps**, all in its README: progressive notation (the
+  monorepo has vectors for all four forms and the plug-in has nowhere to put a
+  trigger index), `R(k,n)` refused on purpose because `Math.random` has no
+  cross-language contract, poly lanes whose vectors have existed since before
+  the port, and an analysis readout that is one line where the monorepo has six
+  vector-covered measures.
 - **The `public` sweep has not been narrowed**, and the UI kit still carries
   MelGen's name in its types (`MelGenTheme`, `MelGenMetrics`) from inside a
   package two plug-ins use. Honest about where it came from; worth renaming when
