@@ -55,11 +55,15 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MELODY="$REPO/MelGenExtension/Melody"
-# The kernel is the package's `Kernel` target now — header-only C++ with an
-# Objective-C++ compile unit, because the render thread is the one place in
-# this codebase that is not Swift.
-KERNEL="$REPO/EnkerliSwift/Sources/Kernel/include"
-PACKAGE="$REPO/EnkerliSwift"
+# The foundation is a sibling checkout, the way music-suite and enkerli-juce are
+# — PORTING.md §7 step 3. Override with ENKERLI_SWIFT=... ; without it, nothing
+# here can run, which is deliberate: a suite that quietly passed against a stale
+# in-repo copy of the foundation would be worse than one that refuses.
+PACKAGE="${ENKERLI_SWIFT:-$REPO/../../enkerli-swift}"
+# The kernel is that package's `Kernel` target — header-only C++ with an
+# Objective-C++ compile unit, because the render thread is the one place in this
+# codebase that is not Swift.
+KERNEL="$PACKAGE/Sources/Kernel/include"
 MUSIC_SUITE="${MUSIC_SUITE:-$REPO/../../music-suite}"
 
 # The foundation is a Swift package now (PORTING.md §7 step 4), so the suites
@@ -75,6 +79,13 @@ MUSIC_SUITE="${MUSIC_SUITE:-$REPO/../../music-suite}"
 PKG_BIN=""
 build_package() {
     [ -n "$PKG_BIN" ] && return 0
+    if [ ! -f "$PACKAGE/Package.swift" ]; then
+        echo "FAIL: no foundation package at $PACKAGE"
+        echo "      git clone https://github.com/Enkerli/enkerli-swift ../../enkerli-swift"
+        echo "      (or set ENKERLI_SWIFT=/path/to/enkerli-swift)"
+        status=1
+        return 1
+    fi
     swift build --package-path "$PACKAGE" >/dev/null || {
         echo "FAIL: the foundation package did not build"; status=1; return 1; }
     PKG_BIN="$(swift build --package-path "$PACKAGE" --show-bin-path)"

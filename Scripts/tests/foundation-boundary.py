@@ -53,13 +53,17 @@ from __future__ import annotations
 
 import argparse
 import collections
+import os
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 EXTENSION = REPO / "MelGenExtension"
-PACKAGE = REPO / "EnkerliSwift" / "Sources"
+# A sibling checkout, the way enkerli-juce is (PORTING.md §7 step 3). Override
+# with ENKERLI_SWIFT=... ; without it there is nothing to check the layering of.
+PACKAGE = Path(os.environ.get("ENKERLI_SWIFT",
+                              REPO.parent.parent / "enkerli-swift")) / "Sources"
 # The package's own directory names are the layer names, so a file's target is
 # its layer and there is nothing to keep in step by hand.
 PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier",
@@ -153,7 +157,7 @@ def layer_of(path: Path) -> str:
     parts = path.parts
     # A package source is whatever target it is in. Nothing to keep in step.
     for directory, layer in PACKAGE_LAYERS.items():
-        if directory in parts and PACKAGE.name in parts:
+        if directory in parts and "Sources" in parts:
             return layer
     if "Common" in parts or "DSP" in parts or "Parameters" in parts:
         return SHELL
@@ -177,14 +181,26 @@ def main() -> None:
                for p in sorted(list(EXTENSION.rglob("*.swift")) + list(PACKAGE.rglob("*.swift")))}
     if not sources:
         sys.exit(f"error: no Swift sources under {EXTENSION} or {PACKAGE}")
+    if not PACKAGE.is_dir():
+        sys.exit(f"error: no foundation package at {PACKAGE.parent} — clone "
+                 f"https://github.com/Enkerli/enkerli-swift beside this checkout, "
+                 f"or set ENKERLI_SWIFT")
 
-    # Where each top-level type is declared. First declaration wins; extensions
-    # are not declarations, which is deliberate — an extension in the app on a
-    # foundation type is not the app owning it.
-    declared_in: dict[str, Path] = {}
+    # Where each type is declared. Extensions are not declarations, which is
+    # deliberate — an extension in the app on a foundation type is not the app
+    # owning it.
+    #
+    # *Every* declarer is recorded, not the first one, because the regex matches
+    # nested types too and two of those can share a simple name:
+    # `TakeFacets.Density` in the carrier and `MelodyIdea.Density` in the app are
+    # different types spelled the same. Keeping only the first made the answer
+    # depend on which directory sorted earlier, which is a fine thing to discover
+    # by moving the foundation into a sibling checkout and watching two seams
+    # appear out of nowhere, and a terrible thing to leave in a check.
+    declared_in: dict[str, list[Path]] = {}
     for path, text in sources.items():
         for name in DECLARATION.findall(text):
-            declared_in.setdefault(name, path)
+            declared_in.setdefault(name, []).append(path)
 
     lines = collections.Counter()
     for path in sources:
@@ -193,9 +209,18 @@ def main() -> None:
     edges: list[tuple[Path, Path, str]] = []
     for path, text in sources.items():
         for name in sorted(set(CAPITALIZED.findall(text))):
-            home = declared_in.get(name)
-            if home is not None and home != path:
-                edges.append((path, home, name))
+            homes = declared_in.get(name, [])
+            if path in homes:
+                # This file declares it. `TakeFacets.Density` naming `Density`
+                # is not a reference to `MelodyIdea.Density` in the app, however
+                # the two sort.
+                continue
+            if not homes:
+                continue
+            # A name declared in more than one place is an edge to the *lowest*
+            # of them: if any file at or below this layer declares it, naming it
+            # is not a reach upward, whichever one the compiler actually resolves.
+            edges.append((path, min(homes, key=lambda h: RANK[layer_of(h)]), name))
 
     print(f"  {len(sources)} sources, {len(declared_in)} top-level types, "
           f"{len(edges)} cross-file references")

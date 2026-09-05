@@ -90,6 +90,23 @@ to a device.
 
 ---
 
+## The foundation
+
+About 40% of this plug-in is not this plug-in. Chord theory, the pattern
+interchange format, the SwiftUI kit and the AU shell with its C++ kernel live in
+[`enkerli-swift`](https://github.com/Enkerli/enkerli-swift) as six stacked
+targets, and MelGen is one plug-in standing on them. Clone it beside this repo
+before building anything:
+
+```bash
+git clone https://github.com/Enkerli/enkerli-swift ../../enkerli-swift
+```
+
+Why it is a separate repo, what the layers are, and what a second plug-in costs:
+[PORTING.md](PORTING.md).
+
+---
+
 ## Verifying
 
 Xcode's test targets can't reach the DSP kernel (C++ inside the extension), the

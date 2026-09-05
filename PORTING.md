@@ -467,13 +467,26 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    already do, so the Lua and C++ consumers inherit it. The agreement is
    currently a fact about two checkouts on one machine; a vector file is what
    makes it a contract.
-3. **Decide what the foundation is called and where it lives** — ✅ *decided
-   2026-09-05*. A local Swift package in this repo first, extracted to its own
-   GitHub repo once it has stopped moving and before the first sibling plug-in
-   needs it — the ordinary answer this step already named, chosen because the
-   plug-ins are going into separate repos and a package that is already a
-   package moves cleanly. The targets are named after their music-suite
-   counterparts where they have one (§2's right-hand column).
+3. **Decide what the foundation is called and where it lives** — ✅ *done
+   2026-09-05*. It is [`enkerli-swift`](https://github.com/Enkerli/enkerli-swift),
+   a sibling checkout the way `enkerli-juce` is, and the targets are named after
+   their music-suite counterparts where they have one (§2's right-hand column).
+
+   Built as a local package in this repo first and extracted once it stopped
+   moving, which is the ordinary answer this step already named and which turned
+   out to matter: the extraction was `git subtree split`, a clone and one
+   `relativePath` edit, because a package that is already a package moves
+   cleanly. Everything that made it hard happened while it was still local.
+
+   Two things the extraction cost, both worth knowing before doing it again.
+   **History does not follow.** `subtree split` follows a directory, and that
+   directory was two commits old, so the months behind `ChordDictionary.swift`
+   and the rest stayed in this repo. The new README says where to look rather
+   than pretending otherwise. **And every path in `Scripts/` had to learn about
+   a sibling**, the way they already knew about `music-suite` — with the same
+   `ENKERLI_SWIFT=...` override, and a failure rather than a skip when it is
+   missing, because a suite that quietly passed against a stale in-repo copy of
+   the foundation would be worse than one that refuses.
 4. **Move the foundation into a Swift package target**, MelGen depending on it,
    no behaviour change. ✅ *Done 2026-09-05.* `EnkerliSwift` has `Core`,
    `Theory`, `Carrier`, `UI` and `Shell` as separate targets, plus `Kernel` for

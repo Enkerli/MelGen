@@ -17,11 +17,15 @@ import argparse
 import json
 import re
 import sys
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MUSIC_SUITE = REPO_ROOT.parent.parent / "music-suite"
-OUTPUT = REPO_ROOT / "EnkerliSwift" / "Sources" / "Theory" / "ChordDictionary+Generated.swift"
+# The foundation is a sibling checkout (PORTING.md §7 step 3), so the generated
+# dictionary lands there rather than in this repo. Override with ENKERLI_SWIFT.
+PACKAGE = Path(os.environ.get("ENKERLI_SWIFT", REPO_ROOT.parent.parent / "enkerli-swift"))
+OUTPUT = PACKAGE / "Sources" / "Theory" / "ChordDictionary+Generated.swift"
 
 # One dictionary entry per line in chords.ts, e.g.
 #   { key: "maj7", fullName: "major seventh", displayName: "∆", pcs: [0,4,7,11], ... }

@@ -97,7 +97,11 @@ def main():
         return 0
 
     generated = build(source, args.top)
-    target = os.path.join(repo, "EnkerliSwift", "Sources", "Theory",
+    # The foundation is a sibling checkout (PORTING.md §7 step 3).
+    package = os.environ.get(
+        "ENKERLI_SWIFT",
+        os.path.join(os.path.dirname(os.path.dirname(repo)), "enkerli-swift"))
+    target = os.path.join(package, "Sources", "Theory",
                           "ProgressionTables+Generated.swift")
 
     if args.check:

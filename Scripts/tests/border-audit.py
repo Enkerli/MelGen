@@ -25,15 +25,17 @@ from __future__ import annotations
 
 import re
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-# The UI kit is the package's `UI` target now; what is left under
-# MelGenExtension/UI is MelGen's own screen. Both are scanned, because the
-# rule this checks is about what a person sees, not about which module
-# drew it.
-UI_DIRS = [ROOT / "MelGenExtension" / "UI",
-           ROOT / "EnkerliSwift" / "Sources" / "UI"]
+# The UI kit is the `enkerli-swift` package's `UI` target now, a sibling
+# checkout (PORTING.md §7 step 3); what is left under MelGenExtension/UI is
+# MelGen's own screen. Both are scanned, because the rule this checks is about
+# what a person sees, not about which module drew it. Override with
+# ENKERLI_SWIFT=...
+PACKAGE = Path(os.environ.get("ENKERLI_SWIFT", ROOT.parent.parent / "enkerli-swift"))
+UI_DIRS = [ROOT / "MelGenExtension" / "UI", PACKAGE / "Sources" / "UI"]
 
 # What makes a declaration interactive. Deliberately generous: the rule is about
 # borders on things that are plainly containers, and a false pass costs less

@@ -828,7 +828,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		EN5W000000LOCALPACKAGE0000 /* XCLocalSwiftPackageReference "EnkerliSwift" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = EnkerliSwift;
+			relativePath = ../../enkerli-swift;
 		};
 /* End XCLocalSwiftPackageReference section */
 

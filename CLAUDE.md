@@ -29,8 +29,21 @@ If you cannot (Xcode's built-in assistant can't), say so plainly and ask for it
 to be run rather than reporting a change as verified — building the two schemes
 is necessary and is not sufficient.
 
-Two suites need a `music-suite` checkout, because they check this port against
-the TypeScript it was ported from:
+**Nothing runs without the foundation checked out beside this repo.** It is its
+own repository now — the four lower layers plus the AU shell live there, and this
+repo is one plug-in standing on them:
+
+```bash
+git clone https://github.com/Enkerli/enkerli-swift ../../enkerli-swift
+```
+
+`verify.sh` and the Xcode project both look in `$REPO/../../enkerli-swift`;
+override with `ENKERLI_SWIFT=...`. Without it every Swift suite fails with that
+line printed, deliberately — a suite that quietly passed against a stale in-repo
+copy of the foundation would be worse than one that refuses.
+
+Two more suites need a `music-suite` checkout, because they check this port
+against the TypeScript it was ported from:
 
 ```bash
 git clone https://github.com/Enkerli/music-suite ../../music-suite

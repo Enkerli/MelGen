@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import re
 import sys
+import os
 from pathlib import Path
 
-THEME = (Path(__file__).resolve().parent.parent.parent
-         / "EnkerliSwift" / "Sources" / "UI" / "MelGenTheme.swift")
+ROOT = Path(__file__).resolve().parent.parent.parent
+# The theme is the `enkerli-swift` package's, a sibling checkout (PORTING.md
+# §7 step 3). Override with ENKERLI_SWIFT=...
+PACKAGE = Path(os.environ.get("ENKERLI_SWIFT", ROOT.parent.parent / "enkerli-swift"))
+THEME = PACKAGE / "Sources" / "UI" / "MelGenTheme.swift"
 
 TEXT_MIN = 4.5
 COMPONENT_MIN = 3.0
