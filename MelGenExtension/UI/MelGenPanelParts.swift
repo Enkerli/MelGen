@@ -34,8 +34,13 @@ enum PanelTab: String, CaseIterable, Sendable {
 /// looks like an alert gets dismissed rather than read. It shows the action, the
 /// fact that makes it the action, and where it lives — because "Setups" means
 /// nothing until you are told it is at the top of Decide.
+///
+/// Takes the two strings rather than the `NextStep` that produced them, because
+/// the row draws advice and advice is text. That keeps the ladder of rungs out
+/// of the UI kit, which has no business knowing one exists.
 struct NextStepRow: View {
-    let step: NextStep
+    let title: String
+    let reason: String
     let placeName: String
     let theme: MelGenTheme
     let action: () -> Void
@@ -49,11 +54,11 @@ struct NextStepRow: View {
                     .padding(.top, 1)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(step.title)
+                    Text(title)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(theme.text)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(step.reason)
+                    Text(reason)
                         .font(.system(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -78,8 +83,8 @@ struct NextStepRow: View {
                     .strokeBorder(theme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(step.title)
-        .accessibilityValue("\(step.reason) In \(placeName).")
+        .accessibilityLabel(title)
+        .accessibilityValue("\(reason) In \(placeName).")
         .accessibilityHint("Opens it")
     }
 }

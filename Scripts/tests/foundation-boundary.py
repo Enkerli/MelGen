@@ -99,6 +99,7 @@ CARRIER_FILES = {
 UIKIT_FILES = {
     "MelGenTheme.swift",
     "PianoRoll.swift",
+    "MiniRoll.swift",
     "ParameterSlider.swift",
     "MomentaryButton.swift",
     "ActionBadge.swift",
@@ -155,10 +156,6 @@ SEAMS: dict[tuple[str, str], str] = {
     ("CurationView.swift", "GenerationRecord"):
         "the take record. The view wants four fields of it — take a small "
         "view-model struct instead.",
-    ("CurationView.swift", "MelodyVariant"):
-        "variant naming — pass strings, not the variant type",
-    ("MelGenPanelParts.swift", "NextStep"):
-        "'what to do now' — the panel should take a String",
 }
 
 # Files that are melody-specific by construction and are NOT proposed for the

@@ -344,8 +344,15 @@ struct ReviewRow: View {
 /// a word for, and there was no way to say so. Keeping one records it as its own
 /// take, so it joins the library and conditions what comes next, exactly as a
 /// generated line does.
+/// Takes the four things it draws rather than the `MelodyVariant` they came
+/// from. The row is a name and three scores; naming the type here would put the
+/// whole transform vocabulary in the UI kit to render a label and a chip.
 struct VariantRow: View {
-    let variant: MelodyVariant
+    let transform: String
+    let summary: String
+    let novelty: Double
+    let variety: Double
+    let styleDistance: Double
     let theme: MelGenTheme
     let onAudition: () -> Void
     let onMorphTarget: () -> Void
@@ -362,15 +369,15 @@ struct VariantRow: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(theme.textMuted)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(variant.transform)
+                        Text(transform)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(theme.text)
                             .lineLimit(1)
                         HStack(spacing: 6) {
-                            scoreChip("new", variant.novelty)
-                            scoreChip("varied", variant.variety)
-                            if variant.styleDistance > 0 {
-                                scoreChip("from you", variant.styleDistance)
+                            scoreChip("new", novelty)
+                            scoreChip("varied", variety)
+                            if styleDistance > 0 {
+                                scoreChip("from you", styleDistance)
                             }
                         }
                     }
@@ -379,8 +386,8 @@ struct VariantRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(variant.transform)
-            .accessibilityValue(variant.summary)
+            .accessibilityLabel(transform)
+            .accessibilityValue(summary)
             .accessibilityHint("Plays this variant")
 
             Button(action: onMorphTarget) {
@@ -391,7 +398,7 @@ struct VariantRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Morph toward \(variant.transform)")
+            .accessibilityLabel("Morph toward \(transform)")
         }
         .padding(.horizontal, MelGenMetrics.space2)
         .padding(.vertical, 2)

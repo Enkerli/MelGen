@@ -43,9 +43,9 @@ webapps run in any browser from any year. Nothing about that changes.
 
 ## 1. What is measured, and what it says
 
-`Scripts/verify.sh boundary` strips comments and string literals from all 73
-Swift sources in the extension, finds all 228 top-level type declarations, and
-calls it an edge whenever one file names a type another declares — 436
+`Scripts/verify.sh boundary` strips comments and string literals from all 74
+Swift sources in the extension, finds all 229 top-level type declarations, and
+calls it an edge whenever one file names a type another declares — 440
 cross-file references. Layered as below, and today it reports:
 
 ```
@@ -53,21 +53,21 @@ cross-file references. Layered as below, and today it reports:
     theory   2,834 lines  (foundation)
    carrier   2,772 lines  (foundation)
      shell     909 lines  (foundation)
-        ui   2,017 lines  (foundation)
-       app  15,957 lines  (MelGen)
-             8,578 lines  foundation total (35%)
+        ui   2,196 lines  (foundation)
+       app  16,026 lines  (MelGen)
+             8,757 lines  foundation total (35%)
 
-  PASS  no upward references beyond the 12 known seams
-  PASS  every listed seam is still real (12 to cut)
+  PASS  no upward references beyond the 10 known seams
+  PASS  every listed seam is still real (10 to cut)
 ```
 
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
 plug-in would stand on, and when this was first measured it was held together by
-nineteen places where a lower layer reached up into the melody app. Seven have
+nineteen places where a lower layer reached up into the melody app. Nine have
 since been cut (§3) and the foundation has grown from 32% to 35%, because
 deciding a file is foundation moves its lines as well as closing its seams. That
 number is the real answer to "could we port other plug-ins": not a yes or a no,
-but *twelve named cuts, then yes.*
+but *ten named cuts, then yes.*
 
 The check ships and runs in `verify.sh` because the layering is not enforced by
 the compiler — one target, one module, every type visible to every file — so
@@ -99,8 +99,8 @@ It is the work the suite was already set up to do.
 | **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the progression generator and its corpus tables | 2,834 | the Swift port of `@enkerli/theory` (+ `proggen`) |
 | **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, SMF read/write | 2,772 | the part with no equivalent in the suite — invented here |
 | **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 909 | the Swift `enkerli-juce` |
-| **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the pinned verb bar | 2,017 | the Swift `@enkerli/ui` |
-| **app** | MelGen | 15,957 | — |
+| **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the mini roll, the pinned verb bar | 2,196 | the Swift `@enkerli/ui` |
+| **app** | MelGen | 16,026 | — |
 
 Two observations worth more than the table.
 
@@ -119,7 +119,7 @@ travel is worth keeping in view: porting is not only outward.
 
 ---
 
-## 3. The seams — seven cut, twelve to go
+## 3. The seams — nine cut, ten to go
 
 They are listed in `Scripts/tests/foundation-boundary.py`, each with a note on
 how it gets cut, and that list is the work order rather than a copy of one.
@@ -162,7 +162,7 @@ out to be a thing in the wrong place rather than a coupling to break:
   file that first needed it. It becomes `ChordProgression.slice(from:to:)`,
   where a reader would look for it.
 
-That is the pattern worth naming for the remaining twelve: **an upward reference
+That is the pattern worth naming for the remaining ten: **an upward reference
 is usually a file in the wrong place, not a dependency that has to be broken.**
 Three of these four cuts were moves, and none changed a line of logic.
 
@@ -357,9 +357,28 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    from 19 to 18 and `verify.sh boundary` still passes, which is the loop
    working. Then `MelodyPattern` was ruled the interchange format, which closed
    five more and dragged `TakeSource`, `capDeadAir` and `slice` into the places
-   they belonged — 19 → 12, and the foundation grew to 35%. **Next:** the
-   `ChordVoicing → DegreeHistogram` inversion, which is the only remaining seam
-   that is a design decision rather than a move.
+   they belonged — 19 → 12, and the foundation grew to 35%.
+
+   Then two view seams, on the pattern §3 names: a view that reaches up for a
+   type it only reads strings and numbers out of does not need the type.
+   `NextStepRow` takes a title and a reason instead of a `NextStep`, and
+   `VariantRow` takes a name and three scores instead of a `MelodyVariant`.
+   Both are pure — the call site now does the unwrapping the row used to do,
+   and nothing else changed. 12 → 10.
+
+   `MiniRoll` was also classified in the same pass, as `ui` rather than the
+   `app` it had been defaulting to. It only names `SequencedNote`,
+   `ChordProgression`, `MelGenTheme`, `MelodyAnalyser` and `MelGenMetrics`, all
+   foundation, so it passes clean and a sibling plug-in inherits a
+   glance-at-the-take drawing beside the reading one. It reached this state by
+   landing on `layout-pass` while the boundary check was being written on
+   another branch, which is worth knowing about the check: it verifies that the
+   manifest names files that exist, **not** that every file is named, so a new
+   UI file still defaults to `app` in silence.
+
+   **Next:** the `ChordVoicing → DegreeHistogram` inversion, which is the only
+   remaining seam that is a design decision rather than a move. The other nine
+   are moves, and `foundation-boundary.py` names the remedy for each.
 2. **Hold the port to ProgGenie's own answers.** ✅ *run, and they agree* —
    `verify.sh proggen` compares the deterministic half: how a corpus label
    splits, where its numeral lands in semitones, and what MelGen refuses to

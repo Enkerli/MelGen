@@ -194,7 +194,8 @@ struct MelGenExtensionMainView: View {
                 // not a property of either half — and because the two things it
                 // most often points at are drawers you can't see from here.
                 if let step = nextStep {
-                    NextStepRow(step: step,
+                    NextStepRow(title: step.title,
+                                reason: step.reason,
                                 placeName: placeName(of: step.destination),
                                 theme: theme) { go(to: step.destination) }
                 }
@@ -3335,7 +3336,11 @@ struct MelGenExtensionMainView: View {
                     VStack(spacing: 3) {
                         ForEach(variants.prefix(8)) { variant in
                             VariantRow(
-                                variant: variant,
+                                transform: variant.transform,
+                                summary: variant.summary,
+                                novelty: variant.novelty,
+                                variety: variant.variety,
+                                styleDistance: variant.styleDistance,
                                 theme: theme,
                                 onAudition: { play(variant) },
                                 onMorphTarget: {
