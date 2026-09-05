@@ -326,7 +326,7 @@ would silently invert.
 
 | Plugin | Engine | UI | Verdict |
 |---|---|---|---|
-| **ProgGenie** (`aumi Prst`) | `packages/proggen`, ~1.1k JS; MelGen already ships its tables | 2.7k JS, 1.8k of it one JSX file | **Pathfinder** — §7 |
+| **ProgGenie** (`aumi PgGn`) | `packages/proggen`, ~1.1k JS; MelGen already ships its tables | 2.7k JS, 1.8k of it one JSX file | ✅ **Built** — [Enkerli/ProgGenie](https://github.com/Enkerli/ProgGenie), §7. `Prst` was the code this table first gave it, and it belongs to the JUCE Progression Studio |
 | **Serpe** (`aumi RPEd`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | Second. Vectors first |
 | **PitchFold** (`aumi Pqf1`) | 4,024 LOC C++ quantizer, largely theory MelGen has | 3.1k JS | Third, and the smallest total surface |
 | **MIDIcurator** (`aumi Mcur`) | thin (1,090 LOC shell) | **14.6k JS — the product** | Engine cheap, UI is the plug-in. Wrong shape for a SwiftUI rewrite; best Core ML story (§8) |
@@ -550,12 +550,66 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    What is left in the extension is MelGen: its session, its root view, its three
    overrides on `PluginViewController`, and its own parameter tree. That is the
    file list a sibling plug-in writes.
-5. **Build ProgGenie as a second AUv3** on that package: new triple (`aumi
-   Prst`, checked by `component-identity.py` — which cannot see a Swift sibling
-   yet, §9), progression generation, playback through the same kernel,
-   per-transition curation as the new work.
+5. **Build ProgGenie as a second AUv3** on that package. ✅ *Done 2026-09-05* —
+   [Enkerli/ProgGenie](https://github.com/Enkerli/ProgGenie). Both schemes build
+   on iOS and macOS, and its own `Scripts/verify.sh` passes.
+
+   **It has no theory in it.** No chord dictionary, no pattern format, no UI kit,
+   no shell, no kernel — which is the whole of what this step was for. Six files
+   and about 770 lines against the package's 10,624:
+
+   | File | Lines | What it is |
+   |---|---:|---|
+   | `AudioUnit/ProgGenieAudioUnit.swift` | ~85 | the session, and what the kernel plays out of it |
+   | `AudioUnit/AudioUnitViewController.swift` | ~35 | three overrides |
+   | `AudioUnit/Parameters.swift` | ~80 | the tree, over the kernel's own addresses |
+   | `Progression/ProgGenieState.swift` | ~170 | what to generate, and what was |
+   | `Progression/TransitionCuration.swift` | ~120 | what you thought of it |
+   | `UI/ProgGenieMainView.swift` | ~280 | one screen |
+
+   **The triple is `aumi PgGn`, not `Prst`.** §6's table said `Prst`, and that is
+   wrong: `Prst` belongs to the JUCE Progression Studio, which ships an AUv3
+   among its formats, so the two would collide in exactly the way
+   `component-identity.py` exists to prevent. A new code means both can be
+   installed at once and compared, which is the only way the trade in §0 gets
+   tested rather than argued about. `PgGn` follows MelGen's `MlGn` — the
+   consonants of the name.
+
+   **The product delta is built**, and it is the reason this is a plug-in rather
+   than a mode. MelGen curates takes; ProgGenie curates *transitions*, with
+   multipliers rather than scores so an unjudged profile is a no-op, clamped to
+   [1/16, 16], symmetric in log space so "never" and "always" cost the same
+   number of taps, and a rating of a whole progression spread thinner than a
+   pointed judgement of one change. It steers by rejection sampling over twelve
+   candidates, which is approximate and is written down as approximate; its suite
+   measures whether it steers at all, and over sixty seeds `IIm7 → V7` goes from
+   6 appearances unjudged to 47 judged.
+
+   What is not built: corpus browsing, the other thing §7 lists. And none of it
+   has been heard on a device.
 6. **Report back into `JUCE_INDEPENDENCE.md`** with what it actually cost, so
-   §3's estimates stop being estimates.
+   §3's estimates stop being estimates. **Not written yet** — it belongs in the
+   monorepo, not here. What it has to say is now measurable rather than
+   estimated, and the numbers are these:
+
+   - **The foundation is 10,624 lines, 41% of what MelGen was.** §3 priced a
+     native AUv3 shell at "+3–4 weeks foundation, then days per app". The
+     foundation existed already, for other reasons; what this cost was cutting
+     nineteen upward references and two mechanical passes over 10,624 lines.
+   - **The second plug-in is 770 lines**, of which 120 are the two AU subclasses.
+     "Days per app" survives contact, for an app whose engine was already ported.
+     ProgGenie is the *easiest* case and this number should be read that way:
+     Serpe has to bring its own algorithms, and §5 says its vectors come first.
+   - **The shell is 906 lines against `enkerli-juce`'s 921.** That comparison
+     was the strongest single claim in §2 and it survived the move, which is
+     worth more than the number: the amount of platform glue a plug-in needs is
+     about a thousand lines whichever framework you pick.
+   - **What the split found is the part an estimate cannot contain.** Three
+     couplings nothing was going to notice — two hidden in extensions, one
+     hidden in a filename, one in a rank comparison — and each was found by
+     trying to build the foundation separately rather than by reading it. That
+     is an argument for doing the extraction before the second plug-in, not a
+     line item.
 
 Steps 1 and 2 de-risk everything after them, and neither needs a Mac — which is
 why they are the two that are done.

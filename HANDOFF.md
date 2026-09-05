@@ -62,12 +62,39 @@ loop player has, not anything about melody, so it is
 `PluginParameterAddresses.h` now and no logic changed.
 
 **What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
-three overrides on `PluginViewController`, and its own parameter tree — the file
-list a sibling plug-in writes. That makes §7 step 5, ProgGenie, the next thing,
-and §9's warning the thing to deal with first: `component-identity.py` finds
-sibling plug-in codes by globbing `*/CMakeLists.txt`, and a Swift AUv3 has an
-`Info.plist` and no CMakeLists, so the second Swift plug-in is invisible to the
-collision check. That check exists because the collision already happened once.
+three overrides on `PluginViewController`, and its own parameter tree.
+
+**And a second plug-in now writes exactly that file list.**
+[ProgGenie](https://github.com/Enkerli/ProgGenie) is `aumi PgGn`, it generates
+chord progressions off the corpus tables, plays them through the same kernel, and
+**contains no theory at all** — no chord dictionary, no pattern format, no UI
+kit, no shell. Six files, about 770 lines against the package's 10,624, of which
+the two AU subclasses are 120. That is PORTING.md §7 step 5, and the thing it was
+for: "if ProgGenie ends up with its own copy of the chord dictionary, the
+extraction failed."
+
+Its triple is `PgGn` rather than the `Prst` §6 first assigned, because `Prst`
+belongs to the JUCE Progression Studio and its AUv3 build — the exact collision
+`component-identity.py` exists to prevent, which is also why that check learned
+to read Swift siblings before any of this. It reads MelGen's `Info.plist` from
+ProgGenie's checkout and vice versa.
+
+**What is not done**, in ProgGenie and here:
+
+- **Nothing has been heard on a device**, in either plug-in. ProgGenie builds and
+  its suites pass; MelGen's bass mode has never been heard at all, and design
+  pass 3's L4 question still needs a session at AUM's half height.
+- **ProgGenie's curation steers by rejection sampling** — twelve candidates, keep
+  the one the profile likes. Approximate, and written down as approximate.
+  Weighting the distribution directly would mean the shared generator learning
+  that anyone keeps opinions, which is a change to foundation and wants more
+  thought.
+- **`JUCE_INDEPENDENCE.md` has not been written back to** (§7 step 6). It belongs
+  in the monorepo. PORTING.md §7 now carries the measured numbers it needs.
+- **The `public` sweep has not been narrowed**, and the UI kit still carries
+  MelGen's name in its types (`MelGenTheme`, `MelGenMetrics`) from inside a
+  package two plug-ins use. Honest about where it came from; worth renaming when
+  a third makes it actively wrong rather than merely historical.
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and

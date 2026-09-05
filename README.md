@@ -103,7 +103,9 @@ git clone https://github.com/Enkerli/enkerli-swift ../../enkerli-swift
 ```
 
 Why it is a separate repo, what the layers are, and what a second plug-in costs:
-[PORTING.md](PORTING.md).
+[PORTING.md](PORTING.md). The second plug-in exists —
+[ProgGenie](https://github.com/Enkerli/ProgGenie), `aumi PgGn` — and contains no
+theory at all, which is how the extraction is known to have worked.
 
 ---
 
