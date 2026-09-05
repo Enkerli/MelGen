@@ -26,6 +26,9 @@
 //
 
 import Foundation
+import Carrier
+import Core
+import Theory
 
 /// A comping pattern: when to play, and what to play when you do.
 struct CompingFigure: Hashable, Sendable, Identifiable {

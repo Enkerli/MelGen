@@ -1,6 +1,7 @@
 // Runs the same symbols through MelGen's Swift port and prints the reference
 // fields as JSON, for diffing against the TypeScript output.
 import Foundation
+import Theory
 
 let symbols = [
     "C", "Cmaj7", "C∆", "CM7", "Cmaj9", "C6", "C69", "Cadd9", "Cadd11",

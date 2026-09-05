@@ -20,6 +20,8 @@
 // bass is, and a chord change with no note under it leaves the harmony unstated
 // — which no amount of right notes afterwards recovers.
 import Foundation
+import Carrier
+import Theory
 
 extension Sequence where Element == Double {
     /// Every neighbouring pair, for checking that a sweep is monotonic.

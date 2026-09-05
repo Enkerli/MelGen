@@ -7,6 +7,8 @@
 // and that the honest measure of how much order-2 it can actually use is
 // reported rather than hidden.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

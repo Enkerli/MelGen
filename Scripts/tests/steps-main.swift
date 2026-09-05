@@ -6,6 +6,8 @@
 // anything. The other claim is the Samchillian's — that the same figure over
 // different harmony is the same *shape*, played on that harmony's notes.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

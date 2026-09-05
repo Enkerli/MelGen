@@ -18,6 +18,7 @@
 //
 
 import Foundation
+import Theory
 
 /// One request's worth of a progression.
 struct MelodyChunk: Equatable {

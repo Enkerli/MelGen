@@ -34,6 +34,8 @@
 //
 
 import Foundation
+import Carrier
+import Theory
 
 /// A phrase someone played, with what it cost to write it down.
 struct CapturedPhrase: Sendable, Identifiable {

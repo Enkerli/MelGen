@@ -7,6 +7,9 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Carrier
+import Theory
+import UI
 
 // No #Preview here: Xcode can't host previews inside a
 // "com.apple.AudioUnit-UI" app extension, so the layout is checked in a host.

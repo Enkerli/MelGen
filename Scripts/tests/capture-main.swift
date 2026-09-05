@@ -7,6 +7,8 @@
 // themselves phrase it, and quantizing to the grid without silently absorbing
 // how far off the grid it was.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

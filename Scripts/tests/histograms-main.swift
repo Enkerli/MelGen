@@ -14,6 +14,9 @@
 // than the last, which is the property the minorness dial is built on rather
 // than a table somebody typed.
 import Foundation
+import Carrier
+import Core
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

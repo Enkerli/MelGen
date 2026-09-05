@@ -11,6 +11,8 @@
 // suite compiles `TakeAdvance.swift` without it and would fail to link if it
 // reached for one.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

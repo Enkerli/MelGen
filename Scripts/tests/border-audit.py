@@ -28,7 +28,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-UI = ROOT / "MelGenExtension" / "UI"
+# The UI kit is the package's `UI` target now; what is left under
+# MelGenExtension/UI is MelGen's own screen. Both are scanned, because the
+# rule this checks is about what a person sees, not about which module
+# drew it.
+UI_DIRS = [ROOT / "MelGenExtension" / "UI",
+           ROOT / "EnkerliSwift" / "Sources" / "UI"]
 
 # What makes a declaration interactive. Deliberately generous: the rule is about
 # borders on things that are plainly containers, and a false pass costs less
@@ -76,7 +81,7 @@ def check() -> int:
     failures = 0
     checked = 0
 
-    for path in sorted(UI.glob("*.swift")):
+    for path in sorted(p for d in UI_DIRS for p in d.glob("*.swift")):
         lines = path.read_text().split("\n")
         source = "\n".join(lines)
         for name, start, end in declarations(source):

@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import Carrier
 
 struct PatternExample: Codable, Hashable {
     /// Leadsheet progression the pattern was played over, e.g. "Dm7 G7|C∆".

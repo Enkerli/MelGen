@@ -1,10 +1,29 @@
 #!/usr/bin/env python3
-"""Checks the seam a second plug-in would have to cut along.
+"""Checks the seam a second plug-in is built on.
 
 PORTING.md argues that MelGen is really four layers stacked — an AU shell, a
 theory layer, a carrier layer and a UI kit, with the melody app on top — and
 that a sibling plug-in (ProgGenie first) reuses the bottom four. That argument
 is worth exactly as much as it is checkable, so this checks it.
+
+Four of the five layers are now separate targets of the `EnkerliSwift` package,
+which means the compiler refuses an upward reference before this script ever
+runs. That does not make the script redundant, and it is worth being clear about
+what is left of its job:
+
+  - **The shell is not a package target yet** (see Package.swift for the three
+    reasons), so shell → app is still only checked here.
+  - **The compiler cannot see a sibling violation.** UI and Shell are siblings
+    by rank, and Package.swift expresses that by giving neither a dependency on
+    the other — but the moment someone adds one, the build goes green. This
+    checks that they stay siblings. It got that wrong itself until the package
+    was built: the rank test only failed on a *strictly* higher rank, so a
+    `ui → shell` edge passed silently, and two Xcode-template controls had been
+    binding to `ObservableAUParameter` the whole time.
+  - **The counts.** PORTING.md §1's percentage is this script's output.
+  - **Proposing a move.** Editing the manifest and running it says what a
+    reclassification would cost before a file is touched — which is how three of
+    the last four cuts were decided.
 
 The method is a crude but honest one: strip comments and string literals from
 every Swift source in the extension, find every top-level type declaration, and
@@ -40,6 +59,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 EXTENSION = REPO / "MelGenExtension"
+PACKAGE = REPO / "EnkerliSwift" / "Sources"
+# The package's own directory names are the layer names, so a file's target is
+# its layer and there is nothing to keep in step by hand.
+PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier", "UI": "ui"}
 
 # ── The layers ──────────────────────────────────────────────────────────────
 #
@@ -61,59 +84,13 @@ APP = "app"            # MelGen itself
 RANK = {CORE: 0, THEORY: 1, CARRIER: 2, SHELL: 3, UIKIT: 3, APP: 4}
 ORDER = [CORE, THEORY, CARRIER, SHELL, UIKIT, APP]
 
-# Nothing may be below theory except things with no music in them. The seeded
-# RNG is the whole layer today, and that is the right size for it: the moment a
-# second thing lands here, check it is really a primitive and not a chord in
-# disguise.
-CORE_FILES = {
-    "SeededRandom.swift",
-}
-
-THEORY_FILES = {
-    "ChordDictionary.swift",
-    "ChordDictionary+Generated.swift",
-    "ChordScale.swift",
-    "ChordParser.swift",
-    "ChordDetection.swift",
-    "DiatonicHarmony.swift",
-    "VoiceLeading.swift",
-    "ChordVoicing.swift",
-    "DegreeHistogram.swift",     # weights over the twelve semitones above a root:
-                                 # as theoretical as a chord scale, and derived,
-                                 # not learned — see DegreeObservation.swift
-    "ProgressionGenerator.swift",
-    "ProgressionTables+Generated.swift",
-}
-
-CARRIER_FILES = {
-    "MelodyPattern.swift",      # THE interchange format: a degree-relative line
-    "MelodyStepPattern.swift",  # interval cells — a line described by its moves,
-                                # which is a degree-relative line one level down
-    "MelodyModels.swift",       # SequencedNote — what the kernel and the MIDI files speak
-    "MelodyAnalysis.swift",     # measurement, which curation needs and melody doesn't own
-    "MaterialSource.swift",     # where material comes from, and what a take came from
-    "ActionTense.swift",        # now / take / aims — the interaction grammar, not the music
-    "MelodyCuration.swift",     # dispositions, passes, facets, the tag vocabulary
-    "DeadAir.swift",            # a realization repair, not an expression setting
-    "DegreePlacement.swift",    # a drawn semitone, back into the pattern format
-    "PatternStore.swift",
-    "StandardMIDIFile.swift",
-    "MIDIFileImport.swift",
-    "MIDIFileExport.swift",
-}
-
-UIKIT_FILES = {
-    "MelGenTheme.swift",
-    "PianoRoll.swift",
-    "MiniRoll.swift",
-    "ParameterSlider.swift",
-    "MomentaryButton.swift",
-    "ActionBadge.swift",
-    "DirectionIcon.swift",
-    "MelGenPanelParts.swift",
-    "CurationView.swift",
-    "RateAndAdvance.swift",
-}
+# The four foundation layers below the app are the `EnkerliSwift` package's
+# targets now, and `layer_of` reads a package source's layer off its directory —
+# so there is no list here to keep in step with them, and no way for a new file
+# in `Sources/Theory/` to default to `app` in silence the way `MiniRoll` once did.
+#
+# What is left in the extension is the shell (`Common/`, `DSP/`, `Parameters/`,
+# by directory) and MelGen itself.
 
 # ── The seams ───────────────────────────────────────────────────────────────
 #
@@ -173,16 +150,12 @@ def ok(message: str) -> None:
 
 def layer_of(path: Path) -> str:
     parts = path.parts
+    # A package source is whatever target it is in. Nothing to keep in step.
+    for directory, layer in PACKAGE_LAYERS.items():
+        if directory in parts and PACKAGE.name in parts:
+            return layer
     if "Common" in parts or "DSP" in parts or "Parameters" in parts:
         return SHELL
-    if path.name in CORE_FILES:
-        return CORE
-    if path.name in THEORY_FILES:
-        return THEORY
-    if path.name in CARRIER_FILES:
-        return CARRIER
-    if path.name in UIKIT_FILES:
-        return UIKIT
     return APP
 
 
@@ -200,9 +173,9 @@ def main() -> None:
     args = parser.parse_args()
 
     sources = {p: strip(p.read_text(encoding="utf-8"))
-               for p in sorted(EXTENSION.rglob("*.swift"))}
+               for p in sorted(list(EXTENSION.rglob("*.swift")) + list(PACKAGE.rglob("*.swift")))}
     if not sources:
-        sys.exit(f"error: no Swift sources under {EXTENSION}")
+        sys.exit(f"error: no Swift sources under {EXTENSION} or {PACKAGE}")
 
     # Where each top-level type is declared. First declaration wins; extensions
     # are not declarations, which is deliberate — an extension in the app on a
@@ -241,9 +214,19 @@ def main() -> None:
                   f"{layer_of(target):>8} {target.name}  ({name})")
         print()
 
-    # 1. No new upward edges.
-    upward = [(s, t, n) for s, t, n in edges
-              if RANK[layer_of(t)] > RANK[layer_of(s)]]
+    # 1. No new upward edges — and no sideways ones between the two siblings.
+    #
+    # Equal rank is only allowed within a layer. Shell and UI share rank 3
+    # because neither is above the other, which is not the same as them being
+    # free to name each other: the kernel is handed notes and the piano roll
+    # draws them, and a control that binds to an AU parameter is not a control a
+    # plug-in without AU parameters can use. Comparing ranks alone missed that
+    # for as long as this script existed.
+    def is_upward(source: Path, target: Path) -> bool:
+        a, b = layer_of(source), layer_of(target)
+        return RANK[b] > RANK[a] or (RANK[b] == RANK[a] and a != b)
+
+    upward = [(s, t, n) for s, t, n in edges if is_upward(s, t)]
     seen: set[tuple[str, str]] = set()
     unlisted: list[tuple[Path, Path, str]] = []
     for source, target, name in upward:
@@ -269,8 +252,7 @@ def main() -> None:
 
     # 3. The layer manifest names files that exist.
     names = {p.name for p in sources}
-    for group, label in ((CORE_FILES, "core"), (THEORY_FILES, "theory"), (CARRIER_FILES, "carrier"),
-                         (UIKIT_FILES, "ui"), (set(NOT_FOUNDATION), "not-foundation")):
+    for group, label in ((set(NOT_FOUNDATION), "not-foundation"),):
         missing = sorted(group - names)
         if missing:
             fail(f"{label} manifest names files that don't exist: {', '.join(missing)}")

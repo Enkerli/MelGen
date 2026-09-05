@@ -23,6 +23,7 @@
 //
 
 import SwiftUI
+import UI
 
 struct FigurePad: View {
     @Binding var pad: BasslinePad

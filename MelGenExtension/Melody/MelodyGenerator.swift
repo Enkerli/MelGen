@@ -13,6 +13,8 @@ import Foundation
 
 #if canImport(FoundationModels)
 import FoundationModels
+import Carrier
+import Theory
 
 @available(iOS 26.0, macOS 26.0, *)
 enum MelodyGenerator {

@@ -7,6 +7,8 @@
 // aren't all on the beat, that phrases breathe, that a line contains more than
 // one figure, and that two seeds are two ideas rather than one idea twice.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

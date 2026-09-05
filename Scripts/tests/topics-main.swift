@@ -6,6 +6,7 @@
 // there, it's deterministic, and it says "provisional" until there's enough
 // material to say anything else.
 import Foundation
+import Carrier
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		FAE0C2C53039415C00F59C92 /* MelGenExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		EN5W0000BUILDFILE00000000 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0000PRODUCTDEP000000 /* Core */; };
+		EN5W0100BUILDFILE00000001 /* Theory in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0100PRODUCTDEP000001 /* Theory */; };
+		EN5W0200BUILDFILE00000002 /* Carrier in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0200PRODUCTDEP000002 /* Carrier */; };
+		EN5W0300BUILDFILE00000003 /* UI in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0300PRODUCTDEP000003 /* UI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +124,10 @@
 		FAE0C2C13039415C00F59C92 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				EN5W0000BUILDFILE00000000 /* Core in Frameworks */,
+				EN5W0100BUILDFILE00000001 /* Theory in Frameworks */,
+				EN5W0200BUILDFILE00000002 /* Carrier in Frameworks */,
+				EN5W0300BUILDFILE00000003 /* UI in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -228,6 +236,12 @@
 				FAE0C2C83039415C00F59C92 /* MelGenExtension */,
 			);
 			name = MelGenExtension;
+			packageProductDependencies = (
+				EN5W0000PRODUCTDEP000000 /* Core */,
+				EN5W0100PRODUCTDEP000001 /* Theory */,
+				EN5W0200PRODUCTDEP000002 /* Carrier */,
+				EN5W0300PRODUCTDEP000003 /* UI */,
+			);
 			productName = MelGenExtension;
 			productReference = FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -266,6 +280,9 @@
 				Base,
 			);
 			mainGroup = FAE0C2813039415A00F59C92;
+			packageReferences = (
+				EN5W000000LOCALPACKAGE0000 /* XCLocalSwiftPackageReference "EnkerliSwift" */,
+			);
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FAE0C28B3039415A00F59C92 /* Products */;
@@ -803,6 +820,32 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		EN5W000000LOCALPACKAGE0000 /* XCLocalSwiftPackageReference "EnkerliSwift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = EnkerliSwift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		EN5W0000PRODUCTDEP000000 /* Core */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Core;
+		};
+		EN5W0100PRODUCTDEP000001 /* Theory */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Theory;
+		};
+		EN5W0200PRODUCTDEP000002 /* Carrier */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Carrier;
+		};
+		EN5W0300PRODUCTDEP000003 /* UI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FAE0C2823039415A00F59C92 /* Project object */;
 	validationLevel = 1;

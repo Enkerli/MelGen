@@ -6,6 +6,8 @@
 // a chord drifts as a chord rather than losing a voice, and that a pass can be
 // got back rather than being gone the moment the loop goes round.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

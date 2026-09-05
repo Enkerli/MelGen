@@ -21,11 +21,46 @@ sibling plug-in writes those two small files. This is the shape §3 predicted as
 unavailable, because `Info.plist` names the principal class and the ObjC runtime
 looks it up by name.
 
-**What this does not yet say** is that the foundation *builds* on its own —
-there is no separate module to build it in. That is PORTING.md §7 step 4, and
-it is the next thing: a local Swift package, layered targets so the compiler
-takes over from `foundation-boundary.py`, and an access-level sweep the one-module
-build has never made anyone do.
+**And the foundation is a package now** — PORTING.md §7 step 4, four targets of
+five. `EnkerliSwift/` has `Core`, `Theory`, `Carrier` and `UI`; the extension
+links all four; `verify.sh` builds the package once and compiles the app against
+the built modules, which is what the plug-in actually ships as and what no suite
+was testing before. 10,694 lines, 41% of the extension. All four Xcode builds
+pass and all 34 suites are green with nothing skipped.
+
+Three things about it are worth carrying forward rather than rediscovering.
+
+**The `public` sweep is over-broad, deliberately.** Every symbol it marked was
+already visible to every file in the extension — one target, one module — so
+nothing was widened that was not already open. But the code has never recorded
+which of those were API and which were helpers nobody meant to expose, and no
+compiler can tell them apart. Narrowing it is a separate pass with no automated
+help, and until it happens a `public` in the package is not a promise.
+
+**Fifty-five memberwise initializers had to be written out**, because a public
+struct's synthesized one is internal. Four rules were rediscovered one broken
+call site at a time; the one to remember is that **a `var` of optional type gets
+an implicit `= nil` in the synthesized init** and nothing tells you when you drop
+it.
+
+**The split found two seams the boundary check is blind to, and one bug in it.**
+`MelodyPatterns.seeds` and `MelodyPatterns.extract` were declared in extensions
+in the app and called from carrier — the check ignores extensions on purpose,
+which is right for ownership and wrong for compilation. And its rank test only
+failed on a strictly higher rank, so `ui → shell` had been passing silently over
+two real edges. Both fixed; the second is the argument for the package made
+better than PORTING.md could make it in the abstract, because **a check you wrote
+shares your blind spot and a compiler does not.**
+
+**The shell is the fifth target and is not there yet.** `Package.swift` carries
+the three reasons: a header-only C++ kernel needing its own target with C++
+interop, an ObjC bridging header SwiftPM has no equivalent for, and
+`MelGenExtensionDSPKernel.hpp` including MelGen's own parameter addresses. That
+last is a seam nothing could have caught — everything under `Common/`, `DSP/`
+and `Parameters/` is shell by its directory — and it is shallower than it looks:
+`playMelody`, `playbackDirection` and `hostSync` are the parameters *this kernel*
+has, not anything about melody. It is a naming problem, and it is the next thing
+to do before ProgGenie (§7 step 5).
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and

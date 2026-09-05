@@ -31,6 +31,8 @@
 //
 
 import Foundation
+import Carrier
+import Core
 
 /// A group the material fell into, with the evidence for it.
 struct MelodyTopic: Sendable, Identifiable {

@@ -50,12 +50,12 @@ cross-file references. Layered as below, and today it reports:
 
 ```
       core      46 lines  (foundation)
-    theory   3,330 lines  (foundation)
-   carrier   3,140 lines  (foundation)
-     shell     874 lines  (foundation)
-        ui   2,206 lines  (foundation)
-       app  15,403 lines  (MelGen)
-             9,596 lines  foundation total (38%)
+    theory   3,432 lines  (foundation)
+   carrier   3,708 lines  (foundation)
+     shell     976 lines  (foundation)
+        ui   2,532 lines  (foundation)
+       app  15,110 lines  (MelGen)
+            10,694 lines  foundation total (41%)
 
   PASS  no upward references beyond the 0 known seams
   PASS  the layer manifest matches the sources on disk
@@ -64,18 +64,28 @@ cross-file references. Layered as below, and today it reports:
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
 plug-in would stand on, and when this was first measured it was held together by
 nineteen places where a lower layer reached up into the melody app. **All
-nineteen are cut** (§3), and the foundation has grown from 32% to 38%, because
+nineteen are cut** (§3), and the foundation has grown from 32% to 41%, because
 deciding a file is foundation moves its lines as well as closing its seams. That
 is the answer to "could we port other plug-ins": the foundation names nothing
 above itself, which is the property a separate module needs and the property
 nothing but this check was ever going to establish.
 
-The zero deserves one caution, in the spirit of the rest of this document. It
-says no file names a type declared in a higher layer. It does not say the
-foundation *builds* on its own, because there is no separate module to build it
-in yet — that is §7 step 4, and the access-level sweep it will need (everything
-the shell exposes is `internal` today, because one module never made anyone
-choose) is a thing this check cannot see.
+Four of the five layers are now separate targets of the `EnkerliSwift` package
+(§7 step 4), so *the compiler* refuses an upward reference before this check
+runs. The check is still here, and the reasons are in its own docstring: the
+shell is not a target yet, the counts above are its output, proposing a move is
+still what it is best at — and it cannot be replaced by the build for one case in
+particular. **Shell and UI are siblings, and a dependency graph expresses that by
+omission.** Package.swift gives neither a dependency on the other; nothing but
+this check notices if someone adds one.
+
+Which matters because the check had that wrong itself. Its rank test failed only
+on a *strictly* higher rank, so `ui → shell` passed silently for as long as it
+existed — and it was passing over two real edges: `ParameterSlider` and
+`MomentaryButton`, Xcode-template controls that bind to `ObservableAUParameter`.
+The package build is what surfaced them, which is the argument for the package
+made better than this document could make it in the abstract: **a check you wrote
+shares your blind spot; a compiler does not.**
 
 The check ships and runs in `verify.sh` because the layering is not enforced by
 the compiler — one target, one module, every type visible to every file — so
@@ -101,18 +111,18 @@ It is the work the suite was already set up to do.
 
 ## 2. The layers
 
-| Layer | What it is | Lines | Would be called |
+| Layer | What it is | Lines | Is called |
 |---|---|---:|---|
-| **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | — |
-| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the degree histogram, the progression generator and its corpus tables | 3,330 | the Swift port of `@enkerli/theory` (+ `proggen`) |
-| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, interval cells, SMF read/write | 3,140 | the part with no equivalent in the suite — invented here |
-| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 874 | the Swift `enkerli-juce` |
-| **ui** | Theme + its WCAG audit, piano roll, parameter slider, momentary button, action badges, direction icon, curation view, the mini roll, the pinned verb bar | 2,206 | the Swift `@enkerli/ui` |
-| **app** | MelGen | 15,403 | — |
+| **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | `EnkerliSwift/Sources/Core` |
+| **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the degree histogram, the progression generator and its corpus tables | 3,432 | `Sources/Theory` — the Swift `@enkerli/theory` (+ `proggen`) |
+| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, interval cells, SMF read/write | 3,708 | `Sources/Carrier` — no equivalent in the suite; invented here |
+| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 976 | still in the extension — the Swift `enkerli-juce`, when it moves |
+| **ui** | Theme + its WCAG audit, piano roll, action badges, direction icon, curation view, the mini roll, the pinned verb bar. The two Xcode-template controls that bind to an AU parameter left for the shell, which is where the parameter is | 2,532 | `Sources/UI` — the Swift `@enkerli/ui` |
+| **app** | MelGen | 15,110 | `MelGenExtension/` |
 
 Two observations worth more than the table.
 
-**The shell is the smallest layer.** 874 lines, against `enkerli-juce`'s 921
+**The shell is the smallest layer.** 976 lines, against `enkerli-juce`'s 921
 lines of C++/Obj-C for the JUCE equivalent. That is a near-exact match, and it
 is the strongest single argument in this document: the amount of
 platform-specific glue a plug-in needs is roughly a thousand lines *whichever
@@ -466,17 +476,52 @@ Steps 1–3 run anywhere. Step 4 on needs a Mac with Xcode 27.
    package moves cleanly. The targets are named after their music-suite
    counterparts where they have one (§2's right-hand column).
 4. **Move the foundation into a Swift package target**, MelGen depending on it,
-   no behaviour change. Success is `Scripts/verify.sh` still green — which is
-   the whole reason the suites run outside Xcode.
+   no behaviour change. ✅ *Four of five, 2026-09-05.* `EnkerliSwift` has
+   `Core`, `Theory`, `Carrier` and `UI` as separate targets, MelGen's extension
+   links all four, `verify.sh` is green with nothing skipped, and all four Xcode
+   builds pass. The suites build the package once and compile the app sources
+   against the built modules, which is also the configuration the plug-in ships
+   in — before this, every suite compiled foundation and app as one module and
+   could not have caught a missing `public`.
 
-   Two things this step has to do that only became visible once the seams were
-   cut. **The access-level sweep**: everything in the foundation is `internal`,
-   because one module never made anyone choose, and `PluginViewController`'s
-   three overrides cannot be `open` until `ObservableAUParameterGroup` is public.
-   **Layered targets, not one**: the layering is a manifest in a Python script
-   today; five package targets would hand it to the compiler, and the check
-   would go back to being what it was built as — a way of proposing a
-   reclassification and seeing what it costs.
+   **What the split cost, since §0 promises measurement rather than estimate.**
+   Two mechanical passes over 10,694 lines: `public` on everything a single
+   module never made anyone mark, and the memberwise initializers Swift
+   synthesizes but keeps internal. The second is the one that bites — a public
+   struct's free memberwise init is *internal*, so splitting the module silently
+   removes every `SequencedNote(note:velocity:startBeat:durationBeats:)` call
+   site in the app. Fifty-five of them were written out. Four rules had to be
+   rediscovered by breaking a call site each: `@Binding` takes a `Binding<T>` and
+   assigns through the underscore, `@ViewBuilder` survives onto the parameter, a
+   non-optional closure parameter is `@escaping` and an optional one already is,
+   and **a `var` of optional type defaults to nil with no `=` written** — which
+   is the easiest to forget and the hardest to spot.
+
+   The `public` sweep is deliberately over-broad and worth saying so plainly:
+   every symbol it marked was already visible to every file in the extension, so
+   nothing was widened that was not already open — but the code has never
+   recorded which of those were API and which were helpers nobody meant to
+   expose, and no compiler can tell them apart. Narrowing it is a separate pass
+   with no automated help.
+
+   **What the split found**, which is the part worth the trouble: two seams the
+   boundary check was blind to. `PatternStore` and `MIDIFileImport` were calling
+   `MelodyPatterns.seeds` and `MelodyPatterns.extract`, both declared in
+   extensions in the app — and the check ignores extensions on purpose ("an
+   extension in the app on a foundation type is not the app owning it"), which is
+   right for ownership and wrong for compilation. Both files were carrier and
+   moved. And `ui → shell` (§1).
+
+   **The shell is the fifth target and it is not there yet.** Three reasons,
+   written out in `Package.swift`: the C++ kernel is header-only and needs its
+   own target with `.interoperabilityMode(.Cxx)`, the ObjC bridging header has no
+   SwiftPM equivalent, and `MelGenExtensionDSPKernel.hpp` includes MelGen's own
+   parameter addresses. That last one is a seam this check could never see —
+   everything under `Common/`, `DSP/` and `Parameters/` is classified shell by
+   its directory — and it is shallower than it looks: the three addresses are
+   `playMelody`, `playbackDirection` and `hostSync`, which are the parameters
+   *this kernel* has rather than anything about melody. It is a naming problem,
+   and it wants cutting before the kernel is shared rather than after.
 5. **Build ProgGenie as a second AUv3** on that package: new triple (`aumi
    Prst`, checked by `component-identity.py` — which cannot see a Swift sibling
    yet, §9), progression generation, playback through the same kernel,

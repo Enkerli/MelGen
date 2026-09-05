@@ -33,6 +33,8 @@
 //
 
 import Foundation
+import Carrier
+import Theory
 
 /// Distributions measured over a set of takes.
 ///

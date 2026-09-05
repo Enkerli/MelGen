@@ -14,6 +14,7 @@
 //
 
 import AVFoundation
+import Carrier
 
 public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
 {

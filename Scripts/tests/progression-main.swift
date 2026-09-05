@@ -6,6 +6,8 @@
 // dictionary, so a generator that trusted it would produce progressions that
 // fail to parse, which is worse than producing none.
 import Foundation
+import Carrier
+import Theory
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {

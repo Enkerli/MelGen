@@ -92,9 +92,12 @@ to a device.
 
 ## Verifying
 
-Xcode's test targets can't reach the DSP kernel (C++ inside the extension) or the
-`Melody` sources (extension-only target membership), so those are checked outside
-Xcode:
+Xcode's test targets can't reach the DSP kernel (C++ inside the extension), the
+`Melody` sources (extension-only target membership), or the `EnkerliSwift`
+package the four foundation layers live in, so those are checked outside Xcode.
+The script builds the package, compiles the app sources against the built
+modules — the configuration the plug-in actually ships in — and runs the C++
+kernel under `clang++`:
 
 ```bash
 Scripts/verify.sh            # all suites
@@ -374,7 +377,7 @@ The same applies to the progression corpus, ported from
 python3 Scripts/generate-progression-tables.py
 ```
 
-Never hand-edit `MelGenExtension/Melody/ChordDictionary+Generated.swift`. Change
+Never hand-edit `EnkerliSwift/Sources/Theory/ChordDictionary+Generated.swift`. Change
 the vocabulary in music-suite and regenerate.
 
 ### Training pipeline
