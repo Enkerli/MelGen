@@ -623,10 +623,13 @@ plus this one. Every new Swift plug-in that does not share the foundation makes
 it five. The boundary check exists to make that visible while it is still one.
 
 **The identity registry is a shared, unversioned resource.** Plugin codes are
-forever, `component-identity.py` reads sibling `CMakeLists.txt` files to find
-them, and a Swift plug-in has no `CMakeLists.txt`. The second Swift AUv3 is the
-point at which that lookup needs to learn about `Info.plist` siblings too, or
-the check quietly stops checking.
+forever. ✅ *Handled 2026-09-05, before the second plug-in rather than after.*
+`component-identity.py` read sibling `CMakeLists.txt` files, and a Swift plug-in
+has no `CMakeLists.txt` — so it now also reads sibling `Info.plist` files, two
+levels deep, because a Swift plug-in's extension plist is at
+`<repo>/<Target>Extension/Info.plist` rather than at the repo root. Proved by
+planting one: a sibling declaring `aumi/MlGn/Enke` fails the check by name. It
+reports 13 sibling codes today.
 
 **The Apple-only tax, again.** Everything in §0. It is the right trade for the
 iPad-first tools and the wrong one for anything that has to run on the miniPC
