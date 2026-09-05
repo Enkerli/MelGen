@@ -12,6 +12,8 @@
 		EN5W0100BUILDFILE00000001 /* Theory in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0100PRODUCTDEP000001 /* Theory */; };
 		EN5W0200BUILDFILE00000002 /* Carrier in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0200PRODUCTDEP000002 /* Carrier */; };
 		EN5W0300BUILDFILE00000003 /* UI in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0300PRODUCTDEP000003 /* UI */; };
+		EN5W0400BUILDFILE00000004 /* Kernel in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0400PRODUCTDEP000004 /* Kernel */; };
+		EN5W0500BUILDFILE00000005 /* Shell in Frameworks */ = {isa = PBXBuildFile; productRef = EN5W0500PRODUCTDEP000005 /* Shell */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +130,8 @@
 				EN5W0100BUILDFILE00000001 /* Theory in Frameworks */,
 				EN5W0200BUILDFILE00000002 /* Carrier in Frameworks */,
 				EN5W0300BUILDFILE00000003 /* UI in Frameworks */,
+				EN5W0400BUILDFILE00000004 /* Kernel in Frameworks */,
+				EN5W0500BUILDFILE00000005 /* Shell in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -241,6 +245,8 @@
 				EN5W0100PRODUCTDEP000001 /* Theory */,
 				EN5W0200PRODUCTDEP000002 /* Carrier */,
 				EN5W0300PRODUCTDEP000003 /* UI */,
+				EN5W0400PRODUCTDEP000004 /* Kernel */,
+				EN5W0500PRODUCTDEP000005 /* Shell */,
 			);
 			productName = MelGenExtension;
 			productReference = FAE0C2C43039415C00F59C92 /* MelGenExtension.appex */;
@@ -398,7 +404,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MelGenExtension/Common/MelGenExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTEROP_MODE = objcxx;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -443,7 +448,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MelGenExtension/Common/MelGenExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTEROP_MODE = objcxx;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -844,6 +848,14 @@
 		EN5W0300PRODUCTDEP000003 /* UI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UI;
+		};
+		EN5W0400PRODUCTDEP000004 /* Kernel */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Kernel;
+		};
+		EN5W0500PRODUCTDEP000005 /* Shell */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Shell;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

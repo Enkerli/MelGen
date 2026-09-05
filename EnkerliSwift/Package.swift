@@ -2,7 +2,8 @@
 //
 //  The Swift foundation the suite's AUv3 plug-ins stand on.
 //
-//  Five targets, one per layer of PORTING.md §2, stacked in that order. The
+//  Six targets: one per layer of PORTING.md §2, stacked in that order, plus the
+//  C++ kernel the shell talks to. The
 //  layering used to be a manifest in `Scripts/tests/foundation-boundary.py` and
 //  a promise; here it is a dependency graph, so the compiler refuses an upward
 //  reference instead of a Python script reporting one after the fact. The check
@@ -31,6 +32,8 @@ let package = Package(
         .library(name: "Core", targets: ["Core"]),
         .library(name: "Theory", targets: ["Theory"]),
         .library(name: "Carrier", targets: ["Carrier"]),
+        .library(name: "Kernel", targets: ["Kernel"]),
+        .library(name: "Shell", targets: ["Shell"]),
         .library(name: "UI", targets: ["UI"]),
     ],
     targets: [
@@ -43,18 +46,29 @@ let package = Package(
         // What a take is made of, and how it is stored, judged, exported.
         .target(name: "Carrier", dependencies: ["Core", "Theory"], swiftSettings: mode),
 
-        // Sibling of Shell, not above or below it: the kernel is handed notes
-        // and the piano roll draws them, and neither may reach for the other.
+        // Siblings, not stacked: the kernel is handed notes and the piano roll
+        // draws them, and neither may name the other. SwiftPM says that by
+        // omission — neither target depends on the other — which is exactly the
+        // rule the build cannot enforce, and the reason
+        // Scripts/tests/foundation-boundary.py is still worth running.
         .target(name: "UI", dependencies: ["Core", "Theory", "Carrier"], swiftSettings: mode),
 
-        // Shell is not here yet. It is the AU plumbing, and it carries three
-        // things the other four do not: a header-only C++ kernel that needs a
-        // C++ target and `.interoperabilityMode(.Cxx)`, an ObjC bridging header
-        // that SwiftPM has no equivalent for, and — found while moving it —
-        // `MelGenExtensionDSPKernel.hpp` including MelGen's own parameter
-        // addresses, which is an app dependency the boundary check could never
-        // see because everything under `Common/`, `DSP/` and `Parameters/` is
-        // classified shell by its directory. That last one is a seam, and it
-        // wants cutting before the kernel is shared rather than after.
+        // The AU plumbing, and the only target that talks to C++.
+        //
+        // `Kernel` is the header-only DSP class. It is a separate target rather
+        // than files in `Shell` because SwiftPM builds C++ and Swift as separate
+        // units, and because the thing the render thread touches is worth being
+        // able to point at.
+        //
+        // The header used to be `MelGenExtensionParameterAddresses.h`, which
+        // made the kernel look as if it depended on the melody app — the one
+        // seam the boundary check could never see, because everything under the
+        // extension's `Common/`, `DSP/` and `Parameters/` was classified shell
+        // by its directory rather than by what it named. The dependency was in
+        // the name: play, direction and host sync are what a loop player has.
+        .target(name: "Kernel"),
+        .target(name: "Shell",
+                dependencies: ["Core", "Theory", "Carrier", "Kernel"],
+                swiftSettings: mode + [.interoperabilityMode(.Cxx)]),
     ]
 )

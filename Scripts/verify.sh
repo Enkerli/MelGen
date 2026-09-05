@@ -55,8 +55,10 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MELODY="$REPO/MelGenExtension/Melody"
-DSP="$REPO/MelGenExtension/DSP"
-PARAMS="$REPO/MelGenExtension/Parameters"
+# The kernel is the package's `Kernel` target now — header-only C++ with an
+# Objective-C++ compile unit, because the render thread is the one place in
+# this codebase that is not Swift.
+KERNEL="$REPO/EnkerliSwift/Sources/Kernel/include"
 PACKAGE="$REPO/EnkerliSwift"
 MUSIC_SUITE="${MUSIC_SUITE:-$REPO/../../music-suite}"
 
@@ -412,7 +414,7 @@ run_proggen() {
 run_kernel() {
     echo "── kernel ─────────────────────────────────────────"
     clang++ -std=gnu++17 -fobjc-arc -x objective-c++ \
-        "$REPO/Scripts/tests/kernel-scheduling.mm" -I"$DSP" -I"$PARAMS" \
+        "$REPO/Scripts/tests/kernel-scheduling.mm" -I"$KERNEL" \
         -framework Foundation -framework AudioToolbox -framework CoreMIDI \
         -o "$BUILD/kernel" || { status=1; return 0; }
     "$BUILD/kernel" || status=1

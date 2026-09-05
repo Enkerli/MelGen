@@ -7,6 +7,8 @@
 
 import Foundation
 import AudioToolbox
+import Shell
+import Kernel
 
 let MelGenExtensionParameterSpecs = ParameterTreeSpec {
     ParameterGroupSpec(identifier: "global", name: "Global") {
@@ -25,7 +27,7 @@ let MelGenExtensionParameterSpecs = ParameterTreeSpec {
             name: "Playback Direction",
             units: .indexed,
             valueRange: 0...2,
-            defaultValue: AUValue(MelGenPlaybackDirection.forward.rawValue),
+            defaultValue: AUValue(PluginPlaybackDirection.forward.rawValue),
             valueStrings: ["Forward", "Backward", "Ping-Pong"]
         )
 
@@ -42,7 +44,7 @@ let MelGenExtensionParameterSpecs = ParameterTreeSpec {
 
 extension ParameterSpec {
     init(
-        address: MelGenExtensionParameterAddress,
+        address: PluginParameterAddress,
         identifier: String,
         name: String,
         units: AudioUnitParameterUnit,

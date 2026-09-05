@@ -11,25 +11,25 @@ import AudioToolbox
 public protocol NodeSpec: Sendable {}
 
 extension NodeSpec {
-    static func validateID(_ name: String) -> String {
+    public static func validateID(_ name: String) -> String {
         let msg = "Parameter identifier should: not be empty, begin with a letter, and only contain alpha numeric characters or underscores. Hint: Use camelCase."
         assert(name.isAlphanumeric(), msg)
         return name
     }
 }
 
-@resultBuilder struct ParameterGroupBuilder {
-    static func buildBlock() -> [NodeSpec] { [] }
-    static func buildBlock(_ nodes: NodeSpec...) -> [NodeSpec] { nodes }
+@resultBuilder public struct ParameterGroupBuilder {
+    public static func buildBlock() -> [NodeSpec] { [] }
+    public static func buildBlock(_ nodes: NodeSpec...) -> [NodeSpec] { nodes }
 }
 
 /// Specification for a group of parameters.
 public struct ParameterGroupSpec: NodeSpec {
-    let identifier: String
-    let name: String
-    let children: [NodeSpec]
+    public let identifier: String
+    public let name: String
+    public let children: [NodeSpec]
 
-    init(identifier: String, name: String, @ParameterGroupBuilder _ children: () -> [NodeSpec]) {
+    public init(identifier: String, name: String, @ParameterGroupBuilder _ children: () -> [NodeSpec]) {
         self.identifier = ParameterGroupSpec.validateID(identifier)
         self.name = name
         self.children = children()
@@ -37,24 +37,24 @@ public struct ParameterGroupSpec: NodeSpec {
 }
 
 public struct ParameterTreeSpec: NodeSpec {
-    let children: [NodeSpec]
-    init(@ParameterGroupBuilder _ children: () -> [NodeSpec]) { self.children = children() }
+    public let children: [NodeSpec]
+    public init(@ParameterGroupBuilder _ children: () -> [NodeSpec]) { self.children = children() }
 }
 
 /// ParameterSpec mirrors what gets passed to
 /// AUParameterTree.createParameter, but also provides a default value
 public struct ParameterSpec: NodeSpec {
-    let identifier: String
-    let name: String
-    let address: AUParameterAddress
-    let minValue: AUValue
-    let maxValue: AUValue
-    let defaultValue: AUValue
-    let units: AudioUnitParameterUnit
-    let unitName: String?
-    let flags: AudioUnitParameterOptions
-    let valueStrings: [String]?
-    let dependentParameters: [NSNumber]?
+    public let identifier: String
+    public let name: String
+    public let address: AUParameterAddress
+    public let minValue: AUValue
+    public let maxValue: AUValue
+    public let defaultValue: AUValue
+    public let units: AudioUnitParameterUnit
+    public let unitName: String?
+    public let flags: AudioUnitParameterOptions
+    public let valueStrings: [String]?
+    public let dependentParameters: [NSNumber]?
 
     /// Init a new parameter spec
     /// - Parameters:
@@ -68,7 +68,7 @@ public struct ParameterSpec: NodeSpec {
     ///   - flags: A set of the parameters options
     ///   - valueStrings: String representation of each value
     ///   - dependentParameters: The addresses of dependant parameters
-    init(
+    public init(
         address: AUParameterAddress,
         identifier: String,
         name: String,
@@ -98,7 +98,7 @@ public struct ParameterSpec: NodeSpec {
 
 extension AUParameterTree {
 
-    class func createNode(from spec: NodeSpec) -> AUParameterNode {
+    public class func createNode(from spec: NodeSpec) -> AUParameterNode {
         switch spec {
         case let parameterSpec as ParameterSpec:
             return AUParameterTree.createParameter(from: parameterSpec)
@@ -109,7 +109,7 @@ extension AUParameterTree {
         }
     }
 
-    class func createParameterGroup(from spec: ParameterGroupSpec) -> AUParameterGroup {
+    public class func createParameterGroup(from spec: ParameterGroupSpec) -> AUParameterGroup {
         return self.createGroup(
             withIdentifier: spec.identifier,
             name: spec.name,
@@ -117,7 +117,7 @@ extension AUParameterTree {
         )
     }
 
-    class func createParameter(from spec: ParameterSpec) -> AUParameter {
+    public class func createParameter(from spec: ParameterSpec) -> AUParameter {
         let param = self.createParameter(
             withIdentifier: spec.identifier,
             name: spec.name,
@@ -136,19 +136,19 @@ extension AUParameterTree {
 }
 
 extension Array where Element == NodeSpec {
-    func createAUParameterNodes() -> [AUParameterNode] {
+    public func createAUParameterNodes() -> [AUParameterNode] {
         self.map { spec in
             AUParameterTree.createNode(from: spec)
         }
     }
 
-    func createAUParameterTree() -> AUParameterTree {
+    public func createAUParameterTree() -> AUParameterTree {
         AUParameterTree.createTree(withChildren: self.createAUParameterNodes())
     }
 }
 
 extension ParameterTreeSpec {
-    func createAUParameterTree() -> AUParameterTree {
+    public func createAUParameterTree() -> AUParameterTree {
         AUParameterTree.createTree(withChildren: self.children.createAUParameterNodes())
     }
 }

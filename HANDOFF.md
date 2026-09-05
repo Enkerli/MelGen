@@ -21,9 +21,9 @@ sibling plug-in writes those two small files. This is the shape §3 predicted as
 unavailable, because `Info.plist` names the principal class and the ObjC runtime
 looks it up by name.
 
-**And the foundation is a package now** — PORTING.md §7 step 4, four targets of
-five. `EnkerliSwift/` has `Core`, `Theory`, `Carrier` and `UI`; the extension
-links all four; `verify.sh` builds the package once and compiles the app against
+**And the foundation is a package now** — PORTING.md §7 step 4, done.
+`EnkerliSwift/` has `Core`, `Theory`, `Carrier`, `UI` and `Shell` as targets,
+plus `Kernel` for the C++; the extension links all six; `verify.sh` builds the package once and compiles the app against
 the built modules, which is what the plug-in actually ships as and what no suite
 was testing before. 10,694 lines, 41% of the extension. All four Xcode builds
 pass and all 34 suites are green with nothing skipped.
@@ -52,15 +52,22 @@ two real edges. Both fixed; the second is the argument for the package made
 better than PORTING.md could make it in the abstract, because **a check you wrote
 shares your blind spot and a compiler does not.**
 
-**The shell is the fifth target and is not there yet.** `Package.swift` carries
-the three reasons: a header-only C++ kernel needing its own target with C++
-interop, an ObjC bridging header SwiftPM has no equivalent for, and
-`MelGenExtensionDSPKernel.hpp` including MelGen's own parameter addresses. That
-last is a seam nothing could have caught — everything under `Common/`, `DSP/`
-and `Parameters/` is shell by its directory — and it is shallower than it looks:
-`playMelody`, `playbackDirection` and `hostSync` are the parameters *this kernel*
-has, not anything about melody. It is a naming problem, and it is the next thing
-to do before ProgGenie (§7 step 5).
+**The shell went in too, and all three things that made it look hard were
+small.** The kernel is its own target with one `.mm` compile unit — Objective-C++
+rather than C++, because `NS_ENUM` and `AudioToolbox/AUParameters.h` do not
+compile as plain C++. `Shell` imports it as a module, which is what replaces the
+bridging header. And `MelGenExtensionParameterAddresses.h` was a naming problem
+all along: `playMelody`, `playbackDirection` and `hostSync` are the parameters a
+loop player has, not anything about melody, so it is
+`PluginParameterAddresses.h` now and no logic changed.
+
+**What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
+three overrides on `PluginViewController`, and its own parameter tree — the file
+list a sibling plug-in writes. That makes §7 step 5, ProgGenie, the next thing,
+and §9's warning the thing to deal with first: `component-identity.py` finds
+sibling plug-in codes by globbing `*/CMakeLists.txt`, and a Swift AUv3 has an
+`Info.plist` and no CMakeLists, so the second Swift plug-in is invisible to the
+collision check. That check exists because the collision already happened once.
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and

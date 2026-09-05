@@ -62,7 +62,8 @@ EXTENSION = REPO / "MelGenExtension"
 PACKAGE = REPO / "EnkerliSwift" / "Sources"
 # The package's own directory names are the layer names, so a file's target is
 # its layer and there is nothing to keep in step by hand.
-PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier", "UI": "ui"}
+PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier",
+                  "Shell": "shell", "Kernel": "shell", "UI": "ui"}
 
 # ── The layers ──────────────────────────────────────────────────────────────
 #

@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 import Carrier
 import Theory
 import UI
+import Shell
+import Kernel
 
 // No #Preview here: Xcode can't host previews inside a
 // "com.apple.AudioUnit-UI" app extension, so the layout is checked in a host.
@@ -1966,17 +1968,17 @@ struct MelGenExtensionMainView: View {
     private var directionGroup: some View {
         HStack(spacing: 4) {
             DirectionButton(direction: .backward, label: "Backward",
-                            isSelected: direction == MelGenPlaybackDirection.backward.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.backward.rawValue,
                             theme: theme) {
                 setDirection(.backward)
             }
             DirectionButton(direction: .pingPong, label: "Ping-pong",
-                            isSelected: direction == MelGenPlaybackDirection.pingPong.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.pingPong.rawValue,
                             theme: theme) {
                 setDirection(.pingPong)
             }
             DirectionButton(direction: .forward, label: "Forward",
-                            isSelected: direction == MelGenPlaybackDirection.forward.rawValue,
+                            isSelected: direction == PluginPlaybackDirection.forward.rawValue,
                             theme: theme) {
                 setDirection(.forward)
             }
@@ -2079,8 +2081,8 @@ struct MelGenExtensionMainView: View {
 
     private var directionName: String {
         switch direction {
-        case MelGenPlaybackDirection.backward.rawValue: return "Backward"
-        case MelGenPlaybackDirection.pingPong.rawValue: return "Ping-pong"
+        case PluginPlaybackDirection.backward.rawValue: return "Backward"
+        case PluginPlaybackDirection.pingPong.rawValue: return "Ping-pong"
         default: return "Forward"
         }
     }
@@ -4208,7 +4210,7 @@ struct MelGenExtensionMainView: View {
         return Int32(param.value.rounded())
     }
 
-    private func setDirection(_ direction: MelGenPlaybackDirection) {
+    private func setDirection(_ direction: PluginPlaybackDirection) {
         let param: ObservableAUParameter = parameterTree.global.playbackDirection
         param.value = AUValue(direction.rawValue)
     }

@@ -1,6 +1,6 @@
 //
-//  MelGenExtensionAUProcessHelper.hpp
-//  MelGenExtension
+//  PluginAUProcessHelper.hpp
+//  Kernel
 //
 //  Created by Alexandre Enkerli on 2026-08-21.
 //
@@ -11,13 +11,13 @@
 #import <AVFoundation/AVFoundation.h>
 
 #include <vector>
-#include "MelGenExtensionDSPKernel.hpp"
+#include "PluginDSPKernel.hpp"
 
 //MARK:- AUProcessHelper Utility Class
 class AUProcessHelper
 {
 public:
-    AUProcessHelper(MelGenExtensionDSPKernel& kernel)
+    AUProcessHelper(PluginDSPKernel& kernel)
     : mKernel{kernel} {}
     
     /**
@@ -108,5 +108,5 @@ public:
         
     }
 private:
-    MelGenExtensionDSPKernel& mKernel;
+    PluginDSPKernel& mKernel;
 };

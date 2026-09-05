@@ -14,17 +14,18 @@
 
 import CoreAudioKit
 import SwiftUI
+import Shell
 
 @MainActor
 public final class AudioUnitViewController: PluginViewController {
 
-    override func makeAudioUnit(componentDescription: AudioComponentDescription) throws -> PluginAudioUnit {
+    public override func makeAudioUnit(componentDescription: AudioComponentDescription) throws -> PluginAudioUnit {
         try MelGenExtensionAudioUnit(componentDescription: componentDescription, options: [])
     }
 
-    override var parameterTreeSpec: ParameterTreeSpec { MelGenExtensionParameterSpecs }
+    public override var parameterTreeSpec: ParameterTreeSpec { MelGenExtensionParameterSpecs }
 
-    override func makeRootView(parameterTree: ObservableAUParameterGroup,
+    public override func makeRootView(parameterTree: ObservableAUParameterGroup,
                                       audioUnit: PluginAudioUnit) -> AnyView {
         AnyView(MelGenExtensionMainView(parameterTree: parameterTree,
                                         audioUnit: audioUnit as? MelGenExtensionAudioUnit))

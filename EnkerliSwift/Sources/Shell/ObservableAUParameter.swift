@@ -18,12 +18,12 @@ import AudioToolbox
 /// implementation attempts to access the subscript of an ObservableAUParameter (which has no children, as it's not a group).
 @MainActor
 @dynamicMemberLookup
-class ObservableAUParameterNode {
+public class ObservableAUParameterNode {
 
     /// Create an ObservableAUParameterNode
     ///
     /// This creates the appropriate subclass, depending on the type of the passed in AUParameterNode
-    class func create(_ parameterNode: AUParameterNode) -> ObservableAUParameterNode {
+    public class func create(_ parameterNode: AUParameterNode) -> ObservableAUParameterNode {
         switch parameterNode {
         case let parameter as AUParameter:
             return ObservableAUParameter(parameter)
@@ -34,7 +34,7 @@ class ObservableAUParameterNode {
         }
     }
 
-    subscript<T>(dynamicMember identifier: String) -> T {
+    public subscript<T>(dynamicMember identifier: String) -> T {
         guard let groupSelf = self as? ObservableAUParameterGroup else {
             fatalError("Calling subscript is only supported on ObservableAUParameterGroups, you called it on \(self)")
         }
@@ -57,7 +57,7 @@ class ObservableAUParameterNode {
         return subNode
     }
 
-    subscript(dynamicMember identifier: String) -> ObservableAUParameterNode {
+    public subscript(dynamicMember identifier: String) -> ObservableAUParameterNode {
         guard let groupSelf = self as? ObservableAUParameterGroup else {
             fatalError("Calling subscript is only supported on ObservableAUParameterGroups, you called it on \(self)")
         }
@@ -83,7 +83,7 @@ class ObservableAUParameterNode {
         return parameter
     }
 
-    subscript(dynamicMember keyPath: ReferenceWritableKeyPath<ObservableAUParameter, Float>) -> Float {
+    public subscript(dynamicMember keyPath: ReferenceWritableKeyPath<ObservableAUParameter, Float>) -> Float {
         get { self.asParameter()[keyPath: keyPath] }
         set { self.asParameter()[keyPath: keyPath] = newValue }
     }
@@ -93,11 +93,11 @@ class ObservableAUParameterNode {
 ///
 /// The primary purpose here is to expose observable versions of the group's child parameters.
 ///
-final class ObservableAUParameterGroup: ObservableAUParameterNode {
+public final class ObservableAUParameterGroup: ObservableAUParameterNode {
 
     private(set) var children: [String: ObservableAUParameterNode]
 
-    init(_ parameterGroup: AUParameterGroup) {
+    public init(_ parameterGroup: AUParameterGroup) {
         children = parameterGroup.children.reduce(
             into: [String: ObservableAUParameterNode]()
         ) { dict, node in
@@ -116,19 +116,19 @@ final class ObservableAUParameterGroup: ObservableAUParameterNode {
 /// The ObservableAUParameter can also manage automation event types by calling
 /// `onEditingChanged()` whenever a UI element will change its editing state.
 @Observable
-final class ObservableAUParameter: ObservableAUParameterNode {
+public final class ObservableAUParameter: ObservableAUParameterNode {
 
     private weak var parameter: AUParameter?
     private var observerToken: AUParameterObserverToken!
     private var editingState: EditingState = .inactive
 
-    let min: AUValue
-    let max: AUValue
-    let displayName: String
-    let defaultValue: AUValue = 0.0
-    let unit: AudioUnitParameterUnit
+    public let min: AUValue
+    public let max: AUValue
+    public let displayName: String
+    public let defaultValue: AUValue = 0.0
+    public let unit: AudioUnitParameterUnit
 
-    init(_ parameter: AUParameter) {
+    public init(_ parameter: AUParameter) {
         self.parameter = parameter
         self.value = parameter.value
         self.min = parameter.minValue
@@ -154,7 +154,7 @@ final class ObservableAUParameter: ObservableAUParameterNode {
         }
     }
 
-    var value: AUValue {
+    public var value: AUValue {
         didSet {
             /// If the editing state is .hostUpdate, don't propagate this back to the host
             guard editingState != .hostUpdate else { return }
@@ -170,7 +170,7 @@ final class ObservableAUParameter: ObservableAUParameterNode {
         }
     }
 
-    var boolValue: Bool {
+    public var boolValue: Bool {
        get {
 		   value >= 0.5
         }
@@ -190,7 +190,7 @@ final class ObservableAUParameter: ObservableAUParameterNode {
     /// `onEditingChanged` should be called with `true` before the first value is sent, so that it can be sent with a
     /// `.touch` event. It's expected that `onEditingChanged` is called with a value of `false` to mark the end
     /// of interaction *after* the last value has been sent, since this is how SwiftUI's `Slider` and `Stepper` views behave.
-    func onEditingChanged(_ editing: Bool) {
+    public func onEditingChanged(_ editing: Bool) {
         if editing {
             editingState = .began
         } else {
@@ -228,7 +228,7 @@ final class ObservableAUParameter: ObservableAUParameterNode {
 extension AUAudioUnit {
     // Can we subclass the Parameter tree to set that on the AUAudioUnit?
 
-    @MainActor var observableParameterTree: ObservableAUParameterGroup? {
+    @MainActor public var observableParameterTree: ObservableAUParameterGroup? {
         guard let paramTree = self.parameterTree else { return nil }
         return ObservableAUParameterGroup(paramTree)
     }

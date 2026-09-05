@@ -14,20 +14,21 @@
 //
 
 import AVFoundation
+import Kernel
 import Carrier
 
-public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
+open class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
 {
 	// C++ Objects
-	var kernel = MelGenExtensionDSPKernel()
-    var processHelper: AUProcessHelper?
+	public var kernel = PluginDSPKernel()
+    public var processHelper: AUProcessHelper?
 
 	private var outputBus: AUAudioUnitBus?
 	private var _outputBusses: AUAudioUnitBusArray!
 
 	private var format:AVAudioFormat
 
-	@objc override init(componentDescription: AudioComponentDescription, options: AudioComponentInstantiationOptions) throws {
+	@objc public override init(componentDescription: AudioComponentDescription, options: AudioComponentInstantiationOptions) throws {
 		self.format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
 		try super.init(componentDescription: componentDescription, options: options)
 		outputBus = try AUAudioUnitBus(format: self.format)
@@ -80,7 +81,7 @@ public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
     /// Safe to call from the main thread while rendering.
     /// - Parameter restartFromTop: begin the new sequence at its first beat.
     ///   Asked for when the take changes, not when the same take is re-rendered.
-    func setMelody(_ notes: [SequencedNote], lengthBeats: Double, restartFromTop: Bool = false) {
+    public func setMelody(_ notes: [SequencedNote], lengthBeats: Double, restartFromTop: Bool = false) {
         kernel.beginSequenceUpdate()
         for note in notes {
             kernel.appendSequenceNote(note.startBeat, note.durationBeats, note.note, note.velocity)
@@ -96,7 +97,7 @@ public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
     private var captureCursor: UInt64 = 0
 
     /// Whether incoming MIDI is being collected for learning.
-    var isCapturing: Bool {
+    public var isCapturing: Bool {
         get { kernel.isCaptureEnabled() }
         set {
             if newValue { captureCursor = kernel.capturedEventCount() }
@@ -110,7 +111,7 @@ public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
     /// only ever appends, and this only ever reads forward from its own cursor.
     /// If playing outran the UI the oldest events are simply gone — a dropped
     /// phrase is a nuisance, a glitch on the audio thread is a bug.
-    func drainCapturedEvents() -> [CapturedMIDIEvent] {
+    public func drainCapturedEvents() -> [CapturedMIDIEvent] {
         let written = kernel.capturedEventCount()
         guard written > captureCursor else { return [] }
         let oldest = kernel.oldestCapturedEvent()
@@ -128,13 +129,13 @@ public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
         return events
     }
 
-    var currentPass: Int64 {
+    public var currentPass: Int64 {
         kernel.currentPass()
     }
 
     /// Where the loop is now, in beats from its start, or nil when nothing is
     /// playing. What the piano roll's playhead follows.
-    var loopPhaseBeats: Double? {
+    public var loopPhaseBeats: Double? {
         let phase = kernel.currentPhaseBeats()
         return phase < 0 ? nil : phase
     }
@@ -142,7 +143,7 @@ public class PluginAudioUnit: AUAudioUnit, @unchecked Sendable
     /// How long one pass through the loop lasts, in seconds, at the tempo the
     /// render thread is actually using — so the UI can say whether generating a
     /// take fits inside a loop. Nil until something has played.
-    var loopDuration: TimeInterval? {
+    public var loopDuration: TimeInterval? {
         let tempo = kernel.currentTempo()
         let beats = kernel.currentLoopBeats()
         guard tempo > 0, beats > 0 else { return nil }

@@ -9,13 +9,13 @@ import Foundation
 import SwiftUI
 
 #if os(iOS) || os(visionOS)
-typealias HostingController = UIHostingController
+public typealias HostingController = UIHostingController
 #elseif os(macOS)
-typealias HostingController = NSHostingController
+public typealias HostingController = NSHostingController
 
 extension NSView {
 	
-	func bringSubviewToFront(_ view: NSView) {
+	public func bringSubviewToFront(_ view: NSView) {
 		// This function is a no-opp for macOS
 	}
 }

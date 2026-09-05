@@ -18,6 +18,7 @@
 //
 
 import AVFoundation
+import Shell
 
 public final class MelGenExtensionAudioUnit: PluginAudioUnit, @unchecked Sendable {
 

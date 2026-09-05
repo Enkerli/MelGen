@@ -1,6 +1,6 @@
 //
-//  MelGenExtensionDSPKernel.hpp
-//  MelGenExtension
+//  PluginDSPKernel.hpp
+//  Kernel
 //
 //  Created by Alexandre Enkerli on 2026-08-21.
 //
@@ -16,13 +16,13 @@
 #import <cmath>
 #import <vector>
 
-#import "MelGenExtensionParameterAddresses.h"
+#import "PluginParameterAddresses.h"
 
 /*
- MelGenExtensionDSPKernel
+ PluginDSPKernel
  As a non-ObjC class, this is safe to use from render thread.
  */
-class MelGenExtensionDSPKernel {
+class PluginDSPKernel {
 public:
     void initialize(double inSampleRate) {
         mSampleRate = inSampleRate;
@@ -46,16 +46,16 @@ public:
     }
     
     // MARK: - Parameter Getter / Setter
-    // Add a case for each parameter in MelGenExtensionParameterAddresses.h
+    // Add a case for each parameter in PluginParameterAddresses.h
     void setParameter(AUParameterAddress address, AUValue value) {
         switch (address) {
-            case MelGenExtensionParameterAddress::playMelody:
+            case PluginParameterAddress::playMelody:
                 mPlayMelody = (bool)value;
                 break;
-            case MelGenExtensionParameterAddress::playbackDirection:
-                mDirection = (MelGenPlaybackDirection)(int)std::round(value);
+            case PluginParameterAddress::playbackDirection:
+                mDirection = (PluginPlaybackDirection)(int)std::round(value);
                 break;
-            case MelGenExtensionParameterAddress::hostSync:
+            case PluginParameterAddress::hostSync:
                 mHostSync = (bool)value;
                 break;
         }
@@ -65,13 +65,13 @@ public:
         // Return the goal. It is not thread safe to return the ramping value.
 
         switch (address) {
-            case MelGenExtensionParameterAddress::playMelody:
+            case PluginParameterAddress::playMelody:
                 return (AUValue)mPlayMelody;
 
-            case MelGenExtensionParameterAddress::playbackDirection:
+            case PluginParameterAddress::playbackDirection:
                 return (AUValue)mDirection;
 
-            case MelGenExtensionParameterAddress::hostSync:
+            case PluginParameterAddress::hostSync:
                 return (AUValue)mHostSync;
 
             default: return 0.f;
@@ -414,9 +414,9 @@ public:
 
     bool isReversedPass(int64_t passIndex) const {
         switch (mDirection) {
-            case MelGenPlaybackDirectionBackward:
+            case PluginPlaybackDirectionBackward:
                 return true;
-            case MelGenPlaybackDirectionPingPong:
+            case PluginPlaybackDirectionPingPong:
                 // Alternate passes, so the loop turns around at both ends.
                 return (passIndex % 2) != 0;
             default:
@@ -617,7 +617,7 @@ public:
     // Transport parameters
     bool mPlayMelody = false;
     bool mHostSync = false;
-    MelGenPlaybackDirection mDirection = MelGenPlaybackDirectionForward;
+    PluginPlaybackDirection mDirection = PluginPlaybackDirectionForward;
 
     bool mMelodyPlaying = false;   // render-thread playback state
     double mTimelineBeats = 0;     // position the last buffer ended at
@@ -646,7 +646,7 @@ public:
     // neither copyable nor movable: a bare atomic member makes the whole kernel
     // un-importable by Swift's C++ interop (the type simply disappears from
     // Swift's view). This copyable holder keeps the kernel usable as a stored
-    // property in MelGenExtensionAudioUnit.
+    // property in the audio unit that owns this kernel.
     struct SharedFields {
         /// Which sequence buffer the render thread reads (UI thread writes).
         std::atomic<uint32_t> activeIndex{0};

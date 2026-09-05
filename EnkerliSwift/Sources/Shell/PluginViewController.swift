@@ -36,15 +36,13 @@ open class PluginViewController: AUViewController, AUAudioUnitFactory {
 
     // MARK: - What a plug-in supplies
     //
-    // Internal rather than `open`: everything is one module today, so `open`
-    // buys nothing and `makeRootView` cannot be public while
-    // `ObservableAUParameterGroup` is internal. When the foundation becomes a
-    // package these three become `open` and that type becomes public — an
-    // access-level sweep the whole foundation needs at once, not three files.
+    // `open` rather than `public`: a plug-in in another module overrides these,
+    // which is the whole point of the class. The note that used to be here said
+    // this would happen when the foundation became a package. It has.
 
     /// The audio unit this plug-in is. Subclasses return their own
     /// `PluginAudioUnit`; the shell does the rest of the factory dance around it.
-    func makeAudioUnit(componentDescription: AudioComponentDescription) throws -> PluginAudioUnit {
+    open func makeAudioUnit(componentDescription: AudioComponentDescription) throws -> PluginAudioUnit {
         try PluginAudioUnit(componentDescription: componentDescription, options: [])
     }
 
@@ -52,17 +50,15 @@ open class PluginViewController: AUViewController, AUAudioUnitFactory {
     /// comment: one `AnyView` at the very top of a plug-in's view tree costs a
     /// box per rebuild of the root and nothing else, and it is the price of the
     /// principal class staying visible to the ObjC runtime.
-    func makeRootView(parameterTree: ObservableAUParameterGroup,
+    open func makeRootView(parameterTree: ObservableAUParameterGroup,
                            audioUnit: PluginAudioUnit) -> AnyView {
         AnyView(EmptyView())
     }
     
-    /// The parameters the host sees. `MelGenExtensionParameterSpecs` lives in
-    /// `Parameters/`, which this check reads as shell because of where it sits —
-    /// but the parameters of a plug-in are the plug-in's, so it is an override
-    /// rather than a call. A sibling with a different set of knobs supplies them
-    /// here and changes nothing else.
-    var parameterTreeSpec: ParameterTreeSpec { ParameterTreeSpec {} }
+    /// The parameters the host sees. A plug-in's parameters are the plug-in's,
+    /// so this is an override rather than a call: a sibling with a different set
+    /// of knobs supplies them here and changes nothing else.
+    open var parameterTreeSpec: ParameterTreeSpec { ParameterTreeSpec {} }
     
     private var observation: NSKeyValueObservation?
 

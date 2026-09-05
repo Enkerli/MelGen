@@ -7,23 +7,23 @@
 
 import SwiftUI
 
-struct MomentaryButton: View {
-    let normalColor = Color(red: 51.0 / 255.0, green: 51.0 / 255.0, blue: 51.0 / 255.0)
-    let activeColor = Color(red: 50.0 / 255.0, green: 103.0 / 255.0, blue: 222.0 / 255.0)
+public struct MomentaryButton: View {
+    public let normalColor = Color(red: 51.0 / 255.0, green: 51.0 / 255.0, blue: 51.0 / 255.0)
+    public let activeColor = Color(red: 50.0 / 255.0, green: 103.0 / 255.0, blue: 222.0 / 255.0)
     
-    init(_ text: String, param: ObservableAUParameter) {
+    public init(_ text: String, param: ObservableAUParameter) {
         self.text = text
         self.param = param
     }
     
-    var text: String
+    public var text: String
     
     /// The value that this button should bind to
     ///
     /// The paramter value is treated as a bool, with 0.0 and 1.0  mapping to false and true, respectively
-    @State var param: ObservableAUParameter
+    @State public var param: ObservableAUParameter
     
-    var value: Bool {
+    public var value: Bool {
         get {
             param.value != 0
         }
@@ -32,7 +32,7 @@ struct MomentaryButton: View {
         }
     }
     
-    var body: some View {
+    public var body: some View {
         Text("\(text)")
             .padding()
             .background {

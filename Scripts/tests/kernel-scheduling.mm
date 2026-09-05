@@ -1,8 +1,8 @@
-// Standalone harness for MelGenExtensionDSPKernel's melody scheduling.
+// Standalone harness for PluginDSPKernel's melody scheduling.
 // Drives the kernel with a fake host and prints the note-ons it emits.
 
 #import <Foundation/Foundation.h>
-#include "MelGenExtensionDSPKernel.hpp"
+#include "PluginDSPKernel.hpp"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -16,7 +16,7 @@ static void expect(const char *label, bool ok, const char *detail) {
     if (!ok) { gFailures += 1; }
 }
 
-static void wire(MelGenExtensionDSPKernel &kernel) {
+static void wire(PluginDSPKernel &kernel) {
     kernel.setLegacyMIDIOutputEventBlock(^OSStatus(AUEventSampleTime t, uint8_t cable, NSInteger len, const uint8_t *bytes) {
         char buf[64];
         const bool on = (bytes[0] & 0xF0) == 0x90;
@@ -26,7 +26,7 @@ static void wire(MelGenExtensionDSPKernel &kernel) {
     });
 }
 
-static void loadSequence(MelGenExtensionDSPKernel &kernel) {
+static void loadSequence(PluginDSPKernel &kernel) {
     kernel.beginSequenceUpdate();
     kernel.appendSequenceNote(0, 1, 60, 100);
     kernel.appendSequenceNote(1, 1, 62, 100);
@@ -44,7 +44,7 @@ static std::string noteOnsOnly() {
 }
 
 // Runs `beats` worth of buffers at 120bpm / 48kHz.
-static void run(MelGenExtensionDSPKernel &kernel, double beats) {
+static void run(PluginDSPKernel &kernel, double beats) {
     const AUAudioFrameCount frames = 512;
     const double beatsPerBuffer = 120.0 / 60.0 * double(frames) / 48000.0;
     const int buffers = int(beats / beatsPerBuffer);
@@ -53,20 +53,20 @@ static void run(MelGenExtensionDSPKernel &kernel, double beats) {
     }
 }
 
-static void testDirection(const char *label, MelGenPlaybackDirection dir) {
-    MelGenExtensionDSPKernel kernel;
+static void testDirection(const char *label, PluginPlaybackDirection dir) {
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);
     gEvents.clear();
-    kernel.setParameter(MelGenExtensionParameterAddress::playbackDirection, (AUValue)dir);
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::playbackDirection, (AUValue)dir);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
     run(kernel, 12.0);
     printf("%-10s %s\n", label, noteOnsOnly().c_str());
 }
 
 static void testHostSync() {
-    MelGenExtensionDSPKernel kernel;
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);
@@ -83,8 +83,8 @@ static void testHostSync() {
     });
 
     gEvents.clear();
-    kernel.setParameter(MelGenExtensionParameterAddress::hostSync, 1);
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::hostSync, 1);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
 
     const AUAudioFrameCount frames = 512;
     const double beatsPerBuffer = 120.0 / 60.0 * double(frames) / 48000.0;
@@ -105,12 +105,12 @@ static void testHostSync() {
 // The UI polls currentPass() to know when a take has looped, which is what
 // drives auto-regeneration.
 static void testPassCounter() {
-    MelGenExtensionDSPKernel kernel;
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);   // 4-beat loop
     gEvents.clear();
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
 
     printf("%-10s start=%lld", "passes", (long long)kernel.currentPass());
     for (int loop = 1; loop <= 3; ++loop) {
@@ -124,7 +124,7 @@ static void testPassCounter() {
 // The UI reads tempo and loop length to work out how long a loop lasts, which
 // is how it reports whether generation fits inside one.
 static void testTimingPublication() {
-    MelGenExtensionDSPKernel kernel;
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);   // 4-beat loop
@@ -133,7 +133,7 @@ static void testTimingPublication() {
         if (tempo) { *tempo = 96.0; }
         return YES;
     });
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
     run(kernel, 4.05);
 
     const double t = kernel.currentTempo();
@@ -149,11 +149,11 @@ static void testTimingPublication() {
 // round. With auto-regeneration handing over a take per pass, that was heard as
 // every take missing its opening notes.
 static void testRestartFromTop() {
-    MelGenExtensionDSPKernel kernel;
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);       // 4-beat loop: 60 62 64 65 on each beat
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
     run(kernel, 3.0);           // land three beats into the loop
 
     // Hand over a take whose only note is on its first beat.
@@ -192,11 +192,11 @@ static void testRestartFromTop() {
 // and the interface's own anchor was left stranded above it, so "a new take every
 // two loops" stretched to four, then six, compounding all session.
 static void testPassCounterSurvivesRestart() {
-    MelGenExtensionDSPKernel kernel;
+    PluginDSPKernel kernel;
     kernel.initialize(48000);
     wire(kernel);
     loadSequence(kernel);       // 4-beat loop
-    kernel.setParameter(MelGenExtensionParameterAddress::playMelody, 1);
+    kernel.setParameter(PluginParameterAddress::playMelody, 1);
     run(kernel, 8.1);           // two passes
 
     const int64_t before = kernel.currentPass();
@@ -260,9 +260,9 @@ static void testPassCounterSurvivesRestart() {
 }
 
 int main() {
-    testDirection("forward", MelGenPlaybackDirectionForward);
-    testDirection("backward", MelGenPlaybackDirectionBackward);
-    testDirection("pingpong", MelGenPlaybackDirectionPingPong);
+    testDirection("forward", PluginPlaybackDirectionForward);
+    testDirection("backward", PluginPlaybackDirectionBackward);
+    testDirection("pingpong", PluginPlaybackDirectionPingPong);
     testHostSync();
     testPassCounter();
     testTimingPublication();
