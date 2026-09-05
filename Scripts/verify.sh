@@ -39,6 +39,8 @@
 #   docs     — the documentation against the code it describes
 #   kernel  — melody scheduling: forward/backward/ping-pong, host sync, loop counter
 #   contrast — WCAG 2.1 AA on every theme token pairing the UI uses, both themes
+#   borders — that a border identifies a control and nothing else, which is what
+#             MelGenTheme already says borderStrong is for
 #   terminology — the interface against TERMINOLOGY.md: one word per concept
 #   icon    — MelGen.icon against the design pass: geometry, theme tokens,
 #             a dark value on every fill, and nothing baked into the artwork
@@ -343,6 +345,11 @@ run_icon() {
     python3 "$REPO/Scripts/tests/icon-audit.py" || status=1
 }
 
+run_borders() {
+    echo "── borders ────────────────────────────────────────"
+    python3 "$REPO/Scripts/tests/border-audit.py" || status=1
+}
+
 run_contrast() {
     echo "── contrast ───────────────────────────────────────"
     python3 "$REPO/Scripts/tests/contrast-audit.py" || status=1
@@ -388,7 +395,7 @@ run_kernel() {
 }
 
 case "$which" in
-    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_histograms; run_bassline; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_nextstep; run_docs; run_terminology; run_icon; run_contrast; run_boundary; run_proggen; run_kernel ;;
+    all)      run_identity; run_chords; run_state; run_chunking; run_patterns; run_extraction; run_curation; run_advance; run_phrases; run_stylemodel; run_chain; run_mutation; run_retrieval; run_topics; run_steps; run_histograms; run_bassline; run_capture; run_comping; run_drift; run_templates; run_progression; run_analysis; run_midi; run_midifile; run_nextstep; run_docs; run_terminology; run_icon; run_contrast; run_borders; run_boundary; run_proggen; run_kernel ;;
     chords)   run_chords ;;
     state)    run_state ;;
     chunking) run_chunking ;;
@@ -417,12 +424,13 @@ case "$which" in
     docs)     run_docs ;;
     icon)     run_icon ;;
     contrast) run_contrast ;;
+    borders)  run_borders ;;
     terminology) run_terminology ;;
     identity) run_identity ;;
     boundary) run_boundary ;;
     proggen)  run_proggen ;;
     kernel)   run_kernel ;;
-    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|histograms|bassline|capture|comping|drift|templates|progression|analysis|midi|midifile|nextstep|docs|terminology|icon|contrast|boundary|proggen|kernel]"; exit 2 ;;
+    *) echo "usage: Scripts/verify.sh [all|identity|chords|state|chunking|patterns|extraction|curation|advance|phrases|stylemodel|chain|mutation|retrieval|topics|steps|histograms|bassline|capture|comping|drift|templates|progression|analysis|midi|midifile|nextstep|docs|terminology|icon|contrast|borders|boundary|proggen|kernel]"; exit 2 ;;
 esac
 
 echo

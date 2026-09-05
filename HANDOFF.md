@@ -1,21 +1,53 @@
 # Handoff — current state
 
-*Updated 2026-09-04. For whoever picks this up next, including the agent embedded
+*Updated 2026-09-05. For whoever picks this up next, including the agent embedded
 in Xcode. Written while moving fast on purpose: what landed, what's loose, and
 what is definitely not proven.*
 
 The `curation-and-training` branch this document started as a handoff for is
 merged, and so is the redesign that followed it, the UX-and-playflow pass, and
-the MIDI interchange work. Everything up to and including
-`music-suite-plugin-porting` is verified outside Xcode by `Scripts/verify.sh` —
-**33 suites** — and compiles in both targets.
+the MIDI interchange work. **Every branch is now merged into `main`** —
+`layout-pass` was the last one holding work, and it landed 2026-09-05.
+Everything is verified outside Xcode by `Scripts/verify.sh` — **34 suites** —
+and compiles in both targets.
+
+**On `layout-pass` (design pass 3, merged 2026-09-05).** Two of its three
+prescriptions, in the order the pass itself demands. `MiniRoll` — 44pt, chord
+ticks, notes as marks with register as height, the playhead, flagged notes in
+`warning` — is the object the pinned verbs act on, and the swipe went with it,
+because you rate what you can see. The full roll became a sheet, which returned
+170pt of permanent screen and is the first thing any of the three design passes
+has actually removed. The border rule turned out 97% true and its one violation
+was three days old and in `ActionBadge`, so it is checked now by `verify.sh
+borders` rather than remembered. Detail in [ISSUES.md](ISSUES.md) §6.7.
+
+**L4 is open on purpose, not abandoned** — the choice between the console, the
+instrument and three cards is the pass's own third step, and the pass says to
+judge it on device after the first two exist, "otherwise all three are being
+compared through the same fog." Both prerequisites now exist. This is the one
+piece of unfinished business the merge inherits, and it needs a session at
+AUM's half height rather than a commit.
+
+One thing the merge surfaced, because the two branches never saw each other:
+**`MiniRoll.swift` is classified as `app` by default, and it does not have to
+be.** It is in neither `UIKIT_FILES` nor `NOT_FOUNDATION` in
+`Scripts/tests/foundation-boundary.py`, and that dict exists precisely so an
+absence "reads as a decision rather than an oversight" — this one is an
+oversight. Proposing it as `ui` was tried and passes with no new upward
+reference, which would move 165 lines into the foundation (ui 2,019 → 2,184,
+total 8,580 → 8,745). Its sibling `PianoRoll` is already foundation. Left
+undecided deliberately, because whether a glance-at-the-take drawing belongs in
+a shared UI kit is a question about the second plug-in, not about this merge.
+Note also that the check does not catch this class of gap: it verifies the
+manifest names files that exist, not that every file is named.
 
 **On `music-suite-plugin-porting` (2026-09-04) — it compiles, and all four
 predictions about where it would break were wrong.** Seven declarations moved
 between files on a Linux box with no `swiftc`, so "compiles" was a claim nobody
 had earned. It is earned now, on a Mac with Xcode 27 beta:
 
-- `Scripts/verify.sh` passes **33 suites with nothing skipped**. That last part
+- `Scripts/verify.sh` passes **every suite with nothing skipped** — 33 at the
+  time, 34 now that `borders` has landed with `layout-pass`. That last part
   is the load-bearing half — this document has always warned that a green run
   with skips is a weaker green than it looks, and the earlier Linux run skipped
   `midi` for a missing `mido` while `chords` and `proggen` had no music-suite to
@@ -233,12 +265,12 @@ throwaway virtualenv is the shortest path to a run with no skips in it:
 ```bash
 python3 -m venv /tmp/melgen-venv
 /tmp/melgen-venv/bin/pip install -r Scripts/training/requirements.txt
-PATH=/tmp/melgen-venv/bin:$PATH Scripts/verify.sh    # 33 suites, 0 skipped
+PATH=/tmp/melgen-venv/bin:$PATH Scripts/verify.sh    # 34 suites, 0 skipped
 ```
 
-**Count the skips, not just the exit code.** Three of the 33 suites pass while
+**Count the skips, not just the exit code.** Three of the 34 suites pass while
 doing nothing if their dependency is absent, so `verify: OK` on a bare machine
-is a green that covers 30 suites and says so nowhere. `grep -c SKIP` is the
+is a green that covers 31 suites and says so nowhere. `grep -c SKIP` is the
 difference between the two greens.
 
 Not part of `verify.sh`, because it needs data rather than fixtures:
@@ -339,7 +371,7 @@ Ordered by how likely they are to bite.
    would have been right.
 
    ```bash
-   PATH=/tmp/melgen-venv/bin:$PATH Scripts/verify.sh   # 33 suites, 0 skipped
+   PATH=/tmp/melgen-venv/bin:$PATH Scripts/verify.sh   # 34 suites, 0 skipped
 
    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
      -project MelGen.xcodeproj -scheme MelGenExtension \

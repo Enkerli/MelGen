@@ -16,7 +16,7 @@ action in Xcode tells you almost nothing.
 The real check is a shell script:
 
 ```bash
-Scripts/verify.sh            # all 33 suites
+Scripts/verify.sh            # all 34 suites
 Scripts/verify.sh chords     # just one
 ```
 
