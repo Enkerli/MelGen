@@ -64,7 +64,29 @@ loop player has, not anything about melody, so it is
 **What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
 three overrides on `PluginViewController`, and its own parameter tree.
 
-**Four plug-ins now stand on it**, and the fourth —
+**Five plug-ins now stand on it**, and
+[SwiftDrawnQurve](https://github.com/Enkerli/SwiftDrawnQurve) (`aumi DrwQ`) is
+the third *kind*: it neither generates a pattern nor transforms one, it loops a
+drawn gesture. The kernel gained curve lanes for it — CC, channel pressure,
+pitch bend or notes from a 256-sample table — which is its third job, and §8's
+invariant covered it without amendment because the shape is the same:
+**the decision is off-thread, only the lookup is on it.**
+
+That plug-in is also the one where the native UI stops being a preference. A
+drawing surface in a WebView gets pointer events through a bridge, with the
+browser's coalescing and no Pencil pressure at all; a `DragGesture` on the same
+glass gets them natively. §0 argues that in the abstract and a gesture plug-in is
+where it stops being abstract — though the current build reads location only, and
+the README says so rather than implying the argument is already cashed.
+
+**Two numbers moved that this repo's own documents were built on.** The
+foundation is 44% now, and the kernel is 1,270 lines against the 692 it was.
+PORTING.md §2 called the shell's near-match with `enkerli-juce` "the strongest
+single argument in this document"; it was measured when the shell did one job,
+and §2 now says what is true instead. Three capabilities, three plug-ins, about
+150 lines each — honest growth, and not the same claim.
+
+**Four plug-ins before that**, and the fourth —
 [SwiftPitchFold](https://github.com/Enkerli/SwiftPitchFold), `aumi PtFd` — is
 the first that is not a generator. It folds incoming notes into a pitch-class
 set, which inverts the dataflow the other three share and made the shared kernel

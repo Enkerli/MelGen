@@ -50,12 +50,12 @@ cross-file references. Layered as below, and today it reports:
 
 ```
       core      46 lines  (foundation)
-    theory   3,432 lines  (foundation)
-   carrier   3,708 lines  (foundation)
-     shell     906 lines  (foundation)
+    theory   4,232 lines  (foundation)
+   carrier   4,103 lines  (foundation)
+     shell   1,216 lines  (foundation)
         ui   2,532 lines  (foundation)
        app  15,183 lines  (MelGen)
-            10,624 lines  foundation total (41%)
+            12,129 lines  foundation total (44%)
 
   PASS  no upward references beyond the 0 known seams
   PASS  the layer manifest matches the sources on disk
@@ -64,7 +64,7 @@ cross-file references. Layered as below, and today it reports:
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
 plug-in would stand on, and when this was first measured it was held together by
 nineteen places where a lower layer reached up into the melody app. **All
-nineteen are cut** (§3), and the foundation has grown from 32% to 41%, because
+nineteen are cut** (§3), and the foundation has grown from 32% to 44%, because
 deciding a file is foundation moves its lines as well as closing its seams. That
 is the answer to "could we port other plug-ins": the foundation names nothing
 above itself, which is the property a separate module needs and the property
@@ -114,18 +114,29 @@ It is the work the suite was already set up to do.
 |---|---|---:|---|
 | **core** | Primitives with nothing musical in them. `SplitMix64` is the whole layer, and that is the right size for it — the moment a second thing lands here, check it is really a primitive and not a chord in disguise | 46 | `EnkerliSwift/Sources/Core` |
 | **theory** | Chord dictionary (172 qualities, generated from `packages/theory`), chord-scale, parser, detector, diatonic harmony, taxicab voice leading, voicings, the degree histogram, the progression generator and its corpus tables | 3,432 | `Sources/Theory` — the Swift `@enkerli/theory` (+ `proggen`) |
-| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, interval cells, SMF read/write | 3,708 | `Sources/Carrier` — no equivalent in the suite; invented here |
-| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring) | 906 | `Sources/Shell` + `Sources/Kernel` — the Swift `enkerli-juce` |
+| **carrier** | The interchange format and everything that handles it: `MelodyPattern` and its notes, `SequencedNote`, measurement, where material came from, the three tenses, curation (dispositions, passes, facets, tags), the pattern store, interval cells, SMF read/write, rhythm replacement, and a drawn curve | 4,103 | `Sources/Carrier` — no equivalent in the suite; invented here |
+| **shell** | AU plumbing: parameter tree, `ObservableAUParameter`, the view-controller host, the 692-line C++ kernel (forward / backward / ping-pong, host sync, loop counter, lock-free capture ring), the note map, and curve lanes | 1,216 | `Sources/Shell` + `Sources/Kernel` — the Swift `enkerli-juce` |
 | **ui** | Theme + its WCAG audit, piano roll, action badges, direction icon, curation view, the mini roll, the pinned verb bar. The two Xcode-template controls that bind to an AU parameter left for the shell, which is where the parameter is | 2,532 | `Sources/UI` — the Swift `@enkerli/ui` |
 | **app** | MelGen | 15,183 | `MelGenExtension/` |
 
 Two observations worth more than the table.
 
-**The shell is the smallest layer.** 906 lines, against `enkerli-juce`'s 921
-lines of C++/Obj-C for the JUCE equivalent. That is a near-exact match, and it
-is the strongest single argument in this document: the amount of
-platform-specific glue a plug-in needs is roughly a thousand lines *whichever
-framework you pick*, so the framework is not where the cost lives.
+**The shell was the smallest layer, and the claim built on that needs
+re-stating.** It was 906 lines against `enkerli-juce`'s 954, and this document
+called the near-match "the strongest single argument in this document: the
+amount of platform-specific glue a plug-in needs is roughly a thousand lines
+*whichever framework you pick*."
+
+It is 1,216 now, and the kernel inside it went from 692 lines to 1,270. Nothing
+went wrong — the growth is three capabilities that three plug-ins asked for, each
+about 150 lines, each fitting the same commit-a-snapshot shape: rewriting
+incoming notes (SwiftPitchFold) and looping drawn curves (SwiftDrawnQurve) on top
+of scheduling them. But the sentence above was measured when this shell did one
+job and `enkerli-juce` does one job, and it should not be repeated as though the
+comparison still held. **What is true now: the glue for a plug-in that only
+schedules notes is about a thousand lines either way; each additional thing you
+ask the render thread to do costs about a hundred and fifty more, and that is a
+cost the framework does not decide.**
 
 It got *smaller* while the seams were being cut, which is the direction that
 matters: `PluginAudioUnit` and `PluginViewController` are what is left after
@@ -353,7 +364,7 @@ would silently invert.
 | **Serpe** (`aumi Srpe`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | ✅ **Built** — [Enkerli/SwiftSerpe](https://github.com/Enkerli/SwiftSerpe), §5. Vectors first, and they were: 100 cases written into `packages/upi` before any Swift |
 | **PitchFold** (`aumi PtFd`) | 1.4k LOC of its own; the PCS engine is theory the package now has | 3.1k JS | ✅ **Built** — [Enkerli/SwiftPitchFold](https://github.com/Enkerli/SwiftPitchFold). The first that transforms rather than generates, and the first to need the kernel to grow |
 | **MIDIcurator** (`aumi Mcur`) | thin (1,090 LOC shell) | **14.6k JS — the product** | Engine cheap, UI is the plug-in. Wrong shape for a SwiftUI rewrite; best Core ML story (§8) |
-| **DrawnQurve** (`aumi Dqau`) | 25.2k LOC, JUCE-7 native UI + engine | mid-migration | Wait for its WebUI migration, as the suite already says |
+| **DrawnQurve** (`aumi DrwQ`) | 12.4k LOC now, and the part worth porting is 1.9k of JUCE-free plain data | mid-migration | ✅ **Built** — [Enkerli/SwiftDrawnQurve](https://github.com/Enkerli/SwiftDrawnQurve). The "wait for the WebUI migration" advice was answered the other way: a gesture plug-in is the one whose UI should *not* be a WebView |
 | **Vane** (`aumu VAne`) | 11.9k synth DSP, already proven shell-free as WASM | 1.2k | Different animal — an instrument with a real audio render. Breaks the invariant in §8 |
 | **Suite Workspace** (`aumi Wksp`) | — | 4.6k | Container; no |
 
@@ -733,6 +744,16 @@ is nothing to notice. The check now compares both, lowercased, because macOS's
 comparison is and case is exactly what went wrong. Two plug-ins were renamed —
 SwiftSerpe and SwiftPitchFold — which also stops a host listing two entries with
 the same name, the thing the separate codes existed to let you compare.
+
+**The kernel grows one capability per plug-in, and that is a risk as well as a
+record.** It has three: schedule notes, rewrite incoming ones, play a curve. Each
+arrived with a plug-in that needed it, each fits the same commit-a-snapshot
+shape, and each cost about 150 lines. §2 now carries what that did to this
+document's own strongest claim. The thing to watch is not the line count but the
+shape: a fourth capability that does *not* fit "commit a fixed-size snapshot
+off-thread, read it in the render block" is the one to argue about, because that
+shape is the whole of why §8's invariant has survived three additions without
+amendment.
 
 **The Apple-only tax, again.** Everything in §0. It is the right trade for the
 iPad-first tools and the wrong one for anything that has to run on the miniPC
