@@ -12,6 +12,7 @@
 import Foundation
 import Carrier
 import Theory
+import UI
 
 /// One take. `notes` is the raw output, before expression is applied, so changing
 /// the expression controls re-renders old takes too.
@@ -251,25 +252,14 @@ struct ExpressionSettings: Codable, Hashable, Sendable {
 }
 
 /// Which appearance the plug-in window uses, independent of the host.
-enum MelGenAppearance: String, Codable, CaseIterable, Sendable {
-    case light, dark, system
-
-    var label: String {
-        switch self {
-        case .light: return "Light"
-        case .dark: return "Dark"
-        case .system: return "Auto"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .light: return "sun.max"
-        case .dark: return "moon"
-        case .system: return "circle.lefthalf.filled"
-        }
-    }
-}
+/// Promoted into the package, and kept as a name because sessions use it.
+///
+/// This was three cases, three labels and three symbol names, in the app, where
+/// no sibling plug-in could reach it — while the shared gaps register listed
+/// "theme choice" as something no plug-in had. `UI.ThemePreference` is the same
+/// type with the same raw values, so every session MelGen has ever saved still
+/// decodes through this alias.
+typealias MelGenAppearance = ThemePreference
 
 struct MelGenState: Codable, Sendable {
     /// How many unjudged takes the ring holds before it starts dropping them.

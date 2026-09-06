@@ -100,7 +100,7 @@ build_package() {
 package_flags() {
     build_package || return 1
     echo "-I $PKG_BIN/Modules"
-    find "$PKG_BIN" -name "*.o" ! -path "*/UI.build/*" ! -path "*Tests.build/*" | sort
+    find "$PKG_BIN" -name "*.o" ! -path "*Tests.build/*" | sort
 }
 
 # Every Melody source except the one that needs FoundationModels. They are one
