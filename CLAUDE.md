@@ -113,17 +113,23 @@ and say why.
 
 ## The layering, and how to change it
 
-Five stacked layers, and nothing may point upward:
+Seven stacked layers, and nothing may point upward:
 
 ```
-core → theory → carrier → shell / ui → app
+core → theory → carrier → auhost → shell / instrument / ui → app
 ```
 
-The bottom four are the ~10,700 lines a sibling plug-in stands on
+Everything below `app` is the ~13,000 lines a sibling plug-in stands on
 ([PORTING.md](PORTING.md)). **Every one of the nineteen upward references is
-cut**, `SEAMS` in `Scripts/tests/foundation-boundary.py` is empty, and four of
-the five layers are package targets — so an upward reference from one of those
-is a build error, not a report.
+cut**, `SEAMS` in `Scripts/tests/foundation-boundary.py` is empty, and all of
+them are package targets — so an upward reference is a build error, not a
+report.
+
+`shell`, `instrument` and `ui` share a rank because none is above the others: a
+MIDI processor's audio unit, a synth's, and a UI kit that must not know about
+either. `auhost` sits below all three because both kinds of audio unit need the
+same lifecycle around them, which is what the suite's one `aumu` plug-in
+([SwiftVane](https://github.com/Enkerli/SwiftVane)) made necessary.
 
 `verify.sh boundary` still runs, and it is worth knowing what is left of its
 job, because two of these are things the build cannot do:

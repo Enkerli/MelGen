@@ -67,7 +67,9 @@ PACKAGE = Path(os.environ.get("ENKERLI_SWIFT",
 # The package's own directory names are the layer names, so a file's target is
 # its layer and there is nothing to keep in step by hand.
 PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier",
-                  "Shell": "shell", "Kernel": "shell", "UI": "ui"}
+                  "AUHost": "auhost",
+                  "Shell": "shell", "Kernel": "shell", "UI": "ui",
+                  "Instrument": "instrument", "AudioKernel": "instrument"}
 
 # ── The layers ──────────────────────────────────────────────────────────────
 #
@@ -77,7 +79,12 @@ PACKAGE_LAYERS = {"Core": "core", "Theory": "theory", "Carrier": "carrier",
 CORE = "core"          # primitives with no music in them at all
 THEORY = "theory"      # chords, scales, voice leading, progressions — the suite's own
 CARRIER = "carrier"    # what a take is made of, and how it is stored, judged, exported
-SHELL = "shell"        # AU plumbing: parameters, the C++ kernel, the view controller
+AUHOST = "auhost"      # AU plumbing with no music and no MIDI in it: the observable
+                       # parameter tree, the spec DSL, the view-controller lifecycle
+SHELL = "shell"        # a MIDI processor's half of an audio unit: the C++ kernel,
+                       # the note map, the curve lanes
+INSTRUMENT = "instrument"  # an instrument's half: the audio render path and the
+                       # C++ voice. A sibling of the shell, never a layer of it
 UIKIT = "ui"           # controls and views that know nothing about melody
 APP = "app"            # MelGen itself
 
@@ -86,8 +93,28 @@ APP = "app"            # MelGen itself
 # and neither may reach for the other. An edge is upward when the target's rank
 # is strictly higher than the source's, so shell → carrier is fine and
 # shell → ui is not.
-RANK = {CORE: 0, THEORY: 1, CARRIER: 2, SHELL: 3, UIKIT: 3, APP: 4}
-ORDER = [CORE, THEORY, CARRIER, SHELL, UIKIT, APP]
+#
+# `auhost` was inserted below both when the synth arrived. A synth's audio unit
+# cannot subclass the MIDI processor's, and needed the lifecycle around it — so
+# the lifecycle, the observable parameter tree and the spec DSL went one layer
+# down, where an instrument can reach them without the MIDI kernel.
+RANK = {CORE: 0, THEORY: 1, CARRIER: 2, AUHOST: 3,
+        SHELL: 4, UIKIT: 4, INSTRUMENT: 4, APP: 5}
+ORDER = [CORE, THEORY, CARRIER, AUHOST, SHELL, INSTRUMENT, UIKIT, APP]
+
+# Downward by rank and still forbidden.
+#
+# `ui → auhost` is the edge this exists for. The UI kit is controls that know
+# nothing about melody *and nothing about audio units*: a slider bound to an
+# `AUParameter` is not a control a plug-in without AU parameters can use, which
+# is exactly how two Xcode-template controls sat in the UI kit unremarked until
+# the package was built. Those two are in `auhost` now, which is where they
+# belong — and rank alone would happily let them be reached for again from `ui`,
+# because `auhost` is genuinely below it.
+# `shell` and `instrument` are already caught by sharing a rank — an edge
+# between two different layers of equal rank is a violation, which is how the
+# shell/UI sibling rule works and why the synth needed no new machinery.
+FORBIDDEN: set[tuple[str, str]] = {(UIKIT, AUHOST)}
 
 # The four foundation layers below the app are the `EnkerliSwift` package's
 # targets now, and `layer_of` reads a package source's layer off its directory —
@@ -250,6 +277,8 @@ def main() -> None:
     # for as long as this script existed.
     def is_upward(source: Path, target: Path) -> bool:
         a, b = layer_of(source), layer_of(target)
+        if (a, b) in FORBIDDEN:
+            return True
         return RANK[b] > RANK[a] or (RANK[b] == RANK[a] and a != b)
 
     upward = [(s, t, n) for s, t, n in edges if is_upward(s, t)]
@@ -282,6 +311,23 @@ def main() -> None:
         missing = sorted(group - names)
         if missing:
             fail(f"{label} manifest names files that don't exist: {', '.join(missing)}")
+
+    # 3b. …and knows about every target on disk.
+    #
+    # The hole this closes: `AudioKernel` and `Instrument` were added to the
+    # package and this script counted neither, because `layer_of` reads a
+    # directory name out of PACKAGE_LAYERS and quietly returns `app` for anything
+    # it does not recognise. The counts stayed plausible and the layering went
+    # unchecked — which is the same failure mode as `MiniRoll` defaulting to
+    # `app` in silence, the one the package targets were supposed to have made
+    # impossible.
+    if PACKAGE.is_dir():
+        on_disk = {d.name for d in PACKAGE.iterdir() if d.is_dir()}
+        unlisted = sorted(on_disk - set(PACKAGE_LAYERS))
+        if unlisted:
+            fail("package targets with no layer: " + ", ".join(unlisted)
+                 + " — add them to PACKAGE_LAYERS with a rank, or this script "
+                   "counts them as app and checks nothing about them")
     if failures == 0:
         ok("the layer manifest matches the sources on disk")
 

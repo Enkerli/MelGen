@@ -43,28 +43,39 @@ webapps run in any browser from any year. Nothing about that changes.
 
 ## 1. What is measured, and what it says
 
-`Scripts/verify.sh boundary` strips comments and string literals from all 78
-Swift sources in the extension, finds all 232 top-level type declarations, and
-calls it an edge whenever one file names a type another declares — 454
-cross-file references. Layered as below, and today it reports:
+`Scripts/verify.sh boundary` strips comments and string literals from all 90
+Swift sources in the extension and the package, finds all 266 top-level type
+declarations, and calls it an edge whenever one file names a type another
+declares — 473 cross-file references. Layered as below, and today it reports:
 
 ```
       core      46 lines  (foundation)
     theory   4,232 lines  (foundation)
-   carrier   4,103 lines  (foundation)
-     shell   1,216 lines  (foundation)
+   carrier   4,644 lines  (foundation)
+    auhost     668 lines  (foundation)
+     shell     704 lines  (foundation)
+  instrument     164 lines  (foundation)
         ui   2,532 lines  (foundation)
        app  15,183 lines  (MelGen)
-            12,129 lines  foundation total (44%)
+            12,990 lines  foundation total (46%)
 
   PASS  no upward references beyond the 0 known seams
   PASS  the layer manifest matches the sources on disk
 ```
 
+Seven layers now, not five, and the two new ones arrived for the same reason:
+**the suite grew an instrument.** `auhost` is the half of the old `shell` that
+was never about MIDI — the observable parameter tree, the spec DSL and the
+view-controller lifecycle — split out because an `aumu` synth cannot subclass a
+MIDI processor's audio unit but needs every line of the lifecycle around it.
+`instrument` is the synth's own half, a sibling of `shell` at the same rank so
+that neither may name the other. The C++ under both is not counted here; nor is
+`Kernel`'s, and it never was.
+
 **Two thirds of MelGen is MelGen.** The other third is the thing a sibling
 plug-in would stand on, and when this was first measured it was held together by
 nineteen places where a lower layer reached up into the melody app. **All
-nineteen are cut** (§3), and the foundation has grown from 32% to 44%, because
+nineteen are cut** (§3), and the foundation has grown from 32% to 46%, because
 deciding a file is foundation moves its lines as well as closing its seams. That
 is the answer to "could we port other plug-ins": the foundation names nothing
 above itself, which is the property a separate module needs and the property
