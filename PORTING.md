@@ -350,8 +350,8 @@ would silently invert.
 | Plugin | Engine | UI | Verdict |
 |---|---|---|---|
 | **ProgGenie** (`aumi PgGn`) | `packages/proggen`, ~1.1k JS; MelGen already ships its tables | 2.7k JS, 1.8k of it one JSX file | ✅ **Built** — [Enkerli/ProgGenie](https://github.com/Enkerli/ProgGenie), §7. `Prst` was the code this table first gave it, and it belongs to the JUCE Progression Studio |
-| **Serpe** (`aumi Srpe`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | ✅ **Built** — [Enkerli/Serpe](https://github.com/Enkerli/Serpe), §5. Vectors first, and they were: 100 cases written into `packages/upi` before any Swift. `RPEd` is the JUCE Rhythm Pattern Explorer's |
-| **PitchFold** (`aumi Pqf1`) | 4,024 LOC C++ quantizer, largely theory MelGen has | 3.1k JS | Third, and the smallest total surface |
+| **Serpe** (`aumi Srpe`) | rhythm algorithms already vector-covered in `theory`; notation in `upi` | 2.7k JS | ✅ **Built** — [Enkerli/SwiftSerpe](https://github.com/Enkerli/SwiftSerpe), §5. Vectors first, and they were: 100 cases written into `packages/upi` before any Swift |
+| **PitchFold** (`aumi PtFd`) | 1.4k LOC of its own; the PCS engine is theory the package now has | 3.1k JS | ✅ **Built** — [Enkerli/SwiftPitchFold](https://github.com/Enkerli/SwiftPitchFold). The first that transforms rather than generates, and the first to need the kernel to grow |
 | **MIDIcurator** (`aumi Mcur`) | thin (1,090 LOC shell) | **14.6k JS — the product** | Engine cheap, UI is the plug-in. Wrong shape for a SwiftUI rewrite; best Core ML story (§8) |
 | **DrawnQurve** (`aumi Dqau`) | 25.2k LOC, JUCE-7 native UI + engine | mid-migration | Wait for its WebUI migration, as the suite already says |
 | **Vane** (`aumu VAne`) | 11.9k synth DSP, already proven shell-free as WASM | 1.2k | Different animal — an instrument with a real audio render. Breaks the invariant in §8 |
@@ -712,14 +712,27 @@ not after — otherwise "port" quietly means "reimplement".
 plus this one. Every new Swift plug-in that does not share the foundation makes
 it five. The boundary check exists to make that visible while it is still one.
 
-**The identity registry is a shared, unversioned resource.** Plugin codes are
-forever. ✅ *Handled 2026-09-05, before the second plug-in rather than after.*
-`component-identity.py` read sibling `CMakeLists.txt` files, and a Swift plug-in
-has no `CMakeLists.txt` — so it now also reads sibling `Info.plist` files, two
-levels deep, because a Swift plug-in's extension plist is at
-`<repo>/<Target>Extension/Info.plist` rather than at the repo root. Proved by
-planting one: a sibling declaring `aumi/MlGn/Enke` fails the check by name. It
-reports 13 sibling codes today.
+**The identity registry is a shared, unversioned resource, and it has two
+columns rather than one.** ✅ *Both handled, one of them the hard way.*
+
+The four-character code was the known half. `component-identity.py` read sibling
+`CMakeLists.txt` files and a Swift plug-in has none, so it reads sibling
+`Info.plist` files too, two levels deep. Proved by planting a collision.
+
+**The bundle identifier was the half nobody had written down, and it cost a
+working plug-in.** Swift Serpe was built as `com.enkerli.Serpe` while the JUCE
+Rhythm Pattern Explorer ships `com.enkerli.serpe` — differing in one letter's
+case — and it **did not appear in AUM at all**. Not misrouted: absent. Swift
+PitchFold was heading for the same wall against `com.enkerli.PitchFold`, whose
+JUCE `CMakeLists` carries its own warning that "installed devices have it".
+
+The asymmetry is worth stating, because it decides which one to check first: a
+colliding subtype makes a host load the *wrong* plug-in, which is bad and
+visible. A colliding bundle id makes a plug-in *silently not exist*, and there
+is nothing to notice. The check now compares both, lowercased, because macOS's
+comparison is and case is exactly what went wrong. Two plug-ins were renamed —
+SwiftSerpe and SwiftPitchFold — which also stops a host listing two entries with
+the same name, the thing the separate codes existed to let you compare.
 
 **The Apple-only tax, again.** Everything in §0. It is the right trade for the
 iPad-first tools and the wrong one for anything that has to run on the miniPC

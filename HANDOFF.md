@@ -64,7 +64,31 @@ loop player has, not anything about melody, so it is
 **What is left in `MelGenExtension/` is MelGen.** Its session, its root view, its
 three overrides on `PluginViewController`, and its own parameter tree.
 
-**Three plug-ins now stand on it**, and the third is the one that tested the
+**Four plug-ins now stand on it**, and the fourth —
+[SwiftPitchFold](https://github.com/Enkerli/SwiftPitchFold), `aumi PtFd` — is
+the first that is not a generator. It folds incoming notes into a pitch-class
+set, which inverts the dataflow the other three share and made the shared kernel
+grow a transform path. PORTING.md §8's invariant survives intact because of
+where the line falls: **the decision is off-thread, only the lookup is on it.** A
+128-byte note map is computed in Swift at leisure; the render thread reads one
+byte per note-on. There is no quantizer in that repo — sets are `Theory`, the
+map is `Shell`, the rewrite is the kernel.
+
+**Two things it cost that are worth carrying.** A `NoteMap` change while a note
+is held has to end that note on the mapping it *started* with, or it stays
+sounding in somebody else's synth after this plug-in is removed from the chain;
+the kernel harness plants all three shapes of that bug. And a Swift port of
+`packages/theory/src/pcs.ts` found the C major scale's bitmask written as 2773
+in four separate files' prose, always with correct code beside it — see
+CONVENTIONS.md, which now names the trap.
+
+**And two plug-ins were renamed, because a four-character code is not the only
+forever identifier.** SwiftSerpe was `com.enkerli.Serpe` against the JUCE build's
+`com.enkerli.serpe` and did not appear in AUM at all — absent rather than
+misrouted. SwiftPitchFold was heading for the same wall. `component-identity.py`
+checks bundle ids now, lowercased.
+
+**Three plug-ins before that**, and the third is the one that tested the
 layering rather than just using it. [Serpe](https://github.com/Enkerli/Serpe) —
 `aumi Srpe` — is UPI notation in Swift, and building it meant *splitting* an
 engine rather than porting one: the rhythm algorithms (Björklund, Barlow, the
